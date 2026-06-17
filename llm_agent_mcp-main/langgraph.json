@@ -1,0 +1,6 @@
+{
+  "dependencies": ["./src/multi-agent.ts"],
+  "graphs": {
+    "enterprise_agent": "./src/multi-agent.ts:multiAgentApp"
+  }
+}

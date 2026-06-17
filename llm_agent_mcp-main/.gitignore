@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+ui/node_modules/
+
+# Environment variables
+.env
+.env.local
+
+# Databases and data
+datalake.db
+uploads/
+*.csv
+
+# Build outputs
+ui/.next/
+dist/
+
+# OS files
+.DS_Store
+
+# Logs
+*.log

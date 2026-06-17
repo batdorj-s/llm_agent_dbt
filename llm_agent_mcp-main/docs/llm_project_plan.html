@@ -1,0 +1,184 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+  .header { padding: 1.5rem 1.5rem 1rem; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .header h2 { font-size: 18px; font-weight: 500; color: var(--color-text-primary); }
+  .header p { font-size: 13px; color: var(--color-text-secondary); margin-top: 4px; }
+  .phases { padding: 1rem 1.5rem 1.5rem; display: flex; flex-direction: column; gap: 12px; }
+  .phase { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; }
+  .phase-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; background: var(--color-background-secondary); user-select: none; }
+  .phase-header:hover { background: var(--color-background-tertiary); }
+  .badge { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  .b-purple { background: #EEEDFE; color: #3C3489; }
+  .b-teal   { background: #E1F5EE; color: #0F6E56; }
+  .b-amber  { background: #FAEEDA; color: #854F0B; }
+  .b-coral  { background: #FAECE7; color: #993C1D; }
+  .b-blue   { background: #E6F1FB; color: #185FA5; }
+  @media (prefers-color-scheme: dark) {
+    .b-purple { background: #26215C; color: #CECBF6; }
+    .b-teal   { background: #04342C; color: #9FE1CB; }
+    .b-amber  { background: #412402; color: #FAC775; }
+    .b-coral  { background: #4A1B0C; color: #F5C4B3; }
+    .b-blue   { background: #042C53; color: #B5D4F4; }
+  }
+  .phase-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
+  .phase-meta { font-size: 12px; color: var(--color-text-secondary); }
+  .chevron { font-size: 14px; color: var(--color-text-tertiary); transition: transform .2s; }
+  .chevron.open { transform: rotate(180deg); }
+  .phase-body { display: none; padding: 0 16px 14px; border-top: 0.5px solid var(--color-border-tertiary); background: var(--color-background-primary); }
+  .phase-body.open { display: block; }
+  .steps { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .step { display: flex; gap: 12px; align-items: flex-start; }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; flex-shrink: 0; margin-top: 1px; }
+  .step-text { flex: 1; }
+  .step-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+  .step-desc { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; line-height: 1.5; }
+  .tech-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tech-tag { font-size: 11px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 6px; padding: 2px 8px; color: var(--color-text-secondary); }
+  .ask-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--color-text-info); background: none; border: none; cursor: pointer; padding: 0; margin-top: 6px; }
+  .ask-btn:hover { text-decoration: underline; }
+  .progress-row { display: flex; gap: 6px; padding: 10px 16px 0; }
+  .pip { flex: 1; height: 3px; border-radius: 2px; }
+</style>
+
+<div class="header">
+  <h2>LLM Agentic System — хөгжүүлэлтийн төлөвлөгөө</h2>
+  <p>Баримт бичгийн агуулга дээр үндэслэсэн, scale хийж болох 5 үе шат</p>
+</div>
+
+<div class="progress-row" id="progRow"></div>
+
+<div class="phases" id="phases"></div>
+
+<script>
+const phases = [
+  {
+    label: "1-р үе шат", color: "purple", time: "1–2 долоо хоног",
+    title: "PoC — нэг MCP сервер",
+    desc: "Агент, LLM гэхгүйгээр нэг дата баазтай холбогдох MCP сервер бэлд. Claude Desktop-тай холбож туршина.",
+    steps: [
+      { name: "Орчин тохируулах", desc: "TypeScript эсвэл Python орчин, репозитори, package manager суулгах.", tags: ["Node.js / Python", "Git", "npm / pip"] },
+      { name: "MCP сервер бичих", desc: "Байгууллагын нэг дата баазтай (жишээ нь PostgreSQL) харьцдаг sql-mcp-server бичих. Зөвхөн SELECT эрхтэй байна.", tags: ["MCP SDK", "Pydantic / Zod", "PostgreSQL"] },
+      { name: "Claude Desktop-тай холбох", desc: "Claude Desktop апп дээр MCP серверийг тохируулж, бодит query туршина.", tags: ["Claude Desktop", "MCP config"] },
+      { name: "Type safety нэмэх", desc: "Оролт/гаралтын бүтцийг Pydantic эсвэл Zod-оор баталгаажуулна.", tags: ["Pydantic", "Zod"] },
+    ]
+  },
+  {
+    label: "2-р үе шат", color: "teal", time: "2–3 долоо хоног",
+    title: "RAG + Vector DB нэмэх",
+    desc: "Мэдлэгийн давхаргыг бий болгоно: баримт бичгийг embedding хийж, Vector DB-д хадгалж, Semantic Search ажиллуулна.",
+    steps: [
+      { name: "Embedding pipeline", desc: "Байгууллагын KPI, Glossary, бизнесийн баримт бичгийг Jina AI эсвэл бусад embedding model-оор боловсруулна.", tags: ["Jina AI", "LangChain", "Python"] },
+      { name: "Vector DB байршуулах", desc: "Qdrant эсвэл Milvus суулгаж, vector-уудыг хадгална. Docker дээр хялбархан эхэлж болно.", tags: ["Qdrant", "Milvus", "Docker"] },
+      { name: "Hybrid хайлт (RRF)", desc: "Semantic Search + BM25 хайлтыг Reciprocal Rank Fusion аргаар хослуулна.", tags: ["BM25", "RRF", "Qdrant"] },
+      { name: "Context Pruning", desc: "Хайлтаас гарсан мэдээллийг шахаж (Prompt Compression) агентад өгөх логик нэмнэ.", tags: ["LLMLingua", "Custom filter"] },
+    ]
+  },
+  {
+    label: "3-р үе шат", color: "amber", time: "2–4 долоо хоног",
+    title: "Agent + Orchestration",
+    desc: "LLM агентийг LangGraph эсвэл Mastra дээр бүтээж, RAG болон MCP-тай холбоно.",
+    steps: [
+      { name: "Агент framework сонгох", desc: "LangGraph (Python) эсвэл Mastra (TypeScript) дээр multi-step reasoning, tool calling тохируулна.", tags: ["LangGraph", "Mastra", "LLaMA 3.x / Claude"] },
+      { name: "Planning цикл", desc: "Агент асуултыг задалж, Vector DB + MCP tool-уудыг дараалан дуудах логик бичнэ (ReAct / Reflect).", tags: ["ReAct", "CoT", "Prompt engineering"] },
+      { name: "Retry механизм", desc: "Хэрэв дата дутуу буюу алдаатай бол агент дахин query бичиж хайх (Reflect → Retry) логик нэмнэ.", tags: ["Error handling", "Max retries"] },
+      { name: "Prompt-as-Code", desc: "System prompt-уудыг .prompt/.yaml файл болгон гаргаж, Git-тэй хувилбарлана.", tags: ["YAML", "Git", "Prompt evals"] },
+    ]
+  },
+  {
+    label: "4-р үе шат", color: "coral", time: "2–3 долоо хоног",
+    title: "Analytics Sandbox + Security",
+    desc: "Агент Python код бичиж ажиллуулах аюулгүй орчин болон RBAC хамгаалалтыг нэмнэ.",
+    steps: [
+      { name: "Code Execution Sandbox", desc: "E2B (Firecracker microVM) ашиглан агент Python код бичиж, дата дээр анализ хийх аюулгүй орчин байршуулна.", tags: ["E2B", "Firecracker", "MCP tool"] },
+      { name: "Row-Level Security", desc: "Хэрэглэгчийн роль/эрхээс хамаарч MCP давхарга дээр дата хязгаарлах тохиргоо хийнэ.", tags: ["RBAC", "PostgreSQL RLS", "JWT"] },
+      { name: "Read-Only эрх", desc: "Агентад UPDATE, DELETE, DROP хийх эрх хэзээ ч өгөхгүй. Зөвхөн SELECT.", tags: ["DB permissions", "Least privilege"] },
+      { name: "Secret management", desc: "API key, DB нэвтрэх мэдээллийг орчны хувьсагч (env vars) эсвэл vault-аар удирдана.", tags: ["dotenv", "HashiCorp Vault"] },
+    ]
+  },
+  {
+    label: "5-р үе шат", color: "blue", time: "Үргэлжлэх",
+    title: "Observability + Scale",
+    desc: "Агентийн бүх шийдвэрийг trace хийж, санах ойг нэмж, production-д гаргана.",
+    steps: [
+      { name: "Tracing (Langfuse)", desc: "Агентийн agentic loop-ийн алхам бүрийг Langfuse руу trace илгээж, debug хялбарчилна.", tags: ["Langfuse", "OpenTelemetry"] },
+      { name: "Conversation memory", desc: "Харилцан ярианы санах ойг Redis эсвэл PostgreSQL-д хадгалж, дараагийн session-д ашиглана.", tags: ["Redis", "PostgreSQL", "pgvector"] },
+      { name: "Multi-Agent routing", desc: "Санхүүгийн, хуулийн, кодын асуультуудыг тусгай жижиг агентуудад хуваарилах routing логик нэмнэ.", tags: ["LangGraph supervisor", "Agent registry"] },
+      { name: "CI/CD + Evals", desc: "Промпт болон агентийн чанарыг автоматаар тестлэх eval pipeline, GitHub Actions тохируулна.", tags: ["GitHub Actions", "Promptfoo", "Evals"] },
+    ]
+  },
+];
+
+const colorMap = {
+  purple: { step: "#534AB7", bg: "#EEEDFE", text: "#3C3489" },
+  teal:   { step: "#0F6E56", bg: "#E1F5EE", text: "#085041" },
+  amber:  { step: "#BA7517", bg: "#FAEEDA", text: "#854F0B" },
+  coral:  { step: "#993C1D", bg: "#FAECE7", text: "#712B13" },
+  blue:   { step: "#185FA5", bg: "#E6F1FB", text: "#0C447C" },
+};
+
+const progRow = document.getElementById("progRow");
+const phasesEl = document.getElementById("phases");
+
+phases.forEach((p, i) => {
+  const c = colorMap[p.color];
+  const pip = document.createElement("div");
+  pip.className = "pip";
+  pip.style.background = c.step;
+  pip.style.opacity = "0.35";
+  pip.id = `pip-${i}`;
+  progRow.appendChild(pip);
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "phase";
+
+  const header = document.createElement("div");
+  header.className = "phase-header";
+  header.innerHTML = `
+    <span class="badge b-${p.color}">${p.label}</span>
+    <span class="phase-title">${p.title}</span>
+    <span class="phase-meta">${p.time}</span>
+    <span class="chevron" id="chev-${i}">&#8964;</span>
+  `;
+
+  const body = document.createElement("div");
+  body.className = "phase-body";
+  body.id = `body-${i}`;
+
+  let stepsHtml = `<p style="font-size:13px;color:var(--color-text-secondary);line-height:1.6;margin-top:10px">${p.desc}</p><div class="steps">`;
+  p.steps.forEach((s, si) => {
+    const tags = s.tags.map(t => `<span class="tech-tag">${t}</span>`).join("");
+    stepsHtml += `<div class="step">
+      <div class="step-num" style="background:${c.bg};color:${c.text}">${si+1}</div>
+      <div class="step-text">
+        <div class="step-name">${s.name}</div>
+        <div class="step-desc">${s.desc}</div>
+        <div class="tech-row">${tags}</div>
+        <button class="ask-btn" onclick="sendPrompt('${s.name}-ийн талаар дэлгэрэнгүй тайлбарла')">Дэлгэрэнгүй мэдэх ↗</button>
+      </div>
+    </div>`;
+  });
+  stepsHtml += `</div>`;
+  body.innerHTML = stepsHtml;
+
+  header.addEventListener("click", () => {
+    const isOpen = body.classList.contains("open");
+    document.querySelectorAll(".phase-body").forEach(b => b.classList.remove("open"));
+    document.querySelectorAll(".chevron").forEach(c => c.classList.remove("open"));
+    document.querySelectorAll(".pip").forEach((p, pi) => p.style.opacity = "0.35");
+    if (!isOpen) {
+      body.classList.add("open");
+      document.getElementById(`chev-${i}`).classList.add("open");
+      document.getElementById(`pip-${i}`).style.opacity = "1";
+    }
+  });
+
+  wrapper.appendChild(header);
+  wrapper.appendChild(body);
+  phasesEl.appendChild(wrapper);
+});
+
+// Open first phase by default
+document.querySelector(".phase-header").click();
+</script>
