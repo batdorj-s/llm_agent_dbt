@@ -6,7 +6,9 @@
 
 ## Architecture (Системийн бүтэц)
 
-Системийн архитектурыг дараах схемээр харуулж байна:
+Системийн архитектур нь **Multi-Agent Orchestration** болон **Multi-hop Data Engineering (dbt)** гэсэн хоёр үндсэн хэсгээс бүрдэнэ.
+
+### 1. Системийн ерөнхий урсгал
 
 ```mermaid
 graph TD
@@ -27,7 +29,8 @@ graph TD
 
     subgraph "Data & Tool Layer"
         MCP[MCP Server Protocol Bridge]
-        SQL[(SQLite Enterprise Data)]
+        dbt[dbt Semantic Layer]
+        SQL[(SQLite Data Lake)]
         Vector[(ChromaDB Vector Store)]
         E2B[E2B Sandbox Python Execution]
     end
@@ -39,7 +42,8 @@ graph TD
 
     Finance -->|Semantic Search| Vector
     Tech -->|MCP Tools| MCP
-    MCP -->|Query| SQL
+    MCP --> dbt
+    dbt -->|Validated Models| SQL
     Tech -->|Code Gen| E2B
 
     Tech -->|Error Feedback| Tech
@@ -47,12 +51,36 @@ graph TD
     Tech -->|Response| UI
 ```
 
+### 2. Өгөгдлийн архитектур (dbt Multi-hop)
+
+Системийн өгөгдлийг программ хангамжийн инженерчлэлийн түвшинд боловсруулахын тулд **dbt (data build tool)** ашиглан дараах "Multi-hop" бүтцийг хэрэгжүүлсэн:
+
+```mermaid
+graph LR
+    Raw[Raw CSV/Data Lake] -->|dbt run| Staging[Staging - Bronze]
+    Staging -->|dbt run| Intermediate[Intermediate - Silver]
+    Intermediate -->|dbt run| Marts[Marts - Gold]
+    
+    subgraph "AI-Ready Layer"
+        Marts -->|SQL Views| AI[AI Agent / MCP Server]
+    end
+    
+    style Raw fill:#f96,stroke:#333
+    style Staging fill:#fb8,stroke:#333
+    style Intermediate fill:#fdd,stroke:#333
+    style Marts fill:#9f9,stroke:#333
+```
+
+*   **Staging (Bronze):** Түүхий өгөгдлийг цэвэрлэх, төрлийг стандартлах.
+*   **Intermediate (Silver):** Бизнесийн нарийн логик, инкрементал (Incremental) тооцооллууд.
+*   **Marts (Gold):** AI Агентад зориулсан баталгаажсан, тестлэгдсэн KPI-ууд (Sales, User Metrics).
+
 ### Инженерийн тайлбар
 
 1.  **Orchestration Layer:** LangGraph дээр суурилсан Supervisor загвар нь хэрэглэгчийн асуултыг контекстээс хамааран Finance эсвэл Tech агентууд руу ухаалгаар чиглүүлдэг.
-2.  **Agentic Workers:** Агентууд нь бие даасан шийдвэр гаргах чадвартай. TechAgent нь SQL код бичиж ажиллуулахдаа алдаа гарвал өөрөө засах (Self-healing) чадвартай.
-3.  **MCP (Model Context Protocol):** LLM-ийг өгөгдлийн эх сурвалжуудтай стандарт протоколоор холбож, аюулгүй байдал болон уян хатан байдлыг хангадаг.
-4.  **Data Layer:** Структурлаг өгөгдлийг SQLite-д, баримт бичгийг ChromaDB вектор санд хадгалж, RAG (Retrieval-Augmented Generation) технологиор хайлт хийдэг.
+2.  **dbt (Data Build Tool):** AI агент түүхий өгөгдөл дээр шууд ажиллахаас сэргийлж, dbt-ээр дамжуулан "Semantic Layer" үүсгэсэн. Энэ нь AI-ийн "hallucination" буюу буруу тоо гаргах эрсдэлийг эрс бууруулдаг.
+3.  **Self-Healing TechAgent:** TechAgent нь SQL код бичиж ажиллуулахдаа алдаа гарвал dbt-ийн моделийн тайлбаруудыг (metadata) ашиглан өөрөө засах чадвартай.
+4.  **Data Quality:** dbt-ийн автомат тестүүд (not_null, unique, accepted_values) нь AI-д очиж буй өгөгдөл үргэлж үнэн зөв байх баталгаа болдог.
 
 ---
 
