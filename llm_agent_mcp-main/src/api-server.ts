@@ -10,6 +10,7 @@ import { agentLimiter } from "./rate-limiter.js";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
 import { setupKnowledgeBase } from "./rag.js";
+import { ensureProjectReady } from "./setup/init.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog } from "./db/data-lake.js";
@@ -351,6 +352,7 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
 
 const PORT = process.env.API_PORT || 3001;
 async function start() {
+  await ensureProjectReady();
   await setupKnowledgeBase();
   app.listen(PORT, () => {
     console.log(`\n🚀 API Server running at http://localhost:${PORT}`);

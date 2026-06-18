@@ -1,7 +1,9 @@
 import { StateGraph, MessagesAnnotation, MemorySaver, Annotation } from "@langchain/langgraph";
 import { createLLM, printProviderStatus } from "./llm-provider.js";
-import { executeSql, getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "./db/data-lake.js";
+import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "./db/data-lake.js";
 import { searchKnowledgeBase } from "./rag.js";
+import { buildFinanceKpiContext, handleExecuteSql, isPythonQuery } from "./tools/enterprise-tools.js";
+import { runPythonCode } from "./sandbox.js";
 import { verifyToken } from "./auth.js";
 import { agentLimiter, sandboxLimiter } from "./rate-limiter.js";
 import fs from "fs";
@@ -241,8 +243,8 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
     // Expanded signals for better hybrid detection
     const techSignals = [
         "sql", "database", "table", "tables", "column", "columns", "hүснэгт", "багана",
-        "code", "python", "math", "calculate", "analysis", "item purchased", "purchased",
-        "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query"
+        "code", "python", "pandas", "matplotlib", "math", "calculate", "analysis", "item purchased", "purchased",
+        "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query", "код ажиллуул"
     ];
     const financeSignals = [
         "sales", "finance", "revenue", "target", "profit", "margin", "kpi", 
@@ -357,6 +359,12 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
         console.error("[Finance Agent] RAG search failed:", err);
     }
 
+    const liveKpiContext = await buildFinanceKpiContext(query);
+    if (liveKpiContext) {
+        console.log("[Finance Agent] Enriched with live KPI data from Data Lake (MCP tools).");
+        context = `${context}\n\n--- Live KPI Data (from database) ---\n${liveKpiContext}`;
+    }
+
     const llm = await createLLM({ temperature: 0 });
     if (!llm) {
         const fallback = `(Finance Agent)\nBased on RAG:\n${context}`;
@@ -398,9 +406,8 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
     }
 }
 
-// 4. Tech / Data Domain Agent (Using SQL Data Lake)
+// 4. Tech / Data Domain Agent (SQL Data Lake + E2B Python)
 async function techAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
-    console.log("[Tech Agent] Activated. Writing SQL query...");
     const onChunk = config?.configurable?.onChunk;
 
     const lastMsg = state.messages[state.messages.length - 1];
@@ -415,7 +422,64 @@ async function techAgentNode(state: any, config?: any): Promise<Partial<AgentSta
         };
     }
 
-    const prefix = "(Tech Agent)\nМэдээллийн сангаас дата шүүж байна... (Data Lake-д SQL/CTE ажиллуулж байна)\n\n";
+    if (isPythonQuery(query)) {
+        console.log("[Tech Agent] Activated. Running Python via E2B sandbox...");
+        const prefix = "(Tech Agent)\nPython код бэлдэж, E2B sandbox-д ажиллуулж байна...\n\n";
+        if (onChunk) onChunk(prefix);
+
+        const pythonPrompt = `You are a Python data analyst. Write executable Python 3 code for this task.
+Use pandas if reading CSV files (superstore_sales.csv or retail_sales_dataset.csv may exist in the sandbox).
+Return ONLY the Python code inside a markdown \`\`\`python block. No explanation outside the block.
+
+Task: ${query}`;
+
+        try {
+            const codeGenResponse = await withTimeout(llm.invoke([
+                { role: "system", content: pythonPrompt },
+                { role: "user", content: query },
+            ]), "Tech agent Python generation");
+
+            let rawCode = codeGenResponse.content as string;
+            let pythonCode = "";
+            if (rawCode.includes("```python")) {
+                pythonCode = rawCode.split("```python")[1].split("```")[0].trim();
+            } else if (rawCode.includes("```")) {
+                pythonCode = rawCode.split("```")[1].split("```")[0].trim();
+            } else {
+                pythonCode = rawCode.trim();
+            }
+
+            const codeBlock = `\`\`\`python\n${pythonCode}\n\`\`\`\n\n`;
+            if (onChunk) onChunk(codeBlock);
+
+            const output = await runPythonCode(pythonCode);
+            const resultBlock = `### Гүйцэтгэлийн үр дүн\n\`\`\`\n${output}\n\`\`\`\n`;
+            if (onChunk) onChunk(resultBlock);
+
+            const explainPrompt = `Summarize the Python execution results for a business user in Mongolian. Be concise.\n\nCode:\n${pythonCode}\n\nOutput:\n${output}`;
+            const stream = await withTimeout(llm.stream([
+                { role: "system", content: explainPrompt },
+                { role: "user", content: query },
+            ]), "Tech agent Python explanation");
+
+            let accumulatedText = prefix + codeBlock + resultBlock + "\n";
+            if (onChunk) onChunk("\n");
+            for await (const chunk of stream) {
+                const text = chunk.content as string;
+                accumulatedText += text;
+                if (onChunk) onChunk(text);
+            }
+
+            return { messages: [{ role: "assistant", content: accumulatedText }] };
+        } catch (err) {
+            const fallback = `${prefix}⚠️ Python ажиллуулахад алдаа гарлаа: ${(err as Error).message}`;
+            if (onChunk) onChunk(fallback);
+            return { messages: [{ role: "assistant", content: fallback }] };
+        }
+    }
+
+    console.log("[Tech Agent] Activated. Writing SQL query...");
+    const prefix = "(Tech Agent)\nМэдээллийн сангаас дата шүүж байна... (MCP execute_sql → Data Lake)\n\n";
     if (onChunk) onChunk(prefix);
 
     console.log(`[Tech Agent] Fetching Data Lake catalog schema...`);
@@ -430,7 +494,9 @@ async function techAgentNode(state: any, config?: any): Promise<Partial<AgentSta
     const deterministicSql = buildDeterministicTechSql(query, activeEntry);
     if (deterministicSql && activeEntry) {
         try {
-            const results = executeSql(deterministicSql);
+            const sqlResult = handleExecuteSql({ query: deterministicSql });
+            if (!sqlResult.ok) throw new Error(sqlResult.text);
+            const results = sqlResult.results;
             const normalizedResults = Array.isArray(results) ? results : [results];
             const directResponse = formatDeterministicTechResponse(query, deterministicSql, normalizedResults);
             if (onChunk) onChunk("\n\n" + directResponse);
@@ -488,8 +554,15 @@ async function techAgentNode(state: any, config?: any): Promise<Partial<AgentSta
             }
             sqlCode = currentSql;
 
-            const results = executeSql(sqlCode);
-            sandboxResult = JSON.stringify(results, null, 2);
+            const sqlResult = handleExecuteSql({ query: sqlCode });
+            if (!sqlResult.ok) {
+                feedback = sqlResult.text;
+                const errorEntry = `\n### Оролдлого ${attempts}\n*Алдаа:* ${sqlResult.text}\n`;
+                if (onChunk) onChunk(errorEntry);
+                accumulatedText += errorEntry;
+                continue;
+            }
+            sandboxResult = sqlResult.text;
 
             const logEntry = `\n### Оролдлого ${attempts}\n\`\`\`sql\n${sqlCode}\n\`\`\`\n*Үр дүн:*\n\`\`\`json\n${sandboxResult}\n\`\`\`\n`;
             if (onChunk) onChunk(logEntry);
