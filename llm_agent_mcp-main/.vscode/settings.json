@@ -2,10 +2,13 @@
     "dbt.dbtPythonPath": "C:\\Users\\Pixel PC 01\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe",
     "dbt.dbtExecutablePath": "C:\\Users\\Pixel PC 01\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\dbt.exe",
     "dbt.enablePowerUser": true,
+    "dbt.isValidationEnabled": false,
     "dbt.projectDir": "llm_agent_mcp-main/dbt",
     "dbt.profilesDir": "llm_agent_mcp-main/dbt",
-    "dbt.isValidationEnabled": false,
+    "python.defaultInterpreterPath": "C:\\Users\\Pixel PC 01\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe",
     "files.associations": {
         "*.sql": "jinja-sql"
-    }
+    },
+    "dbt.showNotInstalledNotification": false,
+    "dbt.diagnosticsEnabled": false
 }

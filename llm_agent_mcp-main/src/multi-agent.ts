@@ -63,7 +63,7 @@ export const AgentStateAnnotation = Annotation.Root({
 
 // Memory setup (Phase 3 requirement)
 const checkpointer = new MemorySaver();
-const LLM_TIMEOUT_MS = 12000;
+const LLM_TIMEOUT_MS = 60000;
 
 export async function clearConversationMemory() {
     const storage = (checkpointer as any).storage as Record<string, unknown> | undefined;
@@ -557,7 +557,7 @@ Task: ${query}`;
                 ]), "Tech agent SQL generation");
             };
 
-            let codeGenResponse;
+            let codeGenResponse: any;
             try {
                 codeGenResponse = await executeCodeGen(llm);
             } catch (err: any) {
@@ -570,7 +570,7 @@ Task: ${query}`;
                 }
             }
 
-            let rawCode = codeGenResponse.content as string;
+            const rawCode = (codeGenResponse as any).content as string;
             let currentSql = "";
             if (rawCode.includes("```sql")) {
                 currentSql = rawCode.split("```sql")[1].split("```")[0].trim();

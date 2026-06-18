@@ -3,17 +3,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Send,
-  Lock,
-  User,
   LogOut,
-  Shield,
   Activity,
-  ChevronRight,
-  Terminal,
-  HelpCircle,
-  TrendingUp,
-  Users,
-  Percent,
   BarChart2,
   Trash2,
   FileText,
@@ -34,51 +25,51 @@ interface Message {
 }
 
 const VisualMessage = ({ visualJson }: { visualJson: string }) => {
-  try {
-    // Aggressive sanitization: remove all leading { and trailing } then wrap once
-    let cleaned = visualJson.trim();
-    while (cleaned.startsWith("{")) {
-      cleaned = cleaned.slice(1);
-    }
-    while (cleaned.endsWith("}")) {
-      cleaned = cleaned.slice(0, -1);
-    }
-    const sanitizedJson = `{${cleaned}}`;
-    
-    console.log("Visual JSON Raw:", visualJson);
-    console.log("Sanitized JSON:", sanitizedJson);
-    const data = JSON.parse(sanitizedJson);
-    console.log("Parsed Visual Data:", data);
-    if (!data.data || !Array.isArray(data.data)) return <div className="text-[9px] text-red-500">Invalid data format</div>;
+  let cleaned = visualJson.trim();
+  while (cleaned.startsWith("{")) {
+    cleaned = cleaned.slice(1);
+  }
+  while (cleaned.endsWith("}")) {
+    cleaned = cleaned.slice(0, -1);
+  }
+  const sanitizedJson = `{${cleaned}}`;
 
-    return (
-      <div className="bg-sidebar border border-border rounded-lg p-4 mt-2 max-w-lg transition-colors duration-200">
-        <h4 className="text-[10px] font-bold text-foreground/60 uppercase mb-3">{data.title}</h4>
-        <div className="h-48 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            {data.type === "bar" ? (
-              <BarChart data={data.data}>
-                <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-                <YAxis stroke="#888888" fontSize={9} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
-                <Bar dataKey="value" fill="var(--foreground)" />
-              </BarChart>
-            ) : data.type === "line" ? (
-              <LineChart data={data.data}>
-                <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-                <YAxis stroke="#888888" fontSize={9} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
-                <Line type="monotone" dataKey="value" stroke="var(--foreground)" />
-              </LineChart>
-            ) : null}
-          </ResponsiveContainer>
-        </div>
-      </div>
-    );
+  let data: { title?: string; type?: string; data?: unknown[] };
+  try {
+    data = JSON.parse(sanitizedJson);
   } catch (e) {
     console.error("Visual JSON Parse Error:", e);
     return <div className="text-[9px] text-red-500">Failed to render graphic: {String(e)}</div>;
   }
+
+  if (!data.data || !Array.isArray(data.data)) {
+    return <div className="text-[9px] text-red-500">Invalid data format</div>;
+  }
+
+  return (
+    <div className="bg-sidebar border border-border rounded-lg p-4 mt-2 max-w-lg transition-colors duration-200">
+      <h4 className="text-[10px] font-bold text-foreground/60 uppercase mb-3">{data.title}</h4>
+      <div className="h-48 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          {data.type === "bar" ? (
+            <BarChart data={data.data}>
+              <XAxis dataKey="label" stroke="#888888" fontSize={9} />
+              <YAxis stroke="#888888" fontSize={9} />
+              <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+              <Bar dataKey="value" fill="var(--foreground)" />
+            </BarChart>
+          ) : data.type === "line" ? (
+            <LineChart data={data.data}>
+              <XAxis dataKey="label" stroke="#888888" fontSize={9} />
+              <YAxis stroke="#888888" fontSize={9} />
+              <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+              <Line type="monotone" dataKey="value" stroke="var(--foreground)" />
+            </LineChart>
+          ) : null}
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
 };
 
 interface KpiData {
@@ -94,6 +85,13 @@ interface SalesHistory {
   revenue: number;
 }
 
+interface UploadedFile {
+  id: string;
+  type: string;
+  filename: string;
+  description?: string;
+}
+
 interface ServerStatus {
   status: string;
   llm: {
@@ -107,18 +105,18 @@ interface ServerStatus {
 
 export default function Home() {
   // Authentication states
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState<{ email: string; role: string } | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<{ email: string; role: string } | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [threadId, setThreadId] = useState<string>("");
 
   // Chat states
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
-  const [threadId, setThreadId] = useState<string>("");
   const [streamEnabled, setStreamEnabled] = useState(true);
 
   // Dashboard / System metrics states
@@ -126,13 +124,13 @@ export default function Home() {
   const [salesKpi, setSalesKpi] = useState<KpiData | null>(null);
   const [usersKpi, setUsersKpi] = useState<KpiData | null>(null);
   const [churnKpi, setChurnKpi] = useState<KpiData | null>(null);
-  const [salesHistory, setSalesHistory] = useState<SalesHistory[]>([]);
-  const [dashboardError, setDashboardError] = useState<string | null>(null);
-  const [historyLimit, setHistoryLimit] = useState<number>(5);
+  const [, setSalesHistory] = useState<SalesHistory[]>([]);
+  const [, setDashboardError] = useState<string | null>(null);
+  const [historyLimit] = useState<number>(5);
 
   // Visual graph animation states
   const [activeRoutingState, setActiveRoutingState] = useState<"idle" | "routing" | "finance" | "tech" | "done">("idle");
-  const [lastAgentResponded, setLastAgentResponded] = useState<string | null>(null);
+  const [, setLastAgentResponded] = useState<string | null>(null);
 
   // Admin Tools: Sandbox code runner state
   const [adminCode, setAdminCode] = useState<string>("import math\nprint(f'Calculated square root of 144 is: {math.sqrt(144)}')");
@@ -162,36 +160,14 @@ export default function Home() {
   const [docUploadMessage, setDocUploadMessage] = useState<string | null>(null);
 
   // File Manager states
-  const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
-  const [isFilesLoading, setIsFilesLoading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [, setIsFilesLoading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Theme state
   const [theme, setTheme] = useState<"light" | "dark">("dark");
-
-  // Load auth state and theme from LocalStorage on mount
-  useEffect(() => {
-    const storedToken = localStorage.getItem("agent_token");
-    const storedUser = localStorage.getItem("agent_user");
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-      setIsLoggedIn(true);
-      setThreadId(`thread_${Date.now()}`);
-    }
-    fetchServerStatus();
-
-    // Theme initialization
-    const storedTheme = localStorage.getItem("theme") as "light" | "dark";
-    if (storedTheme) {
-      setTheme(storedTheme);
-    } else {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      setTheme(prefersDark ? "dark" : "light");
-    }
-  }, []);
 
   // Update theme class on HTML element
   useEffect(() => {
@@ -208,18 +184,41 @@ export default function Home() {
     localStorage.setItem("theme", nextTheme);
   };
 
-  // Fetch metrics when logged in or history limit changes
-  useEffect(() => {
-    if (isLoggedIn && token) {
-      fetchDashboardData();
-      fetchUploadedFiles();
-    }
-  }, [isLoggedIn, token, historyLimit]);
+  const handleLogout = () => {
+    localStorage.removeItem("agent_token");
+    localStorage.removeItem("agent_user");
+    setToken(null);
+    setUser(null);
+    setIsLoggedIn(false);
+    setMessages([]);
+    setSalesKpi(null);
+    setUsersKpi(null);
+    setChurnKpi(null);
+    setSalesHistory([]);
+  };
 
-  // Scroll to bottom on new messages
+  // Restore auth state from localStorage on client mount
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const storedToken = localStorage.getItem("agent_token");
+    const storedUser = localStorage.getItem("agent_user");
+    if (storedToken && storedUser) {
+      setToken(storedToken); // eslint-disable-line react-hooks/set-state-in-effect
+      setUser(JSON.parse(storedUser));
+      setIsLoggedIn(true);
+      setThreadId(`thread_${Date.now()}`);
+    }
+  }, []);
+
+  // Restore theme from localStorage on client mount
+  useEffect(() => {
+    const storedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
+    if (storedTheme) {
+      setTheme(storedTheme); // eslint-disable-line react-hooks/set-state-in-effect
+    } else {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setTheme(prefersDark ? "dark" : "light");
+    }
+  }, []);
 
   const fetchServerStatus = async () => {
     try {
@@ -239,7 +238,6 @@ export default function Home() {
       setDashboardError(null);
       const headers = { Authorization: `Bearer ${token}` };
 
-      // Sales KPI
       const salesRes = await fetch("http://localhost:3001/api/kpi/sales", { headers });
       if (salesRes.ok) {
         const data = await salesRes.json();
@@ -249,27 +247,24 @@ export default function Home() {
         return;
       }
 
-      // Users KPI
       const usersRes = await fetch("http://localhost:3001/api/kpi/users", { headers });
       if (usersRes.ok) {
         const data = await usersRes.json();
         setUsersKpi(data);
       }
 
-      // Churn KPI
       const churnRes = await fetch("http://localhost:3001/api/kpi/churn_rate", { headers });
       if (churnRes.ok) {
         const data = await churnRes.json();
         setChurnKpi(data);
       }
 
-      // History
       const historyRes = await fetch(`http://localhost:3001/api/kpi-history?limit=${historyLimit}`, { headers });
       if (historyRes.ok) {
         const data = await historyRes.json();
         setSalesHistory(data);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       setDashboardError("Could not retrieve KPI data. Ensure API server is running.");
       console.error("Dashboard fetch error", e);
     }
@@ -292,6 +287,25 @@ export default function Home() {
       setIsFilesLoading(false);
     }
   };
+
+  // Fetch server status on mount
+  useEffect(() => {
+    fetchServerStatus(); // eslint-disable-line react-hooks/set-state-in-effect
+  }, []);
+
+  // Fetch metrics when logged in or history limit changes
+  useEffect(() => {
+    if (isLoggedIn && token) {
+      fetchDashboardData(); // eslint-disable-line react-hooks/set-state-in-effect
+      fetchUploadedFiles();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, token, historyLimit]);
+
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleDeleteFile = async (id: string) => {
     if (!token || !confirm("Are you sure you want to delete this asset?")) return;
@@ -349,30 +363,21 @@ export default function Home() {
           agentName: "Supervisor Router",
         },
       ]);
-    } catch (e: any) {
-      alert(e.message || "Connection to API Server failed.");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Connection to API Server failed.");
     } finally {
       setIsAuthLoading(false);
     }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("agent_token");
-    localStorage.removeItem("agent_user");
-    setToken(null);
-    setUser(null);
-    setIsLoggedIn(false);
-    setMessages([]);
-    setSalesKpi(null);
-    setUsersKpi(null);
-    setChurnKpi(null);
-    setSalesHistory([]);
   };
 
   const handleSendMessage = async (e?: React.FormEvent, customInput?: string) => {
     if (e) e.preventDefault();
     const query = customInput || input;
     if (!query.trim() || isChatLoading || !token) return;
+
+    if (!threadId) {
+      setThreadId(`thread_${Date.now()}`);
+    }
 
     if (!customInput) setInput("");
 
@@ -498,7 +503,7 @@ export default function Home() {
           throw new Error(err.error || "Failed to get agent response");
         }
 
-        const data = await res.json();
+        await res.json();
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === agentMsgId
@@ -513,8 +518,8 @@ export default function Home() {
         setActiveRoutingState("done");
         fetchDashboardData();
       }
-    } catch (e: any) {
-      if (e.name === "AbortError") {
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === "AbortError") {
         console.log("Request aborted by user.");
         setActiveRoutingState("idle");
         setMessages((prev) => {
@@ -533,13 +538,14 @@ export default function Home() {
         });
         return;
       }
+      const errorMessage = e instanceof Error ? e.message : "An error occurred while communicating with the agent system.";
       setActiveRoutingState("idle");
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === agentMsgId
             ? {
                 ...msg,
-                text: e.message || "An error occurred while communicating with the agent system.",
+                text: errorMessage,
                 agentName: "System Error Handler",
                 isError: true,
               }
@@ -580,8 +586,8 @@ export default function Home() {
 
       const data = await res.json();
       setAdminCodeOutput(data.output || "Execution completed. No output.");
-    } catch (e: any) {
-      setAdminCodeOutput(`Error: ${e.message}`);
+    } catch (e: unknown) {
+      setAdminCodeOutput(`Error: ${e instanceof Error ? e.message : e}`);
     } finally {
       setIsAdminRunningCode(false);
     }
@@ -609,8 +615,8 @@ export default function Home() {
 
       setSalesUpdateSuccess("Target updated.");
       fetchDashboardData();
-    } catch (e: any) {
-      setSalesUpdateSuccess(`Error: ${e.message}`);
+    } catch (e: unknown) {
+      setSalesUpdateSuccess(`Error: ${e instanceof Error ? e.message : e}`);
     } finally {
       setIsUpdatingTarget(false);
     }
@@ -652,8 +658,8 @@ export default function Home() {
         setTableDescInput("");
         fetchDashboardData();
         fetchUploadedFiles();
-      } catch (err: any) {
-        setCsvUploadMessage(`Error: ${err.message}`);
+      } catch (err: unknown) {
+        setCsvUploadMessage(`Error: ${err instanceof Error ? err.message : err}`);
       } finally {
         setIsUploadingCsv(false);
       }
@@ -698,8 +704,8 @@ export default function Home() {
       setDocFile(null);
       setDocDescInput("");
       fetchUploadedFiles();
-    } catch (err: any) {
-      setDocUploadMessage(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setDocUploadMessage(`Error: ${err instanceof Error ? err.message : err}`);
     } finally {
       setIsUploadingDoc(false);
     }
@@ -937,7 +943,7 @@ export default function Home() {
                   <div className="flex gap-2">
                     <select
                       value={adjustMetric}
-                      onChange={(e: any) => setAdjustMetric(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setAdjustMetric(e.target.value as "sales" | "users" | "churn_rate")}
                       className="flex-1 bg-background border border-border rounded px-2 py-1 text-[10px] text-foreground focus:outline-none focus:border-foreground/30"
                     >
                       <option value="sales">Sales</option>
