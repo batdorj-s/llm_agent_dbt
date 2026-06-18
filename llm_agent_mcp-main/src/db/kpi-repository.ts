@@ -18,18 +18,28 @@ import { SQLiteKpiRepository } from "./sqlite-repository.js";
 
 let _instance: IKpiRepository | null = null;
 
+function isSupabaseConfigured(): boolean {
+  const supabaseUrl = process.env.SUPABASE_URL?.trim();
+  const supabaseKey = process.env.SUPABASE_ANON_KEY?.trim();
+  if (!supabaseUrl || !supabaseKey) return false;
+
+  const placeholderPatterns = [
+    /^your[_-]/i,
+    /your-project\.supabase\.co/i,
+    /example\.com/i,
+    /placeholder/i,
+  ];
+
+  return !placeholderPatterns.some((p) => p.test(supabaseUrl) || p.test(supabaseKey));
+}
+
 export async function getRepository(): Promise<IKpiRepository> {
   if (_instance) return _instance; // Singleton — reuse connection
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-  const isConfigured = supabaseUrl && 
-                       supabaseUrl !== "your_supabase_url_here" && 
-                       supabaseKey && 
-                       supabaseKey !== "your_supabase_anon_key_here";
-
-  if (isConfigured) {
+  if (isSupabaseConfigured()) {
     try {
       // Dynamic import — only loads if Supabase credentials are present
       const { createClient } = await import("@supabase/supabase-js" as any);

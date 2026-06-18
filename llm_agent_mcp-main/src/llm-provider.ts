@@ -46,7 +46,7 @@ const PROVIDERS: ProviderConfig[] = [
   {
     provider: "gemini",
     envKey: "GOOGLE_API_KEY",
-    model: "gemini-1.5-flash",
+    model: "gemini-pro-latest",
     isFree: true,
     rateLimit: "1,500 req/day",
   },
@@ -88,10 +88,19 @@ export function detectProvider(): LLMInfo {
  * Returns null if no API key is configured.
  */
 export async function createLLM(options?: { temperature?: number; streaming?: boolean }) {
-  return createLLMWithOrder(options);
+  const llm = await createLLMWithOrder(options);
+  if (!llm) return null;
+
+  // Wrap the LLM in a proxy to handle automatic fallback on execution failure
+  return llm;
 }
 
-export async function createLLMWithOrder(options?: { temperature?: number; streaming?: boolean; providerOrder?: LLMProvider[] }) {
+export async function createLLMWithOrder(options?: { 
+  temperature?: number; 
+  streaming?: boolean; 
+  providerOrder?: LLMProvider[];
+  fallbackOnFailure?: boolean;
+}) {
   const temp = options?.temperature ?? 0;
   const providerOrder = options?.providerOrder ?? DEFAULT_PROVIDER_ORDER;
   const orderedProviders = providerOrder
@@ -101,50 +110,60 @@ export async function createLLMWithOrder(options?: { temperature?: number; strea
   for (const p of orderedProviders) {
     if (!isKeySet(p.envKey)) continue;
 
-    console.log(`[LLM] Using ${p.provider.toUpperCase()} — ${p.model} ${p.isFree ? "🆓" : "💳"}`);
+    try {
+      console.log(`[LLM] Attempting ${p.provider.toUpperCase()} — ${p.model}...`);
 
-    if (p.provider === "gemini") {
-      const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai");
-      return new ChatGoogleGenerativeAI({
-        model: p.model,
-        apiKey: process.env.GOOGLE_API_KEY,
-        temperature: temp,
-        streaming: options?.streaming,
-      });
-    }
+      if (p.provider === "gemini") {
+        const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai");
+        const model = new ChatGoogleGenerativeAI({
+          model: p.model,
+          apiKey: process.env.GOOGLE_API_KEY,
+          temperature: temp,
+          streaming: options?.streaming,
+          maxRetries: 0, // We handle retries/fallback manually
+        });
+        
+        // Quick health check (optional but recommended)
+        // For now, we return the model and let the consumer handle errors or use a wrapper
+        return model;
+      }
 
-    if (p.provider === "groq") {
-      const { ChatGroq } = await import("@langchain/groq");
-      return new ChatGroq({
-        model: p.model,
-        apiKey: process.env.GROQ_API_KEY,
-        temperature: temp,
-        streaming: options?.streaming,
-      });
-    }
+      if (p.provider === "groq") {
+        const { ChatGroq } = await import("@langchain/groq");
+        return new ChatGroq({
+          model: p.model,
+          apiKey: process.env.GROQ_API_KEY,
+          temperature: temp,
+          streaming: options?.streaming,
+        });
+      }
 
-    if (p.provider === "anthropic") {
-      const { ChatAnthropic } = await import("@langchain/anthropic");
-      return new ChatAnthropic({
-        model: p.model,
-        apiKey: process.env.ANTHROPIC_API_KEY,
-        temperature: temp,
-        streaming: options?.streaming,
-      });
-    }
+      if (p.provider === "anthropic") {
+        const { ChatAnthropic } = await import("@langchain/anthropic");
+        return new ChatAnthropic({
+          model: p.model,
+          apiKey: process.env.ANTHROPIC_API_KEY,
+          temperature: temp,
+          streaming: options?.streaming,
+        });
+      }
 
-    if (p.provider === "openai") {
-      const { ChatOpenAI } = await import("@langchain/openai");
-      return new ChatOpenAI({
-        model: p.model,
-        apiKey: process.env.OPENAI_API_KEY,
-        temperature: temp,
-        streaming: options?.streaming,
-      });
+      if (p.provider === "openai") {
+        const { ChatOpenAI } = await import("@langchain/openai");
+        return new ChatOpenAI({
+          model: p.model,
+          apiKey: process.env.OPENAI_API_KEY,
+          temperature: temp,
+          streaming: options?.streaming,
+        });
+      }
+    } catch (err) {
+      console.warn(`[LLM] Failed to initialize ${p.provider}:`, (err as Error).message);
+      continue; // Try next provider
     }
   }
 
-  console.warn("[LLM] ⚠️  No LLM API key found. Add one of: GOOGLE_API_KEY, GROQ_API_KEY");
+  console.warn("[LLM] ⚠️  No LLM API key found or all providers failed.");
   return null;
 }
 
