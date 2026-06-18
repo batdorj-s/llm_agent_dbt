@@ -62,7 +62,7 @@ server.tool(
     }
 
     const total = records.reduce((sum, r) => sum + r.revenue, 0);
-    const avg   = (total / records.length).toFixed(0);
+    const avg = (total / records.length).toFixed(0);
 
     const lines = records.map(r => `  ${r.month}: $${r.revenue.toLocaleString()}`);
     const resultText = [
@@ -90,11 +90,11 @@ server.tool(
       if (!catalog || catalog.length === 0) {
         return { content: [{ type: "text", text: "Data Lake catalog is empty." }] };
       }
-      
-      const lines = catalog.map((row: any) => 
+
+      const lines = catalog.map((row: any) =>
         `Table: ${row.table_name}\nCreated By: ${row.created_by}\nCreated At: ${row.created_at}\nColumns: ${row.columns_info}\nDescription: ${row.description}\n`
       );
-      
+
       return { content: [{ type: "text", text: `Data Lake Catalog:\n\n${lines.join("\n---\n")}` }] };
     } catch (err: any) {
       return { content: [{ type: "text", text: `Error fetching catalog: ${err.message}` }] };
@@ -113,12 +113,12 @@ server.tool(
   },
   async ({ query }) => {
     // SELECT-only guard: reject any mutating statement
-    const normalized = query.trimStart().toUpperCase();
-    const dangerousKeywords = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "REPLACE", "TRUNCATE"];
-    const isDangerous = dangerousKeywords.some(kw => normalized.startsWith(kw));
-    if (isDangerous) {
+    const normalized = query.toUpperCase();
+    const dangerousPattern = /\b(DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|REPLACE|TRUNCATE|GRANT|REVOKE)\b/i;
+    
+    if (dangerousPattern.test(normalized)) {
       return {
-        content: [{ type: "text", text: "Error: Only SELECT queries are permitted. Mutating operations (DROP, DELETE, UPDATE, INSERT, etc.) are not allowed." }],
+        content: [{ type: "text", text: "Error: Only SELECT queries are permitted. Mutating operations (DROP, DELETE, UPDATE, INSERT, etc.) are strictly prohibited." }],
       };
     }
 

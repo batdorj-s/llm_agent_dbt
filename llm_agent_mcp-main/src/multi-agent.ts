@@ -18,9 +18,9 @@ const prompts = yaml.parse(promptFile);
 
 // Langfuse Tracing Setup (Observability)
 const langfuseHandler = new CallbackHandler({
-  secretKey: process.env.LANGFUSE_SECRET_KEY || "mock_sk",
-  publicKey: process.env.LANGFUSE_PUBLIC_KEY || "mock_pk",
-  baseUrl: process.env.LANGFUSE_HOST || "https://cloud.langfuse.com",
+    secretKey: process.env.LANGFUSE_SECRET_KEY || "mock_sk",
+    publicKey: process.env.LANGFUSE_PUBLIC_KEY || "mock_pk",
+    baseUrl: process.env.LANGFUSE_HOST || "https://cloud.langfuse.com",
 });
 
 // 1. Define custom state for Phase 3 (Unified Access)
@@ -222,6 +222,8 @@ const RouteSchema = z.object({
     reason: z.string().describe("One sentence explaining the routing decision.")
 });
 
+const MAX_SQL_RETRIES = 3;
+
 async function supervisorNode(state: any, config?: any): Promise<Partial<AgentState>> {
     const lastMsg = state.messages[state.messages.length - 1];
     if (!lastMsg) return { nextAgent: "END" };
@@ -235,37 +237,31 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
     const lowerMessage = lastMessage.toLowerCase();
     const catalog = getCatalog();
     const mentionsKnownTable = catalog.some((row: any) => lowerMessage.includes(row.table_name.toLowerCase()));
+    
+    // Expanded signals for better hybrid detection
     const techSignals = [
-        "sql",
-        "database",
-        "table",
-        "tables",
-        "column",
-        "columns",
-        "hүснэгт",
-        "багана",
-        "code",
-        "python",
-        "math",
-        "calculate",
-        "analysis",
-        "item purchased",
-        "purchased",
-        "top 5",
-        "first 5",
-        "эхний 5",
-        "хамгийн их",
-        "борлуулалт",
-        "борлуулалтад",
-        "орлого",
-        "орлогын",
+        "sql", "database", "table", "tables", "column", "columns", "hүснэгт", "багана",
+        "code", "python", "math", "calculate", "analysis", "item purchased", "purchased",
+        "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query"
     ];
-    const financeSignals = ["sales", "finance", "revenue", "target"];
-    const immediateRoute: NextAgent | null = mentionsKnownTable || techSignals.some((word) => lowerMessage.includes(word))
-        ? "TechAgent"
-        : financeSignals.some((word) => lowerMessage.includes(word))
-            ? "FinanceAgent"
-            : null;
+    const financeSignals = [
+        "sales", "finance", "revenue", "target", "profit", "margin", "kpi", 
+        "борлуулалт", "борлуулалтад", "орлого", "орлогын", "ашиг"
+    ];
+
+    // Check for hybrid queries (both tech and finance)
+    const hasTech = techSignals.some((word) => lowerMessage.includes(word)) || mentionsKnownTable;
+    const hasFinance = financeSignals.some((word) => lowerMessage.includes(word));
+
+    let immediateRoute: NextAgent | null = null;
+    if (hasTech && hasFinance) {
+        console.log("[Supervisor] Hybrid query detected. Defaulting to TechAgent for data analysis.");
+        immediateRoute = "TechAgent";
+    } else if (hasTech) {
+        immediateRoute = "TechAgent";
+    } else if (hasFinance) {
+        immediateRoute = "FinanceAgent";
+    }
 
     if (immediateRoute) {
         console.log(`[Supervisor] Immediate keyword route -> ${immediateRoute}`);
@@ -282,7 +278,7 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
                 { role: "user", content: lastMessage }
             ]), "Supervisor routing");
             console.log(`[Supervisor] LLM routed to -> ${result.route} (${result.reason})`);
-            
+
             if (result.route === "END") {
                 const endSystemPrompt = prompts.supervisor_end;
                 try {
@@ -310,7 +306,7 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
                     };
                 }
             }
-            
+
             return { nextAgent: result.route };
         } catch (err) {
             console.warn("[Supervisor] LLM routing failed, using keyword fallback:", (err as Error).message);
@@ -327,7 +323,7 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         route = "FinanceAgent";
     }
     console.log(`[Supervisor] Keyword routed to -> ${route}`);
-    
+
     if (route === "END") {
         const text = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Би танд санхүүгийн асуултууд, борлуулалтын KPI болон код ажиллуулах даалгавар өгөхөд тусалж чадна. Надаас 'борлуулалтын зорилтот дүн' эсвэл код ажиллуулах талаар асуугаарай.";
         if (onChunk) onChunk(text);
@@ -450,16 +446,15 @@ async function techAgentNode(state: any, config?: any): Promise<Partial<AgentSta
     let sandboxResult = "";
     let isSuccess = false;
     let attempts = 0;
-    const maxAttempts = 2;
     let feedback = "";
     let accumulatedText = prefix;
 
-    while (attempts < maxAttempts) {
+    while (attempts < MAX_SQL_RETRIES) {
         attempts++;
-        console.log(`[Tech Agent] SQL generation attempt ${attempts}/${maxAttempts}...`);
-        
+        console.log(`[Tech Agent] SQL generation attempt ${attempts}/${MAX_SQL_RETRIES}...`);
+
         if (onChunk && attempts > 1) {
-            const warning = `\n*⚠️ Системд алдаа гарлаа. Алдааг автоматаар засварлан дахин ажиллуулж байна (Оролдлого ${attempts}/${maxAttempts})...*\n`;
+            const warning = `\n*⚠️ Системд алдаа гарлаа. Алдааг автоматаар засварлан дахин ажиллуулж байна (Оролдлого ${attempts}/${MAX_SQL_RETRIES})...*\n`;
             onChunk(warning);
             accumulatedText += warning;
         }
@@ -467,7 +462,7 @@ async function techAgentNode(state: any, config?: any): Promise<Partial<AgentSta
         const sqlGenPrompt = (prompts.tech_agent_sql_gen as string).replace("{catalog}", schemaContext || "(catalog unavailable)");
         let userContent = `Task: ${query}`;
         if (feedback) {
-            userContent += `\n\nYour previous SQL query failed with the following error:\n${feedback}\n\nPlease analyze this error and rewrite the SQL query to resolve it. Do not repeat the same query. Ensure you only use tables and columns available in the schema provided.`;
+            userContent += `\n\nYour previous SQL query failed with the following error:\n${feedback}\n\nPlease analyze this error and rewrite the SQL query to resolve it. Ensure you only use tables and columns available in the schema provided. Do not repeat the same incorrect query.`;
         }
 
         try {
@@ -477,17 +472,25 @@ async function techAgentNode(state: any, config?: any): Promise<Partial<AgentSta
             ]), "Tech agent SQL generation");
 
             let rawCode = codeGenResponse.content as string;
+            let currentSql = "";
             if (rawCode.includes("```sql")) {
-                sqlCode = rawCode.split("```sql")[1].split("```")[0].trim();
+                currentSql = rawCode.split("```sql")[1].split("```")[0].trim();
             } else if (rawCode.includes("```")) {
-                sqlCode = rawCode.split("```")[1].split("```")[0].trim();
+                currentSql = rawCode.split("```")[1].split("```")[0].trim();
             } else {
-                sqlCode = rawCode.trim();
+                currentSql = rawCode.trim();
             }
+
+            // Prevent infinite loop with the same failing query
+            if (currentSql === sqlCode && attempts > 1) {
+                feedback = "Error: The generated SQL is identical to the previous failing one. Please try a different approach or verify the column names.";
+                continue;
+            }
+            sqlCode = currentSql;
 
             const results = executeSql(sqlCode);
             sandboxResult = JSON.stringify(results, null, 2);
-            
+
             const logEntry = `\n### Оролдлого ${attempts}\n\`\`\`sql\n${sqlCode}\n\`\`\`\n*Үр дүн:*\n\`\`\`json\n${sandboxResult}\n\`\`\`\n`;
             if (onChunk) onChunk(logEntry);
             accumulatedText += logEntry;
@@ -500,7 +503,7 @@ async function techAgentNode(state: any, config?: any): Promise<Partial<AgentSta
                 break;
             } else {
                 if (isEmpty) {
-                    feedback = `Error: The query returned an empty array []. Available tables: ${schemaContext}`;
+                    feedback = `Error: The query returned an empty array []. This might mean the filters (WHERE clause) are too restrictive or column names are slightly off. Available tables/columns: ${schemaContext}`;
                 } else {
                     feedback = sandboxResult;
                 }
@@ -560,17 +563,17 @@ function routerCondition(state: any): string {
 }
 
 const workflow = new StateGraph(AgentStateAnnotation)
-.addNode("Supervisor", supervisorNode)
-.addNode("FinanceAgent", financeAgentNode)
-.addNode("TechAgent", techAgentNode)
-.addEdge("__start__", "Supervisor")
-.addConditionalEdges("Supervisor", routerCondition, {
-    "FinanceAgent": "FinanceAgent",
-    "TechAgent": "TechAgent",
-    "__end__": "__end__"
-})
-.addEdge("FinanceAgent", "__end__")
-.addEdge("TechAgent", "__end__");
+    .addNode("Supervisor", supervisorNode)
+    .addNode("FinanceAgent", financeAgentNode)
+    .addNode("TechAgent", techAgentNode)
+    .addEdge("__start__", "Supervisor")
+    .addConditionalEdges("Supervisor", routerCondition, {
+        "FinanceAgent": "FinanceAgent",
+        "TechAgent": "TechAgent",
+        "__end__": "__end__"
+    })
+    .addEdge("FinanceAgent", "__end__")
+    .addEdge("TechAgent", "__end__");
 
 export const multiAgentApp = workflow.compile({ checkpointer });
 

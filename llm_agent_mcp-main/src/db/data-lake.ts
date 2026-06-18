@@ -216,14 +216,14 @@ export function seedCsv(csvPath: string, tableName: string, createdBy: string, d
         const createTableSql = `CREATE TABLE "${tableName}" (
             ${uniqueHeaders.map((h, i) => `"${h}" ${types[i]}`).join(",\n")}
         )`;
-        
+
         console.log(`[Data Lake] Creating table with schema:\n${createTableSql}`);
         db.exec(createTableSql);
 
         // Insert Rows
         const insertSql = `INSERT INTO "${tableName}" (${uniqueHeaders.map(h => `"${h}"`).join(", ")}) VALUES (${uniqueHeaders.map(() => "?").join(", ")})`;
         const insertStmt = db.prepare(insertSql);
-        
+
         const insertMany = db.transaction((rows: string[]) => {
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i].trim();
@@ -235,13 +235,13 @@ export function seedCsv(csvPath: string, tableName: string, createdBy: string, d
                     }
                     return cleaned;
                 });
-                
+
                 // Pad or truncate values to match headers length
                 const paddedValues = [...values, ...Array(uniqueHeaders.length).fill("")].slice(0, uniqueHeaders.length);
                 insertStmt.run(...paddedValues);
             }
         });
-        
+
         insertMany(lines);
 
         // Register in Catalog
@@ -278,15 +278,15 @@ export function validateSqlColumns(query: string) {
     const cteNames = getCteNames(query);
     const activeEntry = getActiveCatalogEntry();
     const activeTableName = activeEntry?.table_name?.toLowerCase() ?? "";
-    
+
     // Parse table names referenced in the query using regex
     const tableMatches = query.match(/(?:from|join)\s+["`]?([a-zA-Z0-9_]+)["`]?/gi);
     if (!tableMatches) return;
-    
-    const tablesInQuery = tableMatches.map(m => 
+
+    const tablesInQuery = tableMatches.map(m =>
         m.replace(/^(from|join)\s+/i, "")
-         .replace(/["`]/g, "")
-         .trim()
+            .replace(/["`]/g, "")
+            .trim()
     );
 
     const queryWords = query.match(/[a-zA-Z0-9_]+/g) || [];
@@ -307,7 +307,7 @@ export function validateSqlColumns(query: string) {
         }
 
         const columns: string[] = JSON.parse(tableEntry.columns_info);
-        
+
         // Check for dot-notation column references: table_name.col_name
         const dotRegex = new RegExp(`["\`]?${tableName}["\`]?\\s*\\.\\s*["\`]?([a-zA-Z0-9_]+)["\`]?`, "gi");
         let dotMatch;
@@ -318,7 +318,7 @@ export function validateSqlColumns(query: string) {
                 throw new Error(`Хүснэгт '${tableName}' нь '${dotMatch[1]}' гэсэн багана агуулаагүй байна. Боломжтой баганууд: ${columns.join(", ")}`);
             }
         }
-        
+
         // Check for column references from OTHER tables that are used in this single-table query
         if (tablesInQuery.length === 1) {
             const otherTables = catalog.filter(row => row.table_name.toLowerCase() !== tableName.toLowerCase());
@@ -338,14 +338,20 @@ export function validateSqlColumns(query: string) {
 }
 
 // 4. Execute SQL (MCP Tool / Agent)
-export function executeSql(query: string) {
+export function executeSql(query: string, readOnly: boolean = true) {
     initDataLake();
-    
+
     // Validate SQL query references
     validateSqlColumns(query);
 
+    const normalized = query.trim().toUpperCase();
+    const isSelect = normalized.startsWith("SELECT") || normalized.startsWith("WITH");
+
+    if (readOnly && !isSelect) {
+        throw new Error("SQL Execution Error: Only SELECT or WITH (CTE) queries are allowed in read-only mode.");
+    }
+
     try {
-        const isSelect = query.trim().toUpperCase().startsWith("SELECT") || query.trim().toUpperCase().startsWith("WITH");
         if (isSelect) {
             return db.prepare(query).all();
         } else {

@@ -24,13 +24,20 @@ export async function getRepository(): Promise<IKpiRepository> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-  if (supabaseUrl && supabaseKey) {
+  const isConfigured = supabaseUrl && 
+                       supabaseUrl !== "your_supabase_url_here" && 
+                       supabaseKey && 
+                       supabaseKey !== "your_supabase_anon_key_here";
+
+  if (isConfigured) {
     try {
       // Dynamic import — only loads if Supabase credentials are present
       const { createClient } = await import("@supabase/supabase-js" as any);
       const { SupabaseKpiRepository } = await import("./supabase-repository.js");
 
-      const client = createClient(supabaseUrl, supabaseKey);
+      const client = createClient(supabaseUrl!, supabaseKey!);
+      
+      // Optional: Add a quick health check or validation here
       _instance = new SupabaseKpiRepository(client);
       console.log("[DB] Using Supabase repository ✅");
     } catch (err) {
@@ -38,7 +45,7 @@ export async function getRepository(): Promise<IKpiRepository> {
       _instance = new SQLiteKpiRepository();
     }
   } else {
-    console.log("[DB] SUPABASE_URL/ANON_KEY not set — using SQLite repository (Data Lake)");
+    console.log("[DB] Supabase not configured — using SQLite repository (Data Lake)");
     _instance = new SQLiteKpiRepository();
   }
 

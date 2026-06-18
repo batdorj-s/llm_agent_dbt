@@ -9,10 +9,18 @@ let _sandboxInstance: any = null;
 // Mock sandbox for development/PoC if no E2B API Key is provided
 export async function runPythonCode(code: string): Promise<string> {
     const hasKey = process.env.E2B_API_KEY && process.env.E2B_API_KEY !== 'your_e2b_api_key_here';
-    
+
     if (!hasKey) {
         console.warn("⚠️ No E2B_API_KEY found. Running Sandbox in Mock Mode.");
-        return `(Mock Sandbox Output)\nExecuted: \n${code}\nResult: Successfully processed data in mock environment.`;
+        return [
+            "(Mock Sandbox Output — E2B_API_KEY not configured)",
+            "----------------------------------------------",
+            `Executed Python code snippet:`,
+            code.length > 200 ? code.slice(0, 200) + "..." : code,
+            "",
+            "Result: In a real environment, this code would be executed in an E2B MicroVM.",
+            "Local PoC result: Successfully processed data in mock environment."
+        ].join("\n");
     }
 
     try {
@@ -33,14 +41,14 @@ export async function runPythonCode(code: string): Promise<string> {
                 console.log(`🔒 Seeded ${file} into E2B Sandbox.`);
             }
         }
-        
+
         console.log("🐍 Executing Python Code...");
         const execution = await _sandboxInstance.runCode(code);
-        
+
         let output = "";
         if (execution.logs.stdout.length > 0) output += `STDOUT:\n${execution.logs.stdout.join('\n')}\n`;
         if (execution.logs.stderr.length > 0) output += `STDERR:\n${execution.logs.stderr.join('\n')}\n`;
-        
+
         return output || "Execution complete. No output.";
     } catch (error: any) {
         // Reset the instance on error so it spins up a fresh one next time

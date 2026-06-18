@@ -16,6 +16,6 @@ select
 from sales
 
 {% if is_incremental() %}
-    -- Only include rows newer than the max existing order_date
-    where order_date > (select max(order_date) from {{ this }})
+    -- Include rows from the same day as the last known order to prevent data gaps
+    where order_date >= (select max(order_date) from {{ this }})
 {% endif %}

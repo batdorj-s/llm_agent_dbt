@@ -27,9 +27,13 @@ interface WindowEntry {
   timestamps: number[];
 }
 
-// ─────────────────────────────────────────────────────────────
-// Sliding-window rate limiter
-// ─────────────────────────────────────────────────────────────
+/**
+ * Sliding-window rate limiter
+ * 
+ * NOTE: This implementation is in-memory. For multi-instance production
+ * environments (e.g., Kubernetes, PM2 Cluster Mode), this should be 
+ * replaced with a Redis-backed store to ensure consistent limits.
+ */
 export class RateLimiter {
   private readonly maxRequests: number;
   private readonly windowMs: number;
