@@ -2,10 +2,11 @@ datalake_transformations:
   target: dev
   outputs:
     dev:
-      type: sqlite
+      type: postgres
       threads: 1
-      database: "E:/Batdorj/code_proj/llm_agent_mcp-main/llm_agent_mcp-main/datalake.db"
-      schema: "main"
-      schema_directory: "E:/Batdorj/code_proj/llm_agent_mcp-main/llm_agent_mcp-main/dbt/schemas"
-      schemas_and_paths:
-        main: "E:/Batdorj/code_proj/llm_agent_mcp-main/llm_agent_mcp-main/datalake.db"
+      host: 127.0.0.1
+      port: 5432
+      user: postgres
+      password: bataa200699133770
+      dbname: postgres
+      schema: public

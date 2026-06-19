@@ -5,21 +5,27 @@
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
 import { initDataLake, getCatalog } from "../db/data-lake.js";
+
+dotenv.config();
 
 const ROOT = process.cwd();
 const REQUIRED_CSVS = ["superstore_sales.csv", "retail_sales_dataset.csv"] as const;
 
 // Resolve dbt path: env var > known hermes venv > PATH fallback
 function resolveDbtPath(): string {
-  if (process.env.DBT_PATH) return process.env.DBT_PATH;
+  if (process.env.DBT_PATH) {
+    console.log(`[Setup] Using DBT_PATH from .env: ${process.env.DBT_PATH}`);
+    return process.env.DBT_PATH;
+  }
   const knownPaths = [
+    "/Users/batdorjsukhbaatar/Library/Python/3.9/bin/dbt",
     "C:\\Users\\Pixel PC 01\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\dbt.exe",
   ];
   for (const p of knownPaths) {
     if (fs.existsSync(p)) return p;
   }
-  // Last fallback: rely on PATH
   return "dbt";
 }
 
@@ -65,8 +71,8 @@ export async function ensureProjectReady() {
     }
   }
 
-  initDataLake();
-  const catalog = getCatalog();
+  await initDataLake();
+  const catalog = await getCatalog();
   console.log(`[Setup] Data Lake ready — ${catalog.length} table(s) in catalog`);
 
   runDbtIfAvailable();

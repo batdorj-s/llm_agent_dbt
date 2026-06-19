@@ -23,6 +23,10 @@ function isSupabaseConfigured(): boolean {
   const supabaseKey = process.env.SUPABASE_ANON_KEY?.trim();
   if (!supabaseUrl || !supabaseKey) return false;
 
+  const databaseUrl = process.env.DATABASE_URL || "";
+  const isLocal = databaseUrl.includes("127.0.0.1") || databaseUrl.includes("localhost");
+  if (isLocal) return false;
+
   const placeholderPatterns = [
     /^your[_-]/i,
     /your-project\.supabase\.co/i,

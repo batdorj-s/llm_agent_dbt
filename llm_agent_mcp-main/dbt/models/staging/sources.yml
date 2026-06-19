@@ -2,7 +2,8 @@ version: 2
 
 sources:
   - name: main
-    description: Raw data from the SQLite Data Lake.
+    description: Raw data from the Data Lake.
+    schema: public
     tables:
       - name: superstore_sales
         description: Raw sales data from the Superstore dataset.

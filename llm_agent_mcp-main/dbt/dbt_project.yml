@@ -16,6 +16,11 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
+quoting:
+  database: false
+  schema: false
+  identifier: false
+
 models:
   data_transformations:
     staging:

@@ -13,7 +13,7 @@ import { setupKnowledgeBase } from "./rag.js";
 import { ensureProjectReady } from "./setup/init.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool } from "./db/data-lake.js";
 import { addDocumentToCatalog } from "./rag.js";
 import fs from "fs";
 import path from "path";
@@ -196,13 +196,13 @@ app.post("/api/admin/run-code", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // File Management
 // ─────────────────────────────────────────────────────────────
-app.get("/api/admin/files", (req, res) => {
+app.get("/api/admin/files", async (req, res) => {
   const auth = verifyBearerHeader(req.headers.authorization);
   if (!auth.success) return res.status(401).json({ error: auth.error });
 
-  const db = initDataLake();
-  const files = db.prepare(`SELECT * FROM uploaded_files ORDER BY created_at DESC`).all();
-  res.json(files);
+  await initDataLake();
+  const result = await getPool().query(`SELECT * FROM uploaded_files ORDER BY created_at DESC`);
+  res.json(result.rows);
 });
 
 app.delete("/api/admin/files/:id", async (req, res) => {
@@ -210,18 +210,19 @@ app.delete("/api/admin/files/:id", async (req, res) => {
   if (!auth.success) return res.status(401).json({ error: auth.error });
 
   const { id } = req.params;
-  const db = initDataLake();
+  await initDataLake();
 
-  const file = db.prepare(`SELECT * FROM uploaded_files WHERE id = ?`).get(id) as any;
+  const fileResult = await getPool().query(`SELECT * FROM uploaded_files WHERE id = $1`, [id]);
+  const file = fileResult.rows[0] as any;
   if (!file) return res.status(404).json({ error: "File not found" });
 
   try {
     if (file.type === "dataset") {
-      db.prepare(`DROP TABLE IF EXISTS ${file.filename}`).run();
-      db.prepare(`DELETE FROM data_lake_catalog WHERE table_name = ?`).run(file.filename);
+      await getPool().query(`DROP TABLE IF EXISTS "${file.filename}"`);
+      await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [file.filename]);
       await clearConversationMemory();
     }
-    db.prepare(`DELETE FROM uploaded_files WHERE id = ?`).run(id);
+    await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [id]);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -251,12 +252,14 @@ app.post("/api/admin/upload-csv", async (req, res) => {
     seedCsv(tempFilePath, sanitizedTableName, userId || role, description, true);
     await clearConversationMemory();
 
-    const db = initDataLake();
-    db.prepare(`INSERT OR REPLACE INTO uploaded_files (id, filename, type, description) VALUES (?, ?, ?, ?)`).run(
-        sanitizedTableName, sanitizedTableName, "dataset", description
+    await initDataLake();
+    await getPool().query(
+        `INSERT INTO uploaded_files (id, filename, type, description) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description`,
+        [sanitizedTableName, sanitizedTableName, "dataset", description]
     );
 
-    const catalog = getCatalog();
+    const catalog = await getCatalog();
     const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
     
     if (tableInfo) {
@@ -315,9 +318,11 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
         [originalName.toLowerCase(), "document"]
     );
 
-    const db = initDataLake();
-    db.prepare(`INSERT OR REPLACE INTO uploaded_files (id, filename, type, description) VALUES (?, ?, ?, ?)`).run(
-        docId, originalName, "document", description
+    await initDataLake();
+    await getPool().query(
+        `INSERT INTO uploaded_files (id, filename, type, description) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description`,
+        [docId, originalName, "document", description]
     );
 
     res.json({ success: true, message: `Document '${originalName}' indexed.` });
@@ -352,7 +357,11 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
 
 const PORT = process.env.API_PORT || 3001;
 async function start() {
-  await ensureProjectReady();
+  try {
+    await ensureProjectReady();
+  } catch (err) {
+    console.warn("[API] Data Lake initialization failed — running in limited mode:", (err as Error).message);
+  }
   await setupKnowledgeBase();
   app.listen(PORT, () => {
     console.log(`\n🚀 API Server running at http://localhost:${PORT}`);

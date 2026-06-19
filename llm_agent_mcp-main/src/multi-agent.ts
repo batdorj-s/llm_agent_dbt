@@ -14,18 +14,15 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Load Prompts from YAML (Prompt-as-Code)
 const promptFile = fs.readFileSync("./src/prompts.yaml", "utf8");
 const prompts = yaml.parse(promptFile);
 
-// Langfuse Tracing Setup (Observability)
 const langfuseHandler = new CallbackHandler({
     secretKey: process.env.LANGFUSE_SECRET_KEY || "mock_sk",
     publicKey: process.env.LANGFUSE_PUBLIC_KEY || "mock_pk",
     baseUrl: process.env.LANGFUSE_HOST || "https://cloud.langfuse.com",
 });
 
-// 1. Define custom state for Phase 3 (Unified Access)
 export type UserRole = "admin";
 export type NextAgent = "FinanceAgent" | "TechAgent" | "END";
 
@@ -41,7 +38,6 @@ export interface AgentState {
     visualRequest?: boolean;
 }
 
-// State annotation for LangGraph
 export const AgentStateAnnotation = Annotation.Root({
     messages: Annotation<Message[]>({
         reducer: (x, y) => x.concat(y),
@@ -61,7 +57,6 @@ export const AgentStateAnnotation = Annotation.Root({
     }),
 });
 
-// Memory setup (Phase 3 requirement)
 const checkpointer = new MemorySaver();
 const LLM_TIMEOUT_MS = 60000;
 
@@ -74,24 +69,25 @@ export async function clearConversationMemory() {
     }
 }
 
-function buildActiveSchemaContext(query: string): string {
-    const activeEntry = getActiveCatalogEntry();
+async function buildActiveSchemaContext(query: string): Promise<string> {
+    const activeEntry = await getActiveCatalogEntry();
     if (!activeEntry) {
         return "(catalog unavailable)";
     }
 
     const lowerQuery = query.toLowerCase();
-    const catalog = getCatalog();
+    const catalog = await getCatalog();
     const explicitlyMentioned = catalog.filter((row: any) => lowerQuery.includes(row.table_name.toLowerCase()));
     const tablesToInclude = explicitlyMentioned.length > 0 ? explicitlyMentioned : [activeEntry];
 
     return buildSchemaDefinition(tablesToInclude as any);
 }
 
-function getActiveColumns(entry = getActiveCatalogEntry()): string[] {
-    if (!entry) return [];
+async function getActiveColumns(entry = getActiveCatalogEntry()): Promise<string[]> {
+    const resolved = await entry;
+    if (!resolved) return [];
     try {
-        return JSON.parse(entry.columns_info) as string[];
+        return JSON.parse(resolved.columns_info) as string[];
     } catch {
         return [];
     }
@@ -105,12 +101,13 @@ function findColumn(columns: string[], patterns: RegExp[]): string | null {
     return null;
 }
 
-function buildDeterministicTechSql(query: string, entry = getActiveCatalogEntry()): string | null {
-    if (!entry) return null;
+async function buildDeterministicTechSql(query: string, entry?: import("./db/data-lake.js").DataLakeCatalogEntry | null): Promise<string | null> {
+    const resolvedEntry = entry ?? await getActiveCatalogEntry();
+    if (!resolvedEntry) return null;
 
     const lowerQuery = query.toLowerCase();
-    const columns = getActiveColumns(entry);
-    const tableName = entry.table_name;
+    const columns = await getActiveColumns(Promise.resolve(resolvedEntry));
+    const tableName = resolvedEntry.table_name;
 
     const itemColumn = findColumn(columns, [
         /item_purchased/i,
@@ -215,9 +212,6 @@ async function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: num
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Routing schema for LLM structured output
-// ─────────────────────────────────────────────────────────────
 const RouteSchema = z.object({
     route: z.enum(["FinanceAgent", "TechAgent", "END"])
         .describe("Which agent to route to. FinanceAgent for business/financial queries, TechAgent for coding/data/math, END otherwise."),
@@ -237,15 +231,13 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
     const onChunk = config?.configurable?.onChunk;
 
     const lowerMessage = lastMessage.toLowerCase();
-    const catalog = getCatalog();
+    const catalog = await getCatalog();
     const mentionsKnownTable = catalog.some((row: any) => lowerMessage.includes(row.table_name.toLowerCase()));
     
-    // Expanded signals for better hybrid detection
     const techSignals = [
         "sql", "database", "table", "tables", "column", "columns", "хүснэгт", "багана",
         "code", "python", "pandas", "matplotlib", "math", "calculate", "analysis", "item purchased", "purchased",
         "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query", "код ажиллуул",
-        // Additional Mongolian data-query phrases
         "харуул", "нийт", "нийлбэр", "дундаж", "тоо", "тоолох", "жагсаал", "жагсаалт",
         "шинжилгээ", "шинжил", "задла", "задлан", "гаргаж", "гаргах", "тооцо", "тооцоол",
         "хамгийн бага", "хамгийн бага", "хамгийн өндөр", "ямар", "ямар ямар",
@@ -253,12 +245,10 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         "chart", "graph", "visualize", "plot", "харагдуул", "зур",
         "count", "sum", "average", "avg", "total", "group by", "order by", "where", "filter",
         "show me", "list", "give me", "find", "get", "fetch", "select",
-        // More Mongolian data-analysis phrases
         "өгөгдөл", "мэдээлэл", "харуулах", "тооцоолох", "тооцоо",
         "шүүх", "шүүлт", "фильтр", "фильтрлэх", "бүлэглэх", "бүлэг",
         "эрэмбэлэх", "эрэмбэ", "ангилах", "ангилал",
         "мөр", "мөрүүд", "утга", "утгууд",
-        // More English data-analysis phrases
         "analyze", "analytics", "report", "top", "bottom",
         "highest", "lowest", "maximum", "minimum", "summarize", "summary",
         "aggregate", "trend", "compare", "comparison",
@@ -272,7 +262,6 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         "зарлага", "зардал", "төсөв", "бюджет", "санхүү",
     ];
 
-    // Check for hybrid queries (both tech and finance)
     const hasTech = techSignals.some((word) => lowerMessage.includes(word)) || mentionsKnownTable;
     const hasFinance = financeSignals.some((word) => lowerMessage.includes(word));
 
@@ -291,7 +280,6 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         return { nextAgent: immediateRoute };
     }
 
-    // Attempt LLM-based routing first
     const llm = await createLLM({ temperature: 0 });
     if (llm) {
         try {
@@ -303,8 +291,7 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
             console.log(`[Supervisor] LLM routed to -> ${result.route} (${result.reason})`);
 
             if (result.route === "END") {
-                // If LLM says END but an active dataset exists, override to TechAgent
-                const activeEntry = getActiveCatalogEntry();
+                const activeEntry = await getActiveCatalogEntry();
                 if (activeEntry) {
                     console.log(`[Supervisor] LLM routed to END but active dataset '${activeEntry.table_name}' found. Overriding to TechAgent.`);
                     return { nextAgent: "TechAgent" };
@@ -344,7 +331,6 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         console.log("[Supervisor] No LLM API key — using keyword routing fallback.");
     }
 
-    // Keyword fallback
     let route: NextAgent = "END";
     if (mentionsKnownTable || techSignals.some((word) => lowerMessage.includes(word))) {
         route = "TechAgent";
@@ -353,9 +339,8 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
     }
     console.log(`[Supervisor] Keyword routed to -> ${route}`);
 
-    // Smart fallback: if still END but active dataset exists, user is likely asking about their data
     if (route === "END") {
-        const activeEntry = getActiveCatalogEntry();
+        const activeEntry = await getActiveCatalogEntry();
         if (activeEntry) {
             console.log(`[Supervisor] No keyword match but active dataset '${activeEntry.table_name}' found. Routing to TechAgent.`);
             route = "TechAgent";
@@ -373,7 +358,6 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
     return { nextAgent: route };
 }
 
-// 3. Finance Domain Agent
 async function financeAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
     console.log("[Finance Agent] Activated.");
     const onChunk = config?.configurable?.onChunk;
@@ -410,14 +394,12 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
         };
     }
 
-    // Prepend the required indicator (Finance Agent) for Next.js routing visualizer
     const prefix = "(Finance Agent)\n";
     if (onChunk) onChunk(prefix);
 
     const financePrompt = prompts.finance_agent;
     const systemPrompt = `${financePrompt}\n\nHere is the retrieved business context:\n${context}`;
     
-    // Improved execution with automatic provider fallback for runtime errors (429, 503, etc.)
     const executeMessages = [
         { role: "system", content: systemPrompt },
         ...state.messages.map((m: any) => ({ role: m.role, content: m.content }))
@@ -460,7 +442,6 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
     }
 }
 
-// 4. Tech / Data Domain Agent (SQL Data Lake + E2B Python)
 async function techAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
     const onChunk = config?.configurable?.onChunk;
 
@@ -537,18 +518,18 @@ Task: ${query}`;
     if (onChunk) onChunk(prefix);
 
     console.log(`[Tech Agent] Fetching Data Lake catalog schema...`);
-    const schemaContext = buildActiveSchemaContext(query);
+    const schemaContext = await buildActiveSchemaContext(query);
     try {
         console.log(`[Tech Agent] Active schema context:\n${schemaContext}`);
     } catch (err) {
         console.error("[Tech Agent] Schema lookup failed:", err);
     }
 
-    const activeEntry = getActiveCatalogEntry();
-    const deterministicSql = buildDeterministicTechSql(query, activeEntry);
+    const activeEntry = await getActiveCatalogEntry();
+    const deterministicSql = await buildDeterministicTechSql(query, activeEntry);
     if (deterministicSql && activeEntry) {
         try {
-            const sqlResult = handleExecuteSql({ query: deterministicSql });
+            const sqlResult = await handleExecuteSql({ query: deterministicSql });
             if (!sqlResult.ok) throw new Error(sqlResult.text);
             const results = sqlResult.results;
             const normalizedResults = Array.isArray(results) ? results : [results];
@@ -616,14 +597,13 @@ Task: ${query}`;
                 currentSql = rawCode.trim();
             }
 
-            // Prevent infinite loop with the same failing query
             if (currentSql === sqlCode && attempts > 1) {
                 feedback = "Error: The generated SQL is identical to the previous failing one. Please try a different approach or verify the column names.";
                 continue;
             }
             sqlCode = currentSql;
 
-            const sqlResult = handleExecuteSql({ query: sqlCode });
+            const sqlResult = await handleExecuteSql({ query: sqlCode });
             if (!sqlResult.ok) {
                 feedback = sqlResult.text;
                 const errorEntry = `\n### Оролдлого ${attempts}\n*Алдаа:* ${sqlResult.text}\n`;

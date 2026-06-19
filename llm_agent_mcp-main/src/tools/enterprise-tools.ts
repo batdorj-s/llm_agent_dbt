@@ -1,10 +1,3 @@
-/**
- * enterprise-tools.ts — Shared MCP tool implementations
- *
- * Used by: MCP server (index.ts), multi-agent, agent-with-mcp, tests.
- * Single source of truth for KPI, catalog, and SQL execution.
- */
-
 import { getRepository } from "../db/kpi-repository.js";
 import { getCatalog, executeSql } from "../db/data-lake.js";
 
@@ -58,9 +51,9 @@ export async function handleGetSalesHistory({ limit = 3 }: { limit?: number }) {
   return { text: resultText, ok: true as const, records };
 }
 
-export function handleGetCatalog() {
+export async function handleGetCatalog() {
   try {
-    const catalog = getCatalog();
+    const catalog = await getCatalog();
     if (!catalog || catalog.length === 0) {
       return { text: "Data Lake catalog is empty.", ok: false as const };
     }
@@ -77,7 +70,7 @@ export function handleGetCatalog() {
   }
 }
 
-export function handleExecuteSql({ query }: { query: string }) {
+export async function handleExecuteSql({ query }: { query: string }) {
   const normalized = query.toUpperCase();
   if (DANGEROUS_SQL.test(normalized)) {
     return {
@@ -88,7 +81,7 @@ export function handleExecuteSql({ query }: { query: string }) {
 
   try {
     console.log(`[Enterprise Tools] Executing SQL: ${query}`);
-    const results = executeSql(query);
+    const results = await executeSql(query);
     return { text: JSON.stringify(results, null, 2), ok: true as const, results };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -96,7 +89,6 @@ export function handleExecuteSql({ query }: { query: string }) {
   }
 }
 
-/** Pull live KPI context for FinanceAgent when the query mentions metrics. */
 export async function buildFinanceKpiContext(query: string): Promise<string> {
   const lower = query.toLowerCase();
   const sections: string[] = [];

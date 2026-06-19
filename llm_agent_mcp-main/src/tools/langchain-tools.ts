@@ -1,9 +1,3 @@
-/**
- * langchain-tools.ts — LangChain tool wrappers over enterprise-tools
- *
- * In-process tools (same logic as MCP server) for multi-agent and agent-with-mcp.
- */
-
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import {
@@ -48,14 +42,14 @@ export function buildEnterpriseLangChainTools() {
   const executeSqlTool = tool(
     async ({ query }) => {
       console.log(`[LangChain Tool] execute_sql`);
-      const result = handleExecuteSql({ query });
+      const result = await handleExecuteSql({ query });
       return result.text;
     },
     {
       name: "execute_sql",
-      description: "Executes a SQLite SELECT query against the Data Lake.",
+      description: "Executes a SELECT query against the Data Lake (PostgreSQL).",
       schema: z.object({
-        query: z.string().describe("SQLite SELECT query."),
+        query: z.string().describe("SQL SELECT query."),
       }),
     }
   );
@@ -63,7 +57,7 @@ export function buildEnterpriseLangChainTools() {
   const getCatalogTool = tool(
     async () => {
       console.log(`[LangChain Tool] get_data_lake_catalog`);
-      const result = handleGetCatalog();
+      const result = await handleGetCatalog();
       return result.text;
     },
     {
