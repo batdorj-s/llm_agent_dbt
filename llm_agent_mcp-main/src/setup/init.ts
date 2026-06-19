@@ -10,9 +10,28 @@ import { initDataLake, getCatalog } from "../db/data-lake.js";
 const ROOT = process.cwd();
 const REQUIRED_CSVS = ["superstore_sales.csv", "retail_sales_dataset.csv"] as const;
 
+// Resolve dbt path: env var > known hermes venv > PATH fallback
+function resolveDbtPath(): string {
+  if (process.env.DBT_PATH) return process.env.DBT_PATH;
+  const knownPaths = [
+    "C:\\Users\\Pixel PC 01\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\dbt.exe",
+  ];
+  for (const p of knownPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  // Last fallback: rely on PATH
+  return "dbt";
+}
+
+const DBT_EXE = resolveDbtPath();
+
+function runDbt(args: string): void {
+  execSync(`"${DBT_EXE}" ${args}`, { cwd: path.join(ROOT, "dbt"), stdio: "inherit" });
+}
+
 function dbtAvailable(): boolean {
   try {
-    execSync("dbt --version", { stdio: "ignore" });
+    runDbt("--version");
     return true;
   } catch {
     return false;
@@ -26,8 +45,10 @@ function runDbtIfAvailable() {
   }
 
   try {
+    console.log("[Setup] Installing dbt packages...");
+    runDbt("deps --profiles-dir .");
     console.log("[Setup] Running dbt to create KPI views...");
-    execSync("dbt run", { cwd: path.join(ROOT, "dbt"), stdio: "inherit" });
+    runDbt("run --profiles-dir .");
     console.log("[Setup] dbt run complete ✅");
   } catch (err) {
     console.warn("[Setup] dbt run failed — KPI repository will use raw-table fallback:", (err as Error).message);
