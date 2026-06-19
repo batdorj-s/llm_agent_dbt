@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const AGG_FUNCS = "count|sum|avg|min|max|coalesce|nullif|abs|round|ceil|floor|trunc|power|sqrt|replace|trim|lower|upper|length|total|group_concat|string_agg|array_agg|json_agg|jsonb_agg|bool_and|bool_or|every|bit_and|bit_or|corr|covar_samp|covar_pop|regr_slope|regr_intercept|regr_count|regr_r2|regr_avgx|regr_avgy|regr_sxx|regr_syy|regr_sxy|stddev|stddev_samp|stddev_pop|variance|var_samp|var_pop|percentile_cont|percentile_disc|mode|rank|row_number|dense_rank|ntile|lag|lead|first_value|last_value|nth_value|cume_dist|percent_rank";
+
 let pool: Pool | null = null;
 let _pgAvailable = false;
 
@@ -103,7 +105,7 @@ export async function initDataLake(): Promise<void> {
         await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data", true);
         await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing", true);
 
-        const oldTables = ["dataset", "datasetdescreption", "test_mixed_data", "test_int_dec", "upload_test"];
+        const oldTables = ["datasetdescreption", "test_mixed_data", "test_int_dec", "upload_test"];
         for (const tbl of oldTables) {
             try {
                 await pool.query(`DROP TABLE IF EXISTS "${tbl}" CASCADE`);
@@ -413,7 +415,8 @@ function validateSelectColumns(query: string, columns: string[], columnNamesLowe
     for (const part of parts) {
         const trimmed = part.trim();
         if (!trimmed || trimmed === '*') continue;
-        if (/^(count|sum|avg|min|max|coalesce|ifnull|nullif|abs|round|strftime|replace|substr|length|trim|lower|upper|group_concat|total)\s*\(/i.test(trimmed)) continue;
+        if (new RegExp(`^(${AGG_FUNCS})\\s*\\(`, "i").test(trimmed)) continue;
+        if (/^case\s+when\b/i.test(trimmed)) continue;
         const asIndex = trimmed.search(/\s+as\s+/i);
         const columnPart = asIndex >= 0 ? trimmed.substring(0, asIndex).trim() : trimmed;
         if (columnPart.startsWith("'") || columnPart.startsWith('"')) continue;
@@ -426,7 +429,9 @@ function validateSelectColumns(query: string, columns: string[], columnNamesLowe
                 const col = parts[1].replace(/["`]/g, '').toLowerCase();
                 const resolvedTable = (aliasToTable?.get(tblAlias) || tblAlias).toLowerCase();
                 if (resolvedTable === tableName.toLowerCase() && !columnNamesLower.has(col)) {
-                    throw new Error(`Хүснэгт '${tableName}'-д '${parts[1]}' багана байхгүй. Боломжтой: ${columns.join(", ")}`);
+                    if (!new RegExp(`^(${AGG_FUNCS})\\s*\\(`, "i").test(col)) {
+                        throw new Error(`Хүснэгт '${tableName}'-д '${parts[1]}' багана байхгүй. Боломжтой: ${columns.join(", ")}`);
+                    }
                 }
             }
             continue;
