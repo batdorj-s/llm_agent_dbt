@@ -242,13 +242,34 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
     
     // Expanded signals for better hybrid detection
     const techSignals = [
-        "sql", "database", "table", "tables", "column", "columns", "hүснэгт", "багана",
+        "sql", "database", "table", "tables", "column", "columns", "хүснэгт", "багана",
         "code", "python", "pandas", "matplotlib", "math", "calculate", "analysis", "item purchased", "purchased",
-        "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query", "код ажиллуул"
+        "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query", "код ажиллуул",
+        // Additional Mongolian data-query phrases
+        "харуул", "нийт", "нийлбэр", "дундаж", "тоо", "тоолох", "жагсаал", "жагсаалт",
+        "шинжилгээ", "шинжил", "задла", "задлан", "гаргаж", "гаргах", "тооцо", "тооцоол",
+        "хамгийн бага", "хамгийн бага", "хамгийн өндөр", "ямар", "ямар ямар",
+        "хэд", "хэдэн", "нийт хэдэн", "гүйлгээ", "бүтээгдэхүүн", "бараа",
+        "chart", "graph", "visualize", "plot", "харагдуул", "зур",
+        "count", "sum", "average", "avg", "total", "group by", "order by", "where", "filter",
+        "show me", "list", "give me", "find", "get", "fetch", "select",
+        // More Mongolian data-analysis phrases
+        "өгөгдөл", "мэдээлэл", "харуулах", "тооцоолох", "тооцоо",
+        "шүүх", "шүүлт", "фильтр", "фильтрлэх", "бүлэглэх", "бүлэг",
+        "эрэмбэлэх", "эрэмбэ", "ангилах", "ангилал",
+        "мөр", "мөрүүд", "утга", "утгууд",
+        // More English data-analysis phrases
+        "analyze", "analytics", "report", "top", "bottom",
+        "highest", "lowest", "maximum", "minimum", "summarize", "summary",
+        "aggregate", "trend", "compare", "comparison",
+        "rank", "percentage", "distribution", "breakdown",
+        "describe", "stats", "statistics", "overview",
+        "first", "last", "limit", "offset",
     ];
     const financeSignals = [
         "sales", "finance", "revenue", "target", "profit", "margin", "kpi", 
-        "борлуулалт", "борлуулалтад", "орлого", "орлогын", "ашиг"
+        "борлуулалт", "борлуулалтад", "орлого", "орлогын", "ашиг",
+        "зарлага", "зардал", "төсөв", "бюджет", "санхүү",
     ];
 
     // Check for hybrid queries (both tech and finance)
@@ -282,6 +303,12 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
             console.log(`[Supervisor] LLM routed to -> ${result.route} (${result.reason})`);
 
             if (result.route === "END") {
+                // If LLM says END but an active dataset exists, override to TechAgent
+                const activeEntry = getActiveCatalogEntry();
+                if (activeEntry) {
+                    console.log(`[Supervisor] LLM routed to END but active dataset '${activeEntry.table_name}' found. Overriding to TechAgent.`);
+                    return { nextAgent: "TechAgent" };
+                }
                 const endSystemPrompt = prompts.supervisor_end;
                 try {
                     const stream = await withTimeout(llm.stream([
@@ -325,6 +352,15 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         route = "FinanceAgent";
     }
     console.log(`[Supervisor] Keyword routed to -> ${route}`);
+
+    // Smart fallback: if still END but active dataset exists, user is likely asking about their data
+    if (route === "END") {
+        const activeEntry = getActiveCatalogEntry();
+        if (activeEntry) {
+            console.log(`[Supervisor] No keyword match but active dataset '${activeEntry.table_name}' found. Routing to TechAgent.`);
+            route = "TechAgent";
+        }
+    }
 
     if (route === "END") {
         const text = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Би танд санхүүгийн асуултууд, борлуулалтын KPI болон код ажиллуулах даалгавар өгөхөд тусалж чадна. Надаас 'борлуулалтын зорилтот дүн' эсвэл код ажиллуулах талаар асуугаарай.";

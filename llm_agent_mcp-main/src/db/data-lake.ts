@@ -35,6 +35,7 @@ export function getActiveCatalogEntry(): DataLakeCatalogEntry | null {
     `).get() as { filename?: string } | undefined;
 
     if (uploadedDataset?.filename) {
+        // Exact match first
         const activeRow = db.prepare(`
             SELECT *
             FROM data_lake_catalog
@@ -46,9 +47,23 @@ export function getActiveCatalogEntry(): DataLakeCatalogEntry | null {
         if (activeRow) {
             return activeRow;
         }
+
+        // Case-insensitive fallback in case of casing mismatch
+        const allEntries = getCatalog();
+        const caseInsensitiveMatch = allEntries.find(
+            (row: any) => row.table_name.toLowerCase() === uploadedDataset.filename!.toLowerCase()
+        );
+        if (caseInsensitiveMatch) {
+            console.warn(`[Data Lake] Case mismatch for uploaded file '${uploadedDataset.filename}'. Using '${caseInsensitiveMatch.table_name}'.`);
+            return caseInsensitiveMatch as DataLakeCatalogEntry;
+        }
+
+        console.warn(`[Data Lake] Uploaded file '${uploadedDataset.filename}' not found in data_lake_catalog.`);
     }
 
+    // No uploaded dataset or not found — fall back to most recent catalog entry
     const catalog = getCatalog();
+    if (catalog.length === 0) return null;
     return (catalog[0] as DataLakeCatalogEntry) ?? null;
 }
 
@@ -270,71 +285,105 @@ export function getCatalog() {
 }
 
 /**
- * Validate that the SQL query only references columns that exist in the active tables.
+ * Validate that the SQL query only references the ACTIVE table.
  * This prevents the agent from hallucinating column names.
  */
 export function validateSqlColumns(query: string) {
-    const catalog = getCatalog();
     const cteNames = getCteNames(query);
     const activeEntry = getActiveCatalogEntry();
-    const activeTableName = activeEntry?.table_name?.toLowerCase() ?? "";
+    if (!activeEntry) {
+        throw new Error("No active Data Lake catalog entry found. Upload a dataset first or select an active table.");
+    }
+
+    const activeTableName = activeEntry.table_name.toLowerCase();
+    const columns: string[] = JSON.parse(activeEntry.columns_info);
+    const columnNamesLower = new Set(columns.map(c => c.toLowerCase()));
 
     // Parse table names referenced in the query using regex
-    const tableMatches = query.match(/(?:from|join)\s+["`]?([a-zA-Z0-9_]+)["`]?/gi);
-    if (!tableMatches) return;
+    const tableMatches = query.match(/(?:from|join)\s+["` ]?([a-zA-Z0-9_]+)["` ]?/gi);
 
-    const tablesInQuery = tableMatches.map(m =>
-        m.replace(/^(from|join)\s+/i, "")
-            .replace(/["`]/g, "")
-            .trim()
-    );
+    if (tableMatches) {
+        const tablesInQuery = tableMatches.map(m =>
+            m.replace(/^(from|join)\s+/i, "")
+                .replace(/["` ]/g, "")
+                .trim()
+        );
 
-    const queryWords = query.match(/[a-zA-Z0-9_]+/g) || [];
-    const uniqueWords = Array.from(new Set(queryWords.map(w => w.toLowerCase())));
+        for (const tableName of tablesInQuery) {
+            if (cteNames.has(tableName.toLowerCase())) continue;
 
-    for (const tableName of tablesInQuery) {
-        if (cteNames.has(tableName.toLowerCase())) {
-            continue;
-        }
-
-        if (activeTableName && tableName.toLowerCase() !== activeTableName) {
-            throw new Error(`SQL query references table '${tableName}', but the active dataset is '${activeEntry?.table_name}'. Use only the active dataset unless a CTE is being referenced.`);
-        }
-
-        const tableEntry = catalog.find(row => row.table_name.toLowerCase() === tableName.toLowerCase()) || activeEntry;
-        if (!tableEntry) {
-            throw new Error(`SQL query references unknown table '${tableName}'. Use only tables from the active Data Lake catalog.`);
-        }
-
-        const columns: string[] = JSON.parse(tableEntry.columns_info);
-
-        // Check for dot-notation column references: table_name.col_name
-        const dotRegex = new RegExp(`["\`]?${tableName}["\`]?\\s*\\.\\s*["\`]?([a-zA-Z0-9_]+)["\`]?`, "gi");
-        let dotMatch;
-        while ((dotMatch = dotRegex.exec(query)) !== null) {
-            const colName = dotMatch[1].toLowerCase();
-            const colExists = columns.some(c => c.toLowerCase() === colName);
-            if (!colExists) {
-                throw new Error(`Хүснэгт '${tableName}' нь '${dotMatch[1]}' гэсэн багана агуулаагүй байна. Боломжтой баганууд: ${columns.join(", ")}`);
+            if (tableName.toLowerCase() !== activeTableName) {
+                throw new Error(`SQL query references table '${tableName}', but the active dataset is '${activeEntry.table_name}'. Use only the active dataset unless a CTE is being referenced.`);
             }
-        }
 
-        // Check for column references from OTHER tables that are used in this single-table query
-        if (tablesInQuery.length === 1) {
-            const otherTables = catalog.filter(row => row.table_name.toLowerCase() !== tableName.toLowerCase());
-            for (const otherTable of otherTables) {
-                const otherColumns: string[] = JSON.parse(otherTable.columns_info);
-                for (const otherCol of otherColumns) {
-                    if (uniqueWords.includes(otherCol.toLowerCase())) {
-                        const inTarget = columns.some(c => c.toLowerCase() === otherCol.toLowerCase());
-                        if (!inTarget) {
-                            throw new Error(`SQL query references column '${otherCol}' which belongs to table '${otherTable.table_name}', but the target table is '${tableName}'. '${tableName}' table columns are: ${columns.join(", ")}`);
-                        }
-                    }
+            // Check for dot-notation column references: table_name.col_name
+            const dotRegex = new RegExp(`["\` ]?${tableName}["\` ]?\\s*\\.\\s*["\` ]?([a-zA-Z0-9_]+)["\` ]?`, "gi");
+            let dotMatch;
+            while ((dotMatch = dotRegex.exec(query)) !== null) {
+                const colName = dotMatch[1].toLowerCase();
+                if (!columnNamesLower.has(colName)) {
+                    throw new Error(`Хүснэгт '${tableName}' нь '${dotMatch[1]}' гэсэн багана агуулаагүй байна. Боломжтой баганууд: ${columns.join(", ")}`);
                 }
             }
         }
     }
+
+    // Validate plain column references in SELECT clause
+    validateSelectColumns(query, columns, columnNamesLower);
+}
+
+function validateSelectColumns(query: string, columns: string[], columnNamesLower: Set<string>): void {
+    const selectMatch = query.match(/select\s+(.*?)\s+from\s+/i);
+    if (!selectMatch) return;
+
+    const selectClause = selectMatch[1];
+    const parts = splitSelectColumns(selectClause);
+
+    for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed || trimmed === '*') continue;
+
+        // Skip SQL functions (COUNT, SUM, AVG, MIN, MAX, COALESCE, etc.)
+        if (/^(count|sum|avg|min|max|coalesce|ifnull|nullif|abs|round|strftime|replace|substr|length|trim|lower|upper|group_concat|total)\s*\(/i.test(trimmed)) continue;
+
+        // Skip expressions with AS — extract the part before AS
+        const asIndex = trimmed.search(/\s+as\s+/i);
+        const columnPart = asIndex >= 0 ? trimmed.substring(0, asIndex).trim() : trimmed;
+
+        // Skip table.column or alias.column references (dot-notation)
+        if (columnPart.includes('.')) continue;
+
+        // Skip string literals
+        if (columnPart.startsWith("'") || columnPart.startsWith('"')) continue;
+
+        // Remove backticks if present
+        const cleanName = columnPart.replace(/["`]/g, '').trim();
+        if (!cleanName) continue;
+
+        // Check if it's a known column
+        if (!columnNamesLower.has(cleanName.toLowerCase())) {
+            throw new Error(`Хүснэгтэд '${cleanName}' гэсэн багана байхгүй байна. Боломжтой баганууд: ${columns.join(", ")}`);
+        }
+    }
+}
+
+function splitSelectColumns(clause: string): string[] {
+    const result: string[] = [];
+    let depth = 0;
+    let current = '';
+    for (let i = 0; i < clause.length; i++) {
+        const c = clause[i];
+        if (c === '(') depth++;
+        else if (c === ')') depth--;
+        else if (c === ',' && depth === 0) {
+            if (current.trim()) result.push(current.trim());
+            current = '';
+            continue;
+        }
+        current += c;
+    }
+    if (current.trim()) result.push(current.trim());
+    return result;
 }
 
 // 4. Execute SQL (MCP Tool / Agent)
