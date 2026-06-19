@@ -67,7 +67,21 @@ tech_agent_sql_gen: |
   9. ACCURACY: Ensure the GROUP BY column matches the period requested (e.g., don't group by day if "monthly" is asked).
   10. SCHEMA DISCIPLINE: Use ONLY the tables and columns listed in the schema definition below. Do not rely on old tables, old column names, or guessed fields.
   11. DEFAULT TABLE: If only one table is listed in the schema definition, treat it as the only valid table unless the user explicitly asks for another table.
-  12. CHECK synthax: Double-check your SQL before outputting. No trailing commas in SELECT or GROUP BY lists.
+  12. CHECK syntax: Double-check your SQL before outputting. No trailing commas in SELECT or GROUP BY lists.
+  13. HARD CONSTRAINT — NO HALLUCINATING COLUMNS: Never invent a column name that is not listed in the schema below.
+      If the task requires a column that does not exist in ANY table from the schema, respond with ONLY:
+      "Танд '{table_name}' хүснэгтэд '{column_name}' багана байхгүй байна. Боломжтой баганууд: {available_columns}"
+      Do NOT write SQL in this case.
+  14. ANALYTICAL QUERY PATTERNS (use these for common business questions):
+      - Percentage of total: SELECT column, SUM(value) / (SELECT SUM(value) FROM table) * 100 AS pct FROM table GROUP BY column
+      - Ratio between two columns: SELECT SUM(col_a) / NULLIF(SUM(col_b), 0) AS ratio FROM table
+      - Grouped comparison: SELECT CASE WHEN condition THEN 'High' ELSE 'Low' END AS group, AVG(col) FROM table GROUP BY group
+      - Income/Spend percentage: SELECT AVG(spend / NULLIF(income, 0)) * 100 AS avg_pct FROM table
+  15. COMPLETE FILTERING — CRITICAL: If the user explicitly mentions multiple categorical columns (e.g. "Kidhome болон Teenhome", "region and city"), ALL of them MUST appear in the WHERE clause or GROUP BY. Never analyze only one dimension when the user asks about multiple.
+      For example: user asks "Kidhome болон Teenhome" — do NOT filter only by Kidhome. Use both columns.
+  16. TYPE SAFETY: Never use SUM(), AVG(), or other numeric aggregates on a column that contains text/string values.
+      Check the sample values in the schema — if a column has text values (e.g. "Yes"/"No" or "Consumer"/"Corporate"), do not use numeric aggregates on it.
+      Use COUNT() or GROUP BY for categorical columns instead.
 
   ## Available Schema
   {catalog}
@@ -90,6 +104,7 @@ tech_agent_explain: |
   - DO NOT repeat the SQL code or raw JSON in your explanation.
   - NEVER invent numbers, dates, or facts not present in the execution log.
   - If the query returned too many rows (e.g., >10), summarize the trend or mention the range instead of listing everything.
+  - SEGMENTED RECOMMENDATIONS: If the data shows different customer segments (e.g. хүүхэдтэй vs хүүхэдгүй, өндөр орлоготой vs бага орлоготой), you MUST give DIFFERENT recommendations for EACH segment. Never suggest the same discount/campaign to different segments. Explain WHY each segment needs a different approach based on their spending behavior.
   - DO NOT show math operations like "100 + 200" in your explanation — only state final figures from the result.
   - If the SQL query logic was wrong (e.g., grouped by day instead of month), admit it and explain what was attempted.
 

@@ -70,17 +70,11 @@ export async function clearConversationMemory() {
 }
 
 async function buildActiveSchemaContext(query: string): Promise<string> {
-    const activeEntry = await getActiveCatalogEntry();
-    if (!activeEntry) {
+    const catalog = await getCatalog();
+    if (!catalog || catalog.length === 0) {
         return "(catalog unavailable)";
     }
-
-    const lowerQuery = query.toLowerCase();
-    const catalog = await getCatalog();
-    const explicitlyMentioned = catalog.filter((row: any) => lowerQuery.includes(row.table_name.toLowerCase()));
-    const tablesToInclude = explicitlyMentioned.length > 0 ? explicitlyMentioned : [activeEntry];
-
-    return buildSchemaDefinition(tablesToInclude as any);
+    return await buildSchemaDefinition(catalog as any);
 }
 
 async function getActiveColumns(entry = getActiveCatalogEntry()): Promise<string[]> {
@@ -255,11 +249,16 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         "rank", "percentage", "distribution", "breakdown",
         "describe", "stats", "statistics", "overview",
         "first", "last", "limit", "offset",
+        "purchase", "channel", "suva", "суваг", "суваг", "худалдан авалт", "худалдаа",
+        "platform", "платформ", "source", "source", "эх сурвалж",
+        "даргаар", "худалдан авалт", "зарлага", "зардал", "кампанит",
+        "campaign", "marketing", "маркетинг", "ad", "advertising", "зар",
+        "conversion", "conversion", "хөрвүүлэлт", "impression", "reach",
+        "click", "тогших", "rate", "cost", "spend",
     ];
     const financeSignals = [
-        "sales", "finance", "revenue", "target", "profit", "margin", "kpi", 
-        "борлуулалт", "борлуулалтад", "орлого", "орлогын", "ашиг",
-        "зарлага", "зардал", "төсөв", "бюджет", "санхүү",
+        "sales target", "revenue target", "profit target", "margin target", "kpi", "kpi target",
+        "борлуулалтын төлөвлөгөө", "орлогын төлөвлөгөө", "ашгийн төлөвлөгөө",
     ];
 
     const hasTech = techSignals.some((word) => lowerMessage.includes(word)) || mentionsKnownTable;
@@ -383,6 +382,18 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
     if (liveKpiContext) {
         console.log("[Finance Agent] Enriched with live KPI data from Data Lake (MCP tools).");
         context = `${context}\n\n--- Live KPI Data (from database) ---\n${liveKpiContext}`;
+    }
+
+    const catalog = await getCatalog();
+    if (catalog && catalog.length > 0) {
+        const tableList = catalog.map((e: any) => `- ${e.table_name} (${e.description || "N/A"})`).join("\n");
+        context = `${context}\n\n--- Available Tables in Data Lake ---\n${tableList}`;
+    }
+
+    if (context === "No context available." || !context) {
+        console.log("[Finance Agent] No context available — falling through to TechAgent for data query.");
+        if (onChunk) onChunk("(Finance Agent → Tech Agent)\nМэдээллийн сангаас дата шүүж байна...\n\n");
+        return techAgentNode(state, config);
     }
 
     const llm = await createLLM({ temperature: 0 });
@@ -563,7 +574,7 @@ Task: ${query}`;
         const sqlGenPrompt = (prompts.tech_agent_sql_gen as string).replace("{catalog}", schemaContext || "(catalog unavailable)");
         let userContent = `Task: ${query}`;
         if (feedback) {
-            userContent += `\n\nYour previous SQL query failed with the following error:\n${feedback}\n\nPlease analyze this error and rewrite the SQL query to resolve it. Ensure you only use tables and columns available in the schema provided. Do not repeat the same incorrect query.`;
+            userContent += `\n\nYour previous SQL query failed with the following error:\n${feedback}\n\nPlease analyze this error and rewrite the SQL query to resolve it. Ensure you only use tables and columns available in the schema provided below. Do not repeat the same incorrect query.\n\n--- Schema ---\n${schemaContext || "(catalog unavailable)"}`;
         }
 
         try {
@@ -609,6 +620,13 @@ Task: ${query}`;
                 const errorEntry = `\n### Оролдлого ${attempts}\n*Алдаа:* ${sqlResult.text}\n`;
                 if (onChunk) onChunk(errorEntry);
                 accumulatedText += errorEntry;
+
+                const schemaError = /багана байхгүй|хүснэгт.*байхгүй|Хүснэгт '/i.test(sqlResult.text);
+                if (schemaError) {
+                    console.log("[Tech Agent] Schema validation error detected — stopping retries.");
+                    accumulatedText += `\n💡 Дээрх алдааны шалтгаан: SQL query-д schema-д байхгүй багана/хүснэгт ашигласан.\n`;
+                    break;
+                }
                 continue;
             }
             sandboxResult = sqlResult.text;
@@ -637,6 +655,10 @@ Task: ${query}`;
             accumulatedText += errorEntry;
             if (isRateLimitError(err)) {
                 console.warn("[Tech Agent] LLM rate limit hit, stopping retries early.");
+                break;
+            }
+            if (/багана байхгүй|хүснэгт.*байхгүй|Хүснэгт '/i.test(err.message)) {
+                console.log("[Tech Agent] Schema validation error in catch — stopping retries.");
                 break;
             }
         }

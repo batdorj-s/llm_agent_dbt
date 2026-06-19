@@ -102,6 +102,16 @@ export async function initDataLake(): Promise<void> {
         console.log("[Data Lake] Connected to PostgreSQL ✅");
         await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data", true);
         await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing", true);
+
+        const oldTables = ["dataset", "datasetdescreption", "test_mixed_data", "test_int_dec", "upload_test"];
+        for (const tbl of oldTables) {
+            try {
+                await pool.query(`DROP TABLE IF EXISTS "${tbl}" CASCADE`);
+                await pool.query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [tbl]);
+            } catch {
+                // ignore cleanup errors
+            }
+        }
     } catch (err: any) {
         console.warn(`[Data Lake] Table creation failed: ${(err as Error).message}`);
     }
@@ -139,18 +149,100 @@ export async function getActiveCatalogEntry(): Promise<DataLakeCatalogEntry | nu
     }
 }
 
-export function buildSchemaDefinition(entries: DataLakeCatalogEntry | DataLakeCatalogEntry[] | null): string {
+export async function getColumnSamples(
+    tableName: string,
+    columns: string[],
+    limit: number = 3
+): Promise<Record<string, string[]>> {
+    if (!pool || !_pgAvailable) return {};
+    try {
+        const samples: Record<string, string[]> = {};
+        for (const col of columns) {
+            try {
+                const result = await pool.query(
+                    `SELECT DISTINCT "${col}" AS val FROM "${tableName}" WHERE "${col}" IS NOT NULL AND "${col}" != '' LIMIT $1`,
+                    [limit]
+                );
+                samples[col] = result.rows.map((r: any) => String(r.val)).filter(Boolean);
+            } catch {
+                samples[col] = [];
+            }
+        }
+        return samples;
+    } catch {
+        return {};
+    }
+}
+
+export async function getColumnProfile(
+    tableName: string,
+    columns: string[]
+): Promise<Record<string, { type: string; min?: string; max?: string; distinct: number }>> {
+    if (!pool || !_pgAvailable) return {};
+    try {
+        const profile: Record<string, { type: string; min?: string; max?: string; distinct: number }> = {};
+        for (const col of columns) {
+            try {
+                const typeResult = await pool.query(
+                    `SELECT data_type FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`,
+                    [tableName, col]
+                );
+                const dataType = typeResult.rows[0]?.data_type || "unknown";
+                const isNumeric = /int|numeric|decimal|real|float|double/i.test(dataType);
+                let minVal: string | undefined;
+                let maxVal: string | undefined;
+                if (isNumeric) {
+                    const rangeResult = await pool.query(
+                        `SELECT MIN("${col}") AS min_val, MAX("${col}") AS max_val FROM "${tableName}"`
+                    );
+                    minVal = rangeResult.rows[0]?.min_val != null ? String(rangeResult.rows[0].min_val) : undefined;
+                    maxVal = rangeResult.rows[0]?.max_val != null ? String(rangeResult.rows[0].max_val) : undefined;
+                }
+                const distinctResult = await pool.query(
+                    `SELECT COUNT(DISTINCT "${col}") AS cnt FROM "${tableName}"`
+                );
+                const distinct = Number(distinctResult.rows[0]?.cnt) || 0;
+                profile[col] = { type: dataType, min: minVal, max: maxVal, distinct };
+            } catch {
+                profile[col] = { type: "unknown", distinct: 0 };
+            }
+        }
+        return profile;
+    } catch {
+        return {};
+    }
+}
+
+export async function buildSchemaDefinition(entries: DataLakeCatalogEntry | DataLakeCatalogEntry[] | null): Promise<string> {
     if (!entries) return "No active table schema is available.";
     const tables = Array.isArray(entries) ? entries : [entries];
-    return tables.map((entry) => {
+    const parts: string[] = [];
+    for (const entry of tables) {
         const columns = JSON.parse(entry.columns_info) as string[];
-        return [
+        const [samples, profile] = await Promise.all([
+            getColumnSamples(entry.table_name, columns),
+            getColumnProfile(entry.table_name, columns),
+        ]);
+        const lines: string[] = [
             `Table: ${entry.table_name}`,
             entry.description ? `Description: ${entry.description}` : "Description: N/A",
-            "Columns:",
-            ...columns.map((column) => `- ${column}`),
-        ].join("\n");
-    }).join("\n\n");
+            `Total distinct values per column:`,
+        ];
+        for (const column of columns) {
+            const p = profile[column];
+            if (p) {
+                const typeLabel = p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type;
+                const rangeInfo = p.min !== undefined && p.max !== undefined ? ` [${p.min}..${p.max}]` : "";
+                lines.push(`- ${column} (${typeLabel}, ${p.distinct} distinct${rangeInfo})`);
+            }
+            const vals = samples[column];
+            if (vals && vals.length > 0) {
+                lines.push(`  Sample values: ${vals.join(", ")}`);
+            }
+        }
+        parts.push(lines.join("\n"));
+    }
+    return parts.join("\n\n");
 }
 
 function getCteNames(query: string): Set<string> {
@@ -284,29 +376,36 @@ export async function getCatalog(): Promise<DataLakeCatalogEntry[]> {
 
 export async function validateSqlColumns(query: string) {
     const cteNames = getCteNames(query);
-    const activeEntry = await getActiveCatalogEntry();
-    if (!activeEntry) throw new Error("No active Data Lake catalog entry found.");
+    const catalog = await getCatalog();
+    if (!catalog || catalog.length === 0) throw new Error("Catalog is empty — no tables to validate against.");
 
-    const activeTableName = activeEntry.table_name.toLowerCase();
-    const columns: string[] = JSON.parse(activeEntry.columns_info);
-    const columnNamesLower = new Set(columns.map(c => c.toLowerCase()));
-
-    const tableMatches = query.match(/(?:from|join)\s+["`]?([a-zA-Z0-9_]+)["`]?/gi);
-    if (tableMatches) {
-        const tablesInQuery = tableMatches.map(m =>
-            m.replace(/^(from|join)\s+/i, "").replace(/["`]/g, "").trim()
-        );
-        for (const tableName of tablesInQuery) {
-            if (cteNames.has(tableName.toLowerCase())) continue;
-            if (tableName.toLowerCase() !== activeTableName) {
-                throw new Error(`SQL references table '${tableName}' but active dataset is '${activeEntry.table_name}'.`);
-            }
-        }
+    const tableColumnsMap = new Map<string, { columns: string[]; description: string }>();
+    for (const entry of catalog) {
+        const cols: string[] = JSON.parse(entry.columns_info);
+        tableColumnsMap.set(entry.table_name.toLowerCase(), { columns: cols, description: entry.description || "N/A" });
     }
-    validateSelectColumns(query, columns, columnNamesLower);
+
+    const aliasToTable = new Map<string, string>();
+    const tableAliasPattern = /(?:from|join)\s+["`]?([a-zA-Z0-9_]+)["`]?(?:\s+(?:as\s+)?["`]?([a-zA-Z0-9_]+)["`]?)?/gi;
+    let match: RegExpExecArray | null;
+    while ((match = tableAliasPattern.exec(query)) !== null) {
+        const tableName = match[1].toLowerCase();
+        if (cteNames.has(tableName)) continue;
+        const alias = match[2] ? match[2].toLowerCase() : tableName;
+        aliasToTable.set(alias, tableName);
+    }
+
+    for (const [alias, tableName] of aliasToTable) {
+        const entry = tableColumnsMap.get(tableName);
+        if (!entry) {
+            const available = Array.from(tableColumnsMap.keys()).join(", ");
+            throw new Error(`Хүснэгт '${tableName}' байхгүй байна. Боломжтой хүснэгтүүд: ${available}`);
+        }
+        validateSelectColumns(query, entry.columns, new Set(entry.columns.map(c => c.toLowerCase())), tableName, aliasToTable);
+    }
 }
 
-function validateSelectColumns(query: string, columns: string[], columnNamesLower: Set<string>): void {
+function validateSelectColumns(query: string, columns: string[], columnNamesLower: Set<string>, tableName: string, aliasToTable?: Map<string, string>): void {
     const cleaned = query.replace(/^with\s+[\s\S]*?\bselect\b/i, "SELECT");
     const selectMatch = cleaned.match(/select\s+(.*?)\s+from\s+/i);
     if (!selectMatch) return;
@@ -317,12 +416,25 @@ function validateSelectColumns(query: string, columns: string[], columnNamesLowe
         if (/^(count|sum|avg|min|max|coalesce|ifnull|nullif|abs|round|strftime|replace|substr|length|trim|lower|upper|group_concat|total)\s*\(/i.test(trimmed)) continue;
         const asIndex = trimmed.search(/\s+as\s+/i);
         const columnPart = asIndex >= 0 ? trimmed.substring(0, asIndex).trim() : trimmed;
-        if (columnPart.includes('.')) continue;
         if (columnPart.startsWith("'") || columnPart.startsWith('"')) continue;
         const cleanName = columnPart.replace(/["`]/g, '').trim();
         if (!cleanName) continue;
+        if (cleanName.includes('.')) {
+            const parts = cleanName.split('.');
+            if (parts.length === 2) {
+                const tblAlias = parts[0].replace(/["`]/g, '').toLowerCase();
+                const col = parts[1].replace(/["`]/g, '').toLowerCase();
+                const resolvedTable = (aliasToTable?.get(tblAlias) || tblAlias).toLowerCase();
+                if (resolvedTable === tableName.toLowerCase() && !columnNamesLower.has(col)) {
+                    throw new Error(`Хүснэгт '${tableName}'-д '${parts[1]}' багана байхгүй. Боломжтой: ${columns.join(", ")}`);
+                }
+            }
+            continue;
+        }
         if (!columnNamesLower.has(cleanName.toLowerCase())) {
-            throw new Error(`Хүснэгтэд '${cleanName}' багана байхгүй. Боломжтой: ${columns.join(", ")}`);
+            const lowerAvailable = columns.map(c => c.toLowerCase());
+            const closeMatch = lowerAvailable.find(c => c === cleanName.toLowerCase()) ? ` Санамж: '${cleanName}' гэж биш '${columns[lowerAvailable.indexOf(cleanName.toLowerCase())]}' гэж бичнэ үү.` : "";
+            throw new Error(`Хүснэгт '${tableName}'-д '${cleanName}' багана байхгүй.${closeMatch} Боломжтой: ${columns.join(", ")}`);
         }
     }
 }

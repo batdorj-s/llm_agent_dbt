@@ -13,7 +13,7 @@ import { setupKnowledgeBase } from "./rag.js";
 import { ensureProjectReady } from "./setup/init.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog, getPool } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile } from "./db/data-lake.js";
 import { addDocumentToCatalog } from "./rag.js";
 import fs from "fs";
 import path from "path";
@@ -256,8 +256,18 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 
     if (tableInfo) {
       const cols: string[] = JSON.parse(tableInfo.columns_info);
-      const formattedCols = cols.map(c => `"${c}"`).join(", ");
-      const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${formattedCols}. Description: ${description}.`;
+      const [samples, profile] = await Promise.all([
+        getColumnSamples(sanitizedTableName, cols, 5),
+        getColumnProfile(sanitizedTableName, cols),
+      ]);
+      const sampleText = cols.map(c => {
+        const p = profile[c];
+        const typeLabel = p?.type ? (p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type) : "TEXT";
+        const rangeInfo = p?.min !== undefined && p?.max !== undefined ? ` [${p.min}..${p.max}]` : "";
+        const vals = samples[c];
+        return vals && vals.length > 0 ? `"${c}" (${typeLabel}${rangeInfo}, e.g. ${vals.join(", ")})` : `"${c}" (${typeLabel}${rangeInfo})`;
+      }).join(", ");
+      const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}.`;
       await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, { category: "catalog" }, [sanitizedTableName]);
     }
 
