@@ -182,12 +182,18 @@ function cleanNumeric(val: string): string {
     return val.replace(/[$,]/g, "").trim();
 }
 
-function pgType(val: string): string {
-    const cleaned = cleanNumeric(val);
-    if (!cleaned) return "TEXT";
-    if (/^-?\d+$/.test(cleaned)) return "INTEGER";
-    if (/^-?\d*\.\d+$/.test(cleaned) || /^-?\d+\.\d*$/.test(cleaned)) return "NUMERIC";
-    return "TEXT";
+function inferColumnType(values: string[]): string {
+    let hasDecimal = false;
+    let allNumeric = true;
+    for (const raw of values) {
+        const cleaned = cleanNumeric(raw);
+        if (!cleaned) { allNumeric = false; continue; }
+        if (/^-?\d*\.\d+$/.test(cleaned) || /^-?\d+\.\d*$/.test(cleaned)) hasDecimal = true;
+        else if (!/^-?\d+$/.test(cleaned)) allNumeric = false;
+    }
+    if (!allNumeric) return "TEXT";
+    if (hasDecimal) return "NUMERIC";
+    return "INTEGER";
 }
 
 export async function seedCsv(csvPath: string, tableName: string, createdBy: string, description: string, overwrite: boolean = false) {
@@ -207,8 +213,8 @@ export async function seedCsv(csvPath: string, tableName: string, createdBy: str
 
         if (checkResult.rows.length > 0) {
             if (!overwrite) return;
-            console.log(`[Data Lake] Table ${tableName} exists. Dropping...`);
-            await pool.query(`DROP TABLE IF EXISTS "${tableName}"`);
+            console.log(`[Data Lake] Table ${tableName} exists. Dropping with CASCADE...`);
+            await pool.query(`DROP TABLE IF EXISTS "${tableName}" CASCADE`);
         }
 
         console.log(`[Data Lake] Seeding ${tableName}...`);
@@ -230,8 +236,11 @@ export async function seedCsv(csvPath: string, tableName: string, createdBy: str
             uniqueHeaders.push(finalH);
         }
 
-        const firstRow = splitCsvLine(lines[1]);
-        const types = firstRow.map(val => pgType(val));
+        const dataRows = lines.slice(1).map(l => splitCsvLine(l.trim()));
+        const columnValues = uniqueHeaders.map((_, colIdx) =>
+            dataRows.map(row => (row[colIdx] || "").replace(/^["']|["']$/g, ""))
+        );
+        const types = columnValues.map(vals => inferColumnType(vals));
 
         await pool.query(`CREATE TABLE "${tableName}" (
             ${uniqueHeaders.map((h, i) => `"${h}" ${types[i]}`).join(",\n")}
@@ -239,10 +248,8 @@ export async function seedCsv(csvPath: string, tableName: string, createdBy: str
 
         const insertSql = `INSERT INTO "${tableName}" (${uniqueHeaders.map(h => `"${h}"`).join(", ")}) VALUES (${uniqueHeaders.map((_, i) => `$${i + 1}`).join(", ")})`;
 
-        for (let i = 1; i < lines.length; i++) {
-            const row = lines[i].trim();
-            if (!row) continue;
-            const values = splitCsvLine(row).map((v, idx) => {
+        for (const row of dataRows) {
+            const values = row.map((v, idx) => {
                 const cleaned = v.replace(/^["']|["']$/g, "");
                 if (types[idx] === "INTEGER" || types[idx] === "NUMERIC") return cleanNumeric(cleaned) || "0";
                 return cleaned;
@@ -284,22 +291,15 @@ export async function validateSqlColumns(query: string) {
     const columns: string[] = JSON.parse(activeEntry.columns_info);
     const columnNamesLower = new Set(columns.map(c => c.toLowerCase()));
 
-    const tableMatches = query.match(/(?:from|join)\s+["` ]?([a-zA-Z0-9_]+)["` ]?/gi);
+    const tableMatches = query.match(/(?:from|join)\s+["`]?([a-zA-Z0-9_]+)["`]?/gi);
     if (tableMatches) {
         const tablesInQuery = tableMatches.map(m =>
-            m.replace(/^(from|join)\s+/i, "").replace(/["` ]/g, "").trim()
+            m.replace(/^(from|join)\s+/i, "").replace(/["`]/g, "").trim()
         );
         for (const tableName of tablesInQuery) {
             if (cteNames.has(tableName.toLowerCase())) continue;
             if (tableName.toLowerCase() !== activeTableName) {
                 throw new Error(`SQL references table '${tableName}' but active dataset is '${activeEntry.table_name}'.`);
-            }
-            const dotRegex = new RegExp(`["\` ]?${tableName}["\` ]?\\s*\\.\\s*["\` ]?([a-zA-Z0-9_]+)["\` ]?`, "gi");
-            let dotMatch;
-            while ((dotMatch = dotRegex.exec(query)) !== null) {
-                if (!columnNamesLower.has(dotMatch[1].toLowerCase())) {
-                    throw new Error(`Хүснэгтэд '${dotMatch[1]}' багана байхгүй. Боломжтой: ${columns.join(", ")}`);
-                }
             }
         }
     }
@@ -307,7 +307,8 @@ export async function validateSqlColumns(query: string) {
 }
 
 function validateSelectColumns(query: string, columns: string[], columnNamesLower: Set<string>): void {
-    const selectMatch = query.match(/select\s+(.*?)\s+from\s+/i);
+    const cleaned = query.replace(/^with\s+[\s\S]*?\bselect\b/i, "SELECT");
+    const selectMatch = cleaned.match(/select\s+(.*?)\s+from\s+/i);
     if (!selectMatch) return;
     const parts = splitSelectColumns(selectMatch[1]);
     for (const part of parts) {
@@ -359,9 +360,15 @@ export async function executeSql(query: string, readOnly: boolean = true): Promi
     }
 
     try {
+        if (isSelect) {
+            await pool.query(`EXPLAIN ${query}`);
+        }
         const result = await pool.query(query);
         return isSelect ? result.rows : { message: "Query executed", changes: result.rowCount };
     } catch (err: any) {
-        throw new Error(`SQL Execution Error: ${err.message}`);
+        const msg = err.message
+            .replace(/^syntax error at or near/, "SQL syntax error near")
+            .replace(/^ERROR:\s*/i, "");
+        throw new Error(`SQL Execution Error: ${msg}`);
     }
 }

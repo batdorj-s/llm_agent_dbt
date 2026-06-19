@@ -85,7 +85,8 @@ export async function handleExecuteSql({ query }: { query: string }) {
     return { text: JSON.stringify(results, null, 2), ok: true as const, results };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    return { text: `SQL Execution Error: ${message}`, ok: false as const };
+    const clean = message.replace(/^SQL Execution Error:\s*/, "");
+    return { text: clean, ok: false as const };
   }
 }
 

@@ -245,30 +245,29 @@ app.post("/api/admin/upload-csv", async (req, res) => {
   }
 
   const sanitizedTableName = tableName.trim().replace(/[^a-zA-Z0-9_]/g, "");
-  const tempFilePath = path.join(process.cwd(), `temp_${Date.now()}_${filename}`);
+  const tempFilePath = path.join("/tmp", `csv_${Date.now()}_${filename}`);
 
   try {
     fs.writeFileSync(tempFilePath, csvContent, "utf8");
-    seedCsv(tempFilePath, sanitizedTableName, userId || role, description, true);
-    await clearConversationMemory();
-
-    await initDataLake();
-    await getPool().query(
-        `INSERT INTO uploaded_files (id, filename, type, description) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description`,
-        [sanitizedTableName, sanitizedTableName, "dataset", description]
-    );
+    await seedCsv(tempFilePath, sanitizedTableName, userId || role, description, true);
 
     const catalog = await getCatalog();
     const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
-    
+
     if (tableInfo) {
       const cols: string[] = JSON.parse(tableInfo.columns_info);
-      const formattedCols = cols.map(c => `\`${c}\``).join(", ");
-      const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a SQLite database. Columns: ${formattedCols}. Description: ${description}.`;
+      const formattedCols = cols.map(c => `"${c}"`).join(", ");
+      const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${formattedCols}. Description: ${description}.`;
       await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, { category: "catalog" }, [sanitizedTableName]);
     }
 
+    await getPool().query(
+      `INSERT INTO uploaded_files (id, filename, type, description) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description`,
+      [sanitizedTableName, sanitizedTableName, "dataset", description]
+    );
+
+    await clearConversationMemory();
     res.json({ success: true, message: `Table '${sanitizedTableName}' successfully imported.` });
   } catch (err: any) {
     console.error("[API] CSV Upload Error:", err);

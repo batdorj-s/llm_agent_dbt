@@ -222,7 +222,7 @@ export default function Home() {
 
   const fetchServerStatus = async () => {
     try {
-      const res = await fetch("http://localhost:3001/api/status");
+      const res = await fetch("/api/status");
       if (res.ok) {
         const data = await res.json();
         setServerStatus(data);
@@ -238,7 +238,7 @@ export default function Home() {
       setDashboardError(null);
       const headers = { Authorization: `Bearer ${token}` };
 
-      const salesRes = await fetch("http://localhost:3001/api/kpi/sales", { headers });
+      const salesRes = await fetch("/api/kpi/sales", { headers });
       if (salesRes.ok) {
         const data = await salesRes.json();
         setSalesKpi(data);
@@ -247,19 +247,19 @@ export default function Home() {
         return;
       }
 
-      const usersRes = await fetch("http://localhost:3001/api/kpi/users", { headers });
+      const usersRes = await fetch("/api/kpi/users", { headers });
       if (usersRes.ok) {
         const data = await usersRes.json();
         setUsersKpi(data);
       }
 
-      const churnRes = await fetch("http://localhost:3001/api/kpi/churn_rate", { headers });
+      const churnRes = await fetch("/api/kpi/churn_rate", { headers });
       if (churnRes.ok) {
         const data = await churnRes.json();
         setChurnKpi(data);
       }
 
-      const historyRes = await fetch(`http://localhost:3001/api/kpi-history?limit=${historyLimit}`, { headers });
+      const historyRes = await fetch(`/api/kpi-history?limit=${historyLimit}`, { headers });
       if (historyRes.ok) {
         const data = await historyRes.json();
         setSalesHistory(data);
@@ -274,7 +274,7 @@ export default function Home() {
     if (!token) return;
     setIsFilesLoading(true);
     try {
-      const res = await fetch("http://localhost:3001/api/admin/files", {
+      const res = await fetch("/api/admin/files", {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -310,7 +310,7 @@ export default function Home() {
   const handleDeleteFile = async (id: string) => {
     if (!token || !confirm("Are you sure you want to delete this asset?")) return;
     try {
-      const res = await fetch(`http://localhost:3001/api/admin/files/${id}`, {
+      const res = await fetch(`/api/admin/files/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -332,7 +332,7 @@ export default function Home() {
     const loginPassword = customCreds ? "demopassword" : password;
 
     try {
-      const res = await fetch("http://localhost:3001/api/auth/login", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
@@ -409,7 +409,7 @@ export default function Home() {
 
     try {
       if (streamEnabled) {
-        const response = await fetch("http://localhost:3001/api/chat/stream", {
+        const response = await fetch("/api/chat/stream", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -488,7 +488,7 @@ export default function Home() {
           }
         }
       } else {
-        const res = await fetch("http://localhost:3001/api/chat", {
+        const res = await fetch("/api/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -570,7 +570,7 @@ export default function Home() {
     setAdminCodeOutput("Executing script in secure E2B MicroVM...");
 
     try {
-      const res = await fetch("http://localhost:3001/api/admin/run-code", {
+      const res = await fetch("/api/admin/run-code", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -599,7 +599,7 @@ export default function Home() {
     setSalesUpdateSuccess(null);
 
     try {
-      const res = await fetch(`http://localhost:3001/api/kpi/${adjustMetric}/target`, {
+      const res = await fetch(`/api/kpi/${adjustMetric}/target`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -633,7 +633,7 @@ export default function Home() {
     reader.onload = async (event) => {
       const csvContent = event.target?.result as string;
       try {
-        const res = await fetch("http://localhost:3001/api/admin/upload-csv", {
+        const res = await fetch("/api/admin/upload-csv", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -687,7 +687,7 @@ export default function Home() {
     formData.append("department", "general");
 
     try {
-      const res = await fetch("http://localhost:3001/api/admin/upload-doc", {
+      const res = await fetch("/api/admin/upload-doc", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
