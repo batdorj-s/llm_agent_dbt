@@ -100,8 +100,8 @@ export async function initDataLake(): Promise<void> {
         }
 
         console.log("[Data Lake] Connected to PostgreSQL ✅");
-        await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data");
-        await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing");
+        await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data", true);
+        await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing", true);
     } catch (err: any) {
         console.warn(`[Data Lake] Table creation failed: ${(err as Error).message}`);
     }
