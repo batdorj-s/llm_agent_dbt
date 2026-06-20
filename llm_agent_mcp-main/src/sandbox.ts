@@ -7,8 +7,21 @@ dotenv.config();
 
 let _sandboxInstance: any = null;
 
+const SANDBOX_TIMEOUT_MS = 30_000;
+const SANDBOX_CREATE_TIMEOUT_MS = 60_000;
+
+function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number): Promise<T> {
+    let handle: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<T>((_, reject) => {
+        handle = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
+        }, timeoutMs);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(handle!));
+}
+
 // Mock sandbox for development/PoC if no E2B API Key is provided
-export async function runPythonCode(code: string): Promise<string> {
+export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TIMEOUT_MS): Promise<string> {
     const hasKey = process.env.E2B_API_KEY && process.env.E2B_API_KEY !== 'your_e2b_api_key_here';
 
     if (!hasKey) {
@@ -42,7 +55,11 @@ export async function runPythonCode(code: string): Promise<string> {
         console.log("🔒 Accessing E2B MicroVM Sandbox...");
         if (!_sandboxInstance) {
             console.log("🔒 Initializing new E2B Sandbox MicroVM (takes ~2s)...");
-            _sandboxInstance = await Sandbox.create({ apiKey: process.env.E2B_API_KEY });
+            _sandboxInstance = await withTimeout(
+                Sandbox.create({ apiKey: process.env.E2B_API_KEY }),
+                "Sandbox creation",
+                SANDBOX_CREATE_TIMEOUT_MS
+            );
         } else {
             console.log("🔒 Reusing cached E2B Sandbox MicroVM (instant)...");
         }
@@ -58,7 +75,11 @@ export async function runPythonCode(code: string): Promise<string> {
         }
 
         console.log("🐍 Executing Python Code...");
-        const execution = await _sandboxInstance.runCode(code);
+        const execution = await withTimeout(
+            _sandboxInstance.runCode(code, { timeout: timeoutMs }),
+            "Python execution",
+            timeoutMs + 5_000
+        );
 
         let output = "";
         if (execution.logs.stdout.length > 0) output += `STDOUT:\n${execution.logs.stdout.join('\n')}\n`;

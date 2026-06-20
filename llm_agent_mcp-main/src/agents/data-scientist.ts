@@ -209,7 +209,7 @@ CRITICAL:
 
 function buildSamplingSql(tableName: string, columns: string[]): string {
     const safeCols = columns.map(c => `"${c}"`).join(", ");
-    return `SELECT ${safeCols} FROM "${tableName}" LIMIT 1000;`;
+    return `SELECT ${safeCols} FROM "${tableName}" LIMIT 200;`;
 }
 
 function findDateColumn(columns: string[]): string | null {
@@ -355,7 +355,8 @@ plt.close()
 7. Do NOT use exit() or sys.exit().
 8. ALWAYS save the chart as 'analysis_plot.png' using plt.savefig().
 9. After saving the chart, print the text "##CHART_SAVED##" on its own line so the system knows the chart was generated.
-10. Return ONLY the Python code inside a markdown \`\`\`python block. No explanation outside the block.`;
+10. Return ONLY the Python code inside a markdown \`\`\`python block. No explanation outside the block.
+11. MEMORY SAFETY: Use df.head(200) or df.sample(200) for any large dataset operations. Never convert the full DataFrame to numpy arrays if avoidable. If you need to iterate, use .itertuples() for memory efficiency.`;
 }
 
 function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number = LLM_TIMEOUT_MS): Promise<T> {

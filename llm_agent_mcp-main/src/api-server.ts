@@ -15,7 +15,7 @@ import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile } from "./db/data-lake.js";
-import { addDocumentToCatalog } from "./rag.js";
+import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -265,6 +265,10 @@ app.post("/api/admin/upload-csv", async (req, res) => {
     let cols: string[] = [];
     if (tableInfo) {
       cols = JSON.parse(tableInfo.columns_info) as string[];
+
+      // Schema Evolution: remove stale RAG entries for this table before re-indexing
+      await removeDocumentsByPrefix(`uploaded_${sanitizedTableName}_`);
+
       const [samples, profile] = await Promise.all([
         getColumnSamples(sanitizedTableName, cols, 5),
         getColumnProfile(sanitizedTableName, cols),
@@ -366,6 +370,65 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Feedback Loop: User rating (👍 / 👎)
+// ─────────────────────────────────────────────────────────────
+const FAILED_QUERIES_PATH = path.join(process.cwd(), "logs", "failed_queries.json");
+
+function ensureFailedQueriesFile(): void {
+  const dir = path.dirname(FAILED_QUERIES_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(FAILED_QUERIES_PATH)) fs.writeFileSync(FAILED_QUERIES_PATH, "[]", "utf8");
+}
+
+app.post("/api/feedback", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { message, response, rating, threadId } = req.body;
+  if (!message || !rating) {
+    return res.status(400).json({ error: "message and rating are required" });
+  }
+  if (!["positive", "negative"].includes(rating)) {
+    return res.status(400).json({ error: "rating must be 'positive' or 'negative'" });
+  }
+
+  const entry = {
+    id: `feedback_${Date.now()}`,
+    userId: auth.payload.userId,
+    message,
+    response: response || "",
+    rating,
+    threadId: threadId || null,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    ensureFailedQueriesFile();
+    const existing = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    existing.push(entry);
+    fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(existing, null, 2), "utf8");
+
+    // Also add negative feedback as a RAG document so agents learn from failures
+    if (rating === "negative" && response) {
+      const ragText = `Failed Query: User asked "${message}". The system responded with: "${response}". This response was rated as incorrect.`;
+      await addDocumentToCatalog(`failed_${Date.now()}`, ragText, {
+        category: "previous_analysis",
+        department: "analytics",
+        author: auth.payload.userId,
+        source_name: "User Feedback",
+      }, ["failed_query", "feedback", ...message.toLowerCase().split(/\W+/).filter(Boolean)]);
+    }
+
+    console.log(`[Feedback] ${rating} feedback from ${auth.payload.userId}: "${message.slice(0, 80)}..."`);
+    res.json({ success: true, message: rating === "negative" ? "Feedback recorded. Thank you — we will improve." : "Feedback recorded. Thank you!" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -327,6 +327,27 @@ Respond with ONLY the JSON. No markdown, no explanation.`;
   return { query };
 }
 
+export async function removeDocumentsByPrefix(idPrefix: string): Promise<number> {
+  const before = knowledgeDocuments.length;
+  knowledgeDocuments = knowledgeDocuments.filter(d => !d.id.startsWith(idPrefix));
+  const removed = before - knowledgeDocuments.length;
+
+  const col = await getChromaCollection();
+  if (col && removed > 0) {
+    try {
+      await col.delete({ where: { source_name: { "$starts_with": idPrefix } } });
+      console.log(`[RAG] Deleted ${removed} ChromaDB docs matching prefix: ${idPrefix}`);
+    } catch (err: any) {
+      console.warn(`[RAG] ChromaDB delete failed for prefix ${idPrefix}:`, err.message);
+    }
+  }
+
+  if (removed > 0) {
+    console.log(`[RAG] Removed ${removed} documents with id prefix "${idPrefix}"`);
+  }
+  return removed;
+}
+
 export async function addDocumentToCatalog(
   id: string,
   text: string,
