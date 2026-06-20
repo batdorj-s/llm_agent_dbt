@@ -10,12 +10,7 @@ import {
   FileText,
   Sun,
   Moon,
-  Square,
-  Download,
-  TrendingUp,
-  Users,
-  DollarSign,
-  Target
+  Square
 } from "lucide-react";
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend } from "recharts";
@@ -79,15 +74,9 @@ const VisualMessage = ({ visualJson }: { visualJson: string }) => {
   };
 
   return (
-    <div className="bg-sidebar border border-border rounded-lg p-4 mt-2 max-w-lg transition-colors duration-200 shadow-sm" ref={chartRef}>
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="text-[11px] font-bold text-foreground/80 uppercase tracking-wider">{data.title}</h4>
-        <button onClick={() => downloadPng(chartRef.current, data.title || "chart")}
-          className="p-1 rounded hover:bg-background/80 transition-colors text-foreground/40 hover:text-foreground/70" title="Download PNG">
-          <Download size={14} />
-        </button>
-      </div>
-      <div className="h-52 w-full">
+    <div className="bg-sidebar border border-border rounded-lg p-4 mt-2 max-w-lg transition-colors duration-200">
+      <h4 className="text-[10px] font-bold text-foreground/60 uppercase mb-3">{data.title}</h4>
+      <div className="h-48 w-full">
         <ResponsiveContainer width="100%" height="100%">
           {data.type === "bar" ? (
             stacked ? renderMultiSeries(BarChart, Bar) : series && series.length > 1 ? renderMultiSeries(BarChart, Bar) : (

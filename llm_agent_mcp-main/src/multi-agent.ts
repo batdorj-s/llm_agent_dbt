@@ -50,8 +50,9 @@ export const AgentStateAnnotation = Annotation.Root({
 });
 
 const checkpointer = new MemorySaver();
-const LLM_TIMEOUT_MS = 60000;
-const MAX_HISTORY_MESSAGES = 10;
+const LLM_TIMEOUT_MS = 40000;
+const SQL_GEN_TIMEOUT_MS = 55000;
+const MAX_HISTORY_MESSAGES = 6;
 
 function trimMessages(messages: any[]): any[] {
     const systemMsg = messages.filter((m: any) => m.role === "system");
@@ -147,7 +148,13 @@ async function buildDeterministicTechSql(query: string, entry?: import("./db/dat
         `.trim();
     }
 
-    if (lowerQuery.includes("count") || lowerQuery.includes("how many") || lowerQuery.includes("нийт хэдэн") || lowerQuery.includes("гүйлгээ")) {
+    if (lowerQuery.includes("count") || lowerQuery.includes("how many") || lowerQuery.includes("нийт хэдэн") || lowerQuery.includes("гүйлгээ") || lowerQuery.includes("хэдэн") || lowerQuery.includes("хэд")) {
+        if (lowerQuery.includes("дундаж") || lowerQuery.includes("average") || lowerQuery.includes("avg")) {
+            const avgCol = findColumn(columns, [/age/i, /balance/i, /salary/i, /income/i, /spend/i, /amount/i, /price/i, /value/i]);
+            if (avgCol) {
+                return `SELECT COUNT(*) AS total_rows, AVG("${avgCol}") AS average_value FROM "${tableName}";`;
+            }
+        }
         return `SELECT COUNT(*) AS total_rows FROM "${tableName}";`;
     }
 
@@ -175,11 +182,21 @@ function formatDeterministicTechResponse(query: string, sql: string, results: an
         ].join("\n");
     }
 
-    if (lowerQuery.includes("count") || lowerQuery.includes("how many") || lowerQuery.includes("нийт хэдэн") || lowerQuery.includes("гүйлгээ")) {
+    if (lowerQuery.includes("count") || lowerQuery.includes("how many") || lowerQuery.includes("нийт хэдэн") || lowerQuery.includes("гүйлгээ") || lowerQuery.includes("хэдэн") || lowerQuery.includes("хэд")) {
+        if (lowerQuery.includes("дундаж") || lowerQuery.includes("average") || lowerQuery.includes("avg")) {
+            const totalRows = Number(results[0]?.total_rows ?? 0);
+            const avgVal = Number(results[0]?.average_value ?? 0);
+            return [
+                "```sql",
+                sql,
+                "```",
+                "",
+                `Нийт мөрийн тоо: ${totalRows.toLocaleString()}`,
+                `Дундаж утга: ${avgVal.toLocaleString()}`,
+            ].join("\n");
+        }
         const totalRows = Number(results[0]?.total_rows ?? 0);
         return [
-            "SQL query executed directly from the active dataset.",
-            "",
             "```sql",
             sql,
             "```",
@@ -203,7 +220,7 @@ function formatDeterministicTechResponse(query: string, sql: string, results: an
 
 function isRateLimitError(err: unknown): boolean {
     const message = err instanceof Error ? err.message : String(err);
-    return /rate limit|429|tokens per day|TPD/i.test(message);
+    return /rate limit|429|tokens per day|TPD|quota exceeded|quota.*limit/i.test(message);
 }
 
 async function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number = LLM_TIMEOUT_MS): Promise<T> {
@@ -227,7 +244,7 @@ const RouteSchema = z.object({
     reason: z.string().describe("One sentence explaining the routing decision.")
 });
 
-const MAX_SQL_RETRIES = 3;
+const MAX_SQL_RETRIES = 2;
 
 async function supervisorNode(state: any, config?: any): Promise<Partial<AgentState>> {
     const lastMsg = state.messages[state.messages.length - 1];
@@ -698,7 +715,7 @@ Task: ${query}`;
                 return await withTimeout(model.invoke([
                     { role: "system", content: sqlGenPrompt },
                     { role: "user", content: userContent }
-                ]), "Tech agent SQL generation");
+                ]), "Tech agent SQL generation", SQL_GEN_TIMEOUT_MS);
             };
 
             let codeGenResponse: any;
@@ -706,7 +723,7 @@ Task: ${query}`;
                 codeGenResponse = await executeCodeGen(llm);
             } catch (err: any) {
                 console.warn("[Tech Agent] Primary LLM for SQL failed, attempting fallback:", err.message);
-                const fallbackLLM = await createLLMWithOrder({ temperature: 0, providerOrder: ["groq", "openai"] });
+                const fallbackLLM = await createLLMWithOrder({ temperature: 0, providerOrder: ["gemini", "groq", "openai"] });
                 if (fallbackLLM) {
                     codeGenResponse = await executeCodeGen(fallbackLLM);
                 } else {

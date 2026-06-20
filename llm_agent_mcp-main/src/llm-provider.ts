@@ -33,7 +33,7 @@ export interface LLMInfo {
 
 type ProviderConfig = { provider: LLMProvider; envKey: string; model: string; isFree: boolean; rateLimit: string };
 
-export const DEFAULT_PROVIDER_ORDER: LLMProvider[] = ["groq", "gemini", "anthropic", "openai"];
+export const DEFAULT_PROVIDER_ORDER: LLMProvider[] = ["gemini", "groq", "anthropic", "openai"];
 
 const PROVIDERS: ProviderConfig[] = [
   {
@@ -135,6 +135,8 @@ export async function createLLMWithOrder(options?: {
           apiKey: process.env.GROQ_API_KEY,
           temperature: temp,
           streaming: options?.streaming,
+          maxRetries: 0,
+          timeout: 60000,
         });
       }
 

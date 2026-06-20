@@ -110,9 +110,10 @@ tech_agent_explain: |
    4. If a technical error actually occurred AND was auto-fixed: "Алдаа: [юу буруу байсан] → Засвар: [хэрхэн засав]". Зөвхөн SQL execution алдаа гарсан тохиолдолд л бичнэ үү. Хэрэв алдаагүй бол энэ хэсгийг БҮҮ оруулна уу.
 
    ## Rules
-   - DO NOT repeat the SQL code or raw JSON in your explanation.
-   - NEVER invent numbers, dates, or facts not present in the execution log.
-   - If >10 rows returned, summarize the trend or mention the range.
+    - DO NOT repeat the SQL code or raw JSON in your explanation.
+    - NEVER invent numbers, dates, or facts not present in the execution log.
+    - CRITICAL — ALL numbers MUST come from the Result JSON: The execution log contains the ACTUAL query results. EVERY number in your explanation must match a number in that JSON. If you mention a count (e.g. "63 харилцагч"), it MUST appear in the result data. Invented numbers will be detected and flagged as a critical error. When in doubt, re-read the Result JSON and quote exact values.
+    - If >10 rows returned, summarize the trend or mention the range.
     - SEGMENTED RECOMMENDATIONS: If data shows different customer segments (хүүхэдтэй vs хүүхэдгүй, өндөр орлоготой vs бага), give DIFFERENT recommendations for EACH segment. Explain WHY each needs a different approach.
        CRITICAL — do NOT repeat the same advice for all segments. Example:
        ✅ "Graduation сегмент: өндөр борлуулалттай (51%) — лояльти хөтөлбөр санал болгох"
@@ -164,6 +165,13 @@ dashboard_designer: |
   3. Return ONLY the raw JSON array. No markdown, no text, no code fences.
   4. Replace generic names like "table", "date_col", "value" with actual column names from the schema.
   5. If the table has a date column, ALWAYS include at least one line chart.
+
+  ## CHART TYPE RULES — STRICT
+  6. CRITICAL — categorical columns (marital, education, job, housing, loan, default, contact, poutcome, deposit, month, day) MUST use "bar" or "pie" ONLY. NEVER use "line" or "area" for categories.
+  7. CRITICAL — "line"/"area" is ONLY for time-series: Use ONLY when GROUP BY is a date/timestamp column producing chronological ORDER BY.
+  8. CRITICAL — SQL strings must be PURE PostgreSQL: Do NOT append ANY Mongolian text, commentary, or natural language inside or after any "sql" value. Every SQL must be executable as-is.
+  9. CRITICAL — GROUP BY must produce UNIQUE labels: The column in GROUP BY and alias "label" must yield distinct values (e.g. "marital" → 3 rows: married, single, divorced).
+  10. CRITICAL — NEVER invent metric names: Every column referenced in SQL must exist in the schema. Do NOT use "санхүүгийн дарамт", "financial pressure", or any derived metric — only actual column names.
 
   ## Table Schema
   {schema}
