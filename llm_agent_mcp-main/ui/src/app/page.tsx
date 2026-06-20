@@ -15,7 +15,9 @@ import {
   TrendingUp,
   Users,
   DollarSign,
-  Target
+  Target,
+  Code2,
+  ChevronDown
 } from "lucide-react";
 import { toPng } from "html-to-image";
 
@@ -346,6 +348,31 @@ const DashboardWidget = ({ widget, kpiIndex = 0 }: { widget: any; kpiIndex?: num
             {renderChart()}
           </ResponsiveContainer>
         )}
+      </div>
+    </div>
+  );
+};
+
+const SqlBlock = ({ code }: { code: string }) => {
+  const [collapsed, setCollapsed] = useState(true);
+  return (
+    <div className="my-2 rounded-lg overflow-hidden border border-border/50 shadow-sm">
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center gap-2 px-3 py-1.5 bg-codebg/90 text-codetext/70 text-[10px] font-mono cursor-pointer hover:bg-codebg transition-colors"
+      >
+        <Code2 className="w-3 h-3 text-accent" />
+        <span className="text-accent font-semibold tracking-wide">SQL</span>
+        <span className="text-codetext/40 truncate flex-1 text-left ml-1">
+          {code.split("\n")[0].substring(0, 60)}
+          {code.split("\n")[0].length > 60 ? "..." : ""}
+        </span>
+        <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`} />
+      </button>
+      <div className={`overflow-hidden transition-all duration-200 ${collapsed ? "max-h-0" : "max-h-[600px]"}`}>
+        <pre className="m-0 p-3 bg-codebg text-codetext text-[11px] font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap">
+          {code}
+        </pre>
       </div>
     </div>
   );
@@ -1042,9 +1069,11 @@ export default function Home() {
   const formatMessageText = (text: string) => {
     if (!text) return "";
 
-    // Split by <visual> and <dashboard> tags while preserving tagged blocks.
-    const tagPattern = new RegExp("(<(?:visual|dashboard)>[\\s\\S]*?<\\/(?:visual|dashboard)>)", "g");
-    const parts = text.split(tagPattern);
+    const blockPattern = new RegExp(
+      "(<(?:visual|dashboard)>[\\s\\S]*?<\\/(?:visual|dashboard)>|```sql\\n[\\s\\S]*?```)",
+      "g"
+    );
+    const parts = text.split(blockPattern);
 
     return parts.map((part, idx) => {
       if (part.startsWith("<visual>")) {
@@ -1057,10 +1086,13 @@ export default function Home() {
         const jsonContent = part.replace(stripTag, "");
         return <DashboardMessage key={idx} dashboardJson={jsonContent} />;
       }
+      if (part.startsWith("```sql")) {
+        const code = part.replace(/```sql\n?|```\n?/g, "");
+        return <SqlBlock key={idx} code={code} />;
+      }
 
       const lines = part.split("\n");
       return lines.map((line, lineIdx) => {
-        // Strip out routing prefixes from output rendering to keep it clean
         if (line.startsWith("(Finance Agent)") || line.startsWith("(Tech Agent)")) {
           return null;
         }
@@ -1110,13 +1142,13 @@ export default function Home() {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-background text-foreground/80 font-sans antialiased text-xs flex flex-col transition-colors duration-200">
+        <div className="h-screen overflow-hidden font-sans antialiased text-xs flex flex-col transition-colors duration-200" style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}>
       
       {/* HEADER */}
-      <header className="border-b border-border bg-background px-6 py-3 flex items-center justify-between transition-colors duration-200">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-foreground text-sm tracking-tight">Enterprise Orchestrator</span>
-          <span className="text-[10px] text-foreground/50 font-mono">v1.2</span>
+      <header className="apple-header px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="font-bold text-sm tracking-tight" style={{ color: "var(--foreground)" }}>Enterprise Orchestrator</span>
+          <span className="text-[10px] font-mono" style={{ color: "var(--foreground)", opacity: 0.35 }}>v1.2</span>
         </div>
 
         <div className="flex items-center gap-4">
@@ -1155,13 +1187,13 @@ export default function Home() {
 
       {/* LOGIN VIEW */}
       {!isLoggedIn ? (
-        <main className="flex-1 flex items-center justify-center p-4 bg-background transition-colors duration-200">
-          <div className="w-full border border-border bg-card rounded-lg p-4 shadow-sm transition-colors duration-200 max-w-sm">
-            <div className="text-center mb-3">
-              <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Login Required</h2>
+        <main className="flex-1 flex items-center justify-center p-4" style={{ backgroundColor: "var(--background)" }}>
+          <div className="w-full border max-w-sm" style={{ backgroundColor: "var(--card-bg)", borderColor: "var(--card-border)", borderRadius: "14px", padding: "24px", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
+            <div className="text-center mb-5">
+              <h2 className="text-sm font-bold tracking-tight" style={{ color: "var(--foreground)" }}>Sign In</h2>
             </div>
 
-            <form onSubmit={(e) => handleLogin(e)} className="space-y-2">
+            <form onSubmit={(e) => handleLogin(e)} className="space-y-3">
               <div>
                 <input
                   type="email"
@@ -1169,7 +1201,7 @@ export default function Home() {
                   placeholder="Email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-background border border-border rounded p-2 text-xs text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors"
+                  className="apple-input w-full"
                 />
               </div>
 
@@ -1180,14 +1212,14 @@ export default function Home() {
                   placeholder="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-background border border-border rounded p-2 text-xs text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors"
+                  className="apple-input w-full"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isAuthLoading}
-                className="w-full bg-foreground text-background hover:opacity-90 font-bold py-1.5 rounded text-xs transition-colors cursor-pointer disabled:opacity-50"
+                className="apple-send-btn w-full flex items-center justify-center"
               >
                 {isAuthLoading ? "Loading..." : "Sign In"}
               </button>
@@ -1199,46 +1231,46 @@ export default function Home() {
         <main className="flex-1 flex overflow-hidden min-h-0">
           
           {/* LEFT SIDEBAR: KPI METRICS & CONTROLS */}
-          <section className="w-full md:w-[320px] shrink-0 border-r border-border bg-sidebar p-5 flex flex-col overflow-y-auto scrollbar-hide space-y-6 md:flex hidden transition-colors duration-200">
+          <section className="w-full md:w-[320px] shrink-0 p-5 flex flex-col overflow-y-auto scrollbar-hide space-y-6 md:flex hidden" style={{ borderRight: "1px solid var(--card-border)", backgroundColor: "var(--sidebar-bg)" }}>
             
             {/* KPI METRICS */}
-            <div className="space-y-4">
-              <div className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-2">Metrics</div>
+            <div className="space-y-3">
+              <div className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--foreground)", opacity: 0.35 }}>Metrics</div>
               
               {/* Sales Metric */}
-              <div className="py-2.5 border-b border-border">
-                <span className="text-foreground/60 block text-[10px] uppercase font-semibold">Sales Revenue</span>
+              <div className="py-2" style={{ borderBottom: "1px solid var(--card-border)" }}>
+                <span className="text-[10px] uppercase font-semibold" style={{ color: "var(--foreground)", opacity: 0.5 }}>Sales Revenue</span>
                 <div className="flex justify-between items-baseline mt-0.5">
-                  <span className="text-sm font-extrabold text-foreground">
+                  <span className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
                     {salesKpi ? `$${salesKpi.current.toLocaleString()}` : "—"}
                   </span>
-                  <span className="text-[10px] text-foreground/50 font-mono">
+                  <span className="text-[10px] font-mono" style={{ color: "var(--foreground)", opacity: 0.4 }}>
                     Target: {salesKpi ? `$${salesKpi.target.toLocaleString()}` : "—"}
                   </span>
                 </div>
               </div>
 
               {/* Users Metric */}
-              <div className="py-2.5 border-b border-border">
-                <span className="text-foreground/60 block text-[10px] uppercase font-semibold">Active Users</span>
+              <div className="py-2" style={{ borderBottom: "1px solid var(--card-border)" }}>
+                <span className="text-[10px] uppercase font-semibold" style={{ color: "var(--foreground)", opacity: 0.5 }}>Active Users</span>
                 <div className="flex justify-between items-baseline mt-0.5">
-                  <span className="text-sm font-extrabold text-foreground">
+                  <span className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
                     {usersKpi ? usersKpi.current.toLocaleString() : "—"}
                   </span>
-                  <span className="text-[10px] text-foreground/50 font-mono">
+                  <span className="text-[10px] font-mono" style={{ color: "var(--foreground)", opacity: 0.4 }}>
                     Goal: {usersKpi ? usersKpi.target : "—"}
                   </span>
                 </div>
               </div>
 
               {/* Churn Metric */}
-              <div className="py-2.5">
-                <span className="text-foreground/60 block text-[10px] uppercase font-semibold">Churn Rate</span>
+              <div className="py-2">
+                <span className="text-[10px] uppercase font-semibold" style={{ color: "var(--foreground)", opacity: 0.5 }}>Churn Rate</span>
                 <div className="flex justify-between items-baseline mt-0.5">
-                  <span className={`text-sm font-extrabold ${churnKpi && churnKpi.current > churnKpi.target ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                  <span className={`text-sm font-bold ${churnKpi && churnKpi.current > churnKpi.target ? "text-red-500" : "text-emerald-500"}`}>
                     {churnKpi ? `${churnKpi.current}%` : "—"}
                   </span>
-                  <span className="text-[10px] text-foreground/50 font-mono">
+                  <span className="text-[10px] font-mono" style={{ color: "var(--foreground)", opacity: 0.4 }}>
                     Limit: {churnKpi ? `${churnKpi.target}%` : "—"}
                   </span>
                 </div>
@@ -1246,15 +1278,15 @@ export default function Home() {
             </div>
 
             {user && (
-              <div className="border-t border-border pt-5 space-y-4">
+              <div className="pt-5 space-y-4" style={{ borderTop: "1px solid var(--card-border)" }}>
                 
                 {/* PYTHON CONSOLE */}
                 <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Sandbox Code VM</span>
+                  <span className="text-[9px] font-bold uppercase tracking-widest block" style={{ color: "var(--foreground)", opacity: 0.35 }}>Sandbox Code VM</span>
                   <textarea
                     value={adminCode}
                     onChange={(e) => setAdminCode(e.target.value)}
-                    className="w-full h-20 bg-background border border-border rounded p-2 font-mono text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors"
+                    className="apple-input w-full h-20 font-mono text-[10px]"
                   />
                   <button
                     onClick={handleRunAdminCode}
@@ -1417,29 +1449,29 @@ export default function Home() {
             </section>
 
           {/* RIGHT PANELS: VISUALIZER & CHAT */}
-          <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
+          <section className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ backgroundColor: "var(--background)" }}>
             
-            {/* MINIMALIST ROUTING INDICATOR */}
-            <div className="border-b border-border py-2.5 px-6 flex items-center justify-between bg-sidebar/50 transition-colors duration-200">
-              <div className="flex items-center gap-1.5 text-foreground/50 text-[10px] uppercase font-bold tracking-wider">
-                <span className={`w-1.5 h-1.5 rounded-full ${activeRoutingState !== "idle" && activeRoutingState !== "done" ? "bg-foreground animate-pulse" : "bg-foreground/30"}`} />
-                Orchestrator Path
+            {/* ROUTING INDICATOR */}
+            <div className="py-2 px-6 flex items-center justify-between" style={{ borderBottom: "1px solid var(--card-border)", backgroundColor: "var(--sidebar-bg)" }}>
+              <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider" style={{ color: "var(--foreground)", opacity: 0.45 }}>
+                <span className={`w-1.5 h-1.5 rounded-full ${activeRoutingState !== "idle" && activeRoutingState !== "done" ? "bg-[var(--accent)] animate-pulse" : ""}`} style={{ backgroundColor: activeRoutingState === "idle" || activeRoutingState === "done" ? "var(--foreground)" : undefined, opacity: activeRoutingState === "idle" || activeRoutingState === "done" ? 0.3 : 1 }} />
+                Agent Path
               </div>
-              <div className="flex gap-4 items-center font-mono text-[9px]">
-                <span className={`${activeRoutingState === "routing" ? "text-foreground font-bold" : "text-foreground/40"}`}>Router</span>
-                <span className="text-foreground/30">→</span>
-                <span className={`${activeRoutingState === "finance" ? "text-foreground font-bold" : "text-foreground/40"}`}>FinanceAgent</span>
-                <span className="text-foreground/30">/</span>
-                <span className={`${activeRoutingState === "tech" ? "text-foreground font-bold" : "text-foreground/40"}`}>TechAgent</span>
+              <div className="flex gap-3 items-center font-mono text-[9px]">
+                <span style={{ color: activeRoutingState === "routing" ? "var(--foreground)" : "var(--foreground)", opacity: activeRoutingState === "routing" ? 1 : 0.35 }}>Router</span>
+                <span style={{ color: "var(--foreground)", opacity: 0.25 }}>→</span>
+                <span style={{ color: activeRoutingState === "finance" ? "var(--accent)" : "var(--foreground)", opacity: activeRoutingState === "finance" ? 1 : 0.35, fontWeight: activeRoutingState === "finance" ? 700 : 400 }}>Finance</span>
+                <span style={{ color: "var(--foreground)", opacity: 0.25 }}>/</span>
+                <span style={{ color: activeRoutingState === "tech" ? "var(--accent)" : "var(--foreground)", opacity: activeRoutingState === "tech" ? 1 : 0.35, fontWeight: activeRoutingState === "tech" ? 700 : 400 }}>Tech</span>
               </div>
             </div>
 
             {/* CHAT MESSAGES THREAD */}
             <div className="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-6 flex flex-col justify-start">
               {messages.length === 0 ? (
-                <div className="text-center text-foreground/40 my-auto">
-                  <p className="font-semibold">Orchestration thread active.</p>
-                  <p className="text-[10px] mt-1">Submit a financial question or coding task to begin.</p>
+                <div className="text-center my-auto" style={{ color: "var(--foreground)", opacity: 0.35 }}>
+                  <p className="font-semibold tracking-tight">Ready</p>
+                  <p className="text-[10px] mt-1" style={{ opacity: 0.6 }}>Ask a question to begin.</p>
                 </div>
               ) : (
                 messages.map((msg) => (
@@ -1449,24 +1481,24 @@ export default function Home() {
                   >
                     <div className="max-w-2xl w-full flex flex-col">
                       {msg.sender === "user" ? (
-                        <div className="bg-foreground text-background border border-foreground/10 rounded-2xl px-4 py-2.5 text-xs max-w-[80%] self-end shadow-sm transition-colors duration-200">
+                        <div className="apple-user-bubble">
                           {msg.text}
                         </div>
                       ) : (
-                        <div className="flex flex-col gap-1 border-l border-border pl-4 py-0.5 transition-colors duration-200">
+                        <div className="apple-agent-card">
                           {msg.agentName && (
-                            <span className="text-[9px] text-foreground/50 font-bold uppercase tracking-wider">
+                            <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "var(--accent)", opacity: 0.8 }}>
                               {msg.agentName}
                             </span>
                           )}
-                          <div className="text-foreground/90 text-xs">
+                          <div className="text-xs leading-relaxed" style={{ color: "var(--foreground)", opacity: 0.85 }}>
                             {formatMessageText(msg.text)}
 
                             {msg.text === "" && (
-                              <div className="flex gap-1 items-center py-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-[bounce_1s_infinite]" />
-                                <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-[bounce_1s_infinite_0.2s]" />
-                                <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-[bounce_1s_infinite_0.4s]" />
+                              <div className="flex gap-1.5 items-center py-1.5">
+                                <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "var(--accent)", opacity: 0.5, animationDelay: "0ms" }} />
+                                <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "var(--accent)", opacity: 0.35, animationDelay: "200ms" }} />
+                                <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "var(--accent)", opacity: 0.2, animationDelay: "400ms" }} />
                               </div>
                             )}
                           </div>
@@ -1496,42 +1528,30 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex gap-3 items-center max-w-3xl mx-auto w-full">
-                <button
-                  type="button"
-                  onClick={() => setIsGraphicModeEnabled(!isGraphicModeEnabled)}
-                  className={`p-2 rounded transition-all cursor-pointer border ${
-                    isGraphicModeEnabled 
-                      ? "bg-foreground text-background border-foreground" 
-                      : "bg-sidebar border-border text-foreground/50 hover:text-foreground hover:border-foreground/30"
-                  }`}
-                  title={isGraphicModeEnabled ? "Graphic Mode ON" : "Graphic Mode OFF"}
-                >
-                  <BarChart2 className="w-3.5 h-3.5" />
-                </button>
+              <div className="flex gap-2.5 items-center max-w-3xl mx-auto w-full">
                 <input
                   type="text"
-                  placeholder="Message orchestrator..."
+                  placeholder="Message..."
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={isChatLoading}
-                  className="flex-1 bg-sidebar border border-border rounded py-2 px-3 text-xs text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 text-[11px] disabled:opacity-50 transition-all duration-150"
+                  className="apple-input flex-1 disabled:opacity-50"
                 />
                 {isChatLoading ? (
                   <button
                     type="button"
                     onClick={handleCancelMessage}
-                    className="px-4 py-2 bg-red-500/10 border border-red-500/30 text-red-500 dark:text-red-400 hover:bg-red-500/20 hover:border-red-500/50 rounded font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 duration-150"
-                    title="Stop generation"
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all cursor-pointer active:scale-95 duration-150 text-xs font-semibold"
+                    title="Stop"
                   >
-                    <Square className="w-3.5 h-3.5 fill-current" />
-                    <span className="text-xs font-semibold">Stop</span>
+                    <Square className="w-3 h-3 fill-current" />
+                    Stop
                   </button>
                 ) : (
                   <button
                     type="submit"
                     disabled={isChatLoading || !input.trim()}
-                    className="p-2 bg-foreground text-background hover:opacity-90 rounded font-bold transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer flex items-center justify-center active:scale-95 duration-150"
+                    className="apple-send-btn disabled:opacity-30 disabled:pointer-events-none cursor-pointer flex items-center justify-center"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
