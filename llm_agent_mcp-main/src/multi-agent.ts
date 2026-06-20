@@ -51,6 +51,14 @@ export const AgentStateAnnotation = Annotation.Root({
 
 const checkpointer = new MemorySaver();
 const LLM_TIMEOUT_MS = 60000;
+const MAX_HISTORY_MESSAGES = 10;
+
+function trimMessages(messages: any[]): any[] {
+    const systemMsg = messages.filter((m: any) => m.role === "system");
+    const nonSystem = messages.filter((m: any) => m.role !== "system");
+    const trimmed = nonSystem.slice(-MAX_HISTORY_MESSAGES);
+    return [...systemMsg, ...trimmed];
+}
 
 export async function clearConversationMemory() {
     try {
@@ -234,7 +242,7 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query", "код ажиллуул",
         "харуул", "нийт", "нийлбэр", "дундаж", "тоо", "тоолох", "жагсаал", "жагсаалт",
         "шинжилгээ", "шинжил", "задла", "задлан", "гаргаж", "гаргах", "тооцо", "тооцоол",
-        "хамгийн бага", "хамгийн өндөр", "ямар", "ямар ямар",
+        "хамгийн бага", "хамгийн өндөр",
         "хэд", "хэдэн", "нийт хэдэн", "гүйлгээ", "бүтээгдэхүүн", "бараа",
         "chart", "graph", "visualize", "plot", "харагдуул", "зур",
         "count", "sum", "average", "avg", "total", "group by", "order by", "where", "filter",
@@ -297,10 +305,10 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
                 }
                 const endSystemPrompt = prompts.supervisor_end;
                 try {
-                    const stream = await withTimeout(llm.stream([
+                    const stream = await withTimeout(llm.stream(trimMessages([
                         { role: "system", content: endSystemPrompt },
                         ...state.messages.map((m: any) => ({ role: m.role, content: m.content }))
-                    ]), "Supervisor end response");
+                    ])), "Supervisor end response");
                     let fullText = "";
                     for await (const chunk of stream) {
                         const text = chunk.content as string;
@@ -411,10 +419,10 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
     const financePrompt = prompts.finance_agent;
     const systemPrompt = `${financePrompt}\n\nHere is the retrieved business context:\n${context}`;
     
-    const executeMessages = [
+    const executeMessages = trimMessages([
         { role: "system", content: systemPrompt },
         ...state.messages.map((m: any) => ({ role: m.role, content: m.content }))
-    ];
+    ]);
 
     try {
         let stream: any;
@@ -676,10 +684,10 @@ Task: ${query}`;
     const explainSystemPrompt = (prompts.tech_agent_explain as string).replace("{visual_instruction}", visualInstruction);
     const explainPrompt = `${explainSystemPrompt}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}`;
 
-    const explainMessages = [
+    const explainMessages = trimMessages([
         { role: "system", content: explainPrompt },
         ...state.messages.map((m: any) => ({ role: m.role, content: m.content }))
-    ];
+    ]);
 
     async function executeExplainWithFallback(messages: any[]) {
         try {

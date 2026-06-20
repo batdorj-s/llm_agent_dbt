@@ -59,6 +59,12 @@ app.post("/api/auth/login", (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password required" });
   }
+  if (password.length < 4) {
+    return res.status(400).json({ error: "Password must be at least 4 characters" });
+  }
+  if (!email.includes("@")) {
+    return res.status(400).json({ error: "Invalid email format" });
+  }
 
   const role: UserRole = "admin";
   const token = createToken(email, role);

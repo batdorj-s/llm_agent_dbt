@@ -458,12 +458,17 @@ function validateSelectColumns(query: string, columns: string[], columnNamesLowe
 function splitSelectColumns(clause: string): string[] {
     const result: string[] = [];
     let depth = 0;
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
     let current = '';
     for (let i = 0; i < clause.length; i++) {
         const c = clause[i];
-        if (c === '(') depth++;
-        else if (c === ')') depth--;
-        else if (c === ',' && depth === 0) {
+        const prev = i > 0 ? clause[i - 1] : '';
+        if (c === "'" && prev !== '\\' && !inDoubleQuote) inSingleQuote = !inSingleQuote;
+        else if (c === '"' && prev !== '\\' && !inSingleQuote) inDoubleQuote = !inDoubleQuote;
+        else if (c === '(' && !inSingleQuote && !inDoubleQuote) depth++;
+        else if (c === ')' && !inSingleQuote && !inDoubleQuote) depth--;
+        else if (c === ',' && depth === 0 && !inSingleQuote && !inDoubleQuote) {
             if (current.trim()) result.push(current.trim());
             current = '';
             continue;

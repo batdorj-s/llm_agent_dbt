@@ -9,7 +9,7 @@ export let knowledgeDocuments = [
     id: "doc1",
     text: "Business Glossary: 'Sales' refers to the total revenue generated from closed deals, calculated from the active Data Lake dataset's revenue or amount column. The current annual target is set to 500,000 USD.",
     metadata: { category: "glossary", department: "sales" },
-    keywords: ["sales", "revenue", "target", "deals", "finance", "dataset"]
+    keywords: ["sales", "revenue", "target", "deals", "finance", "dataset", "kpi", "kpi target"]
   },
   {
     id: "doc2",
