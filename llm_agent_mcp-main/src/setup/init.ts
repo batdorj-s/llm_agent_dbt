@@ -61,23 +61,41 @@ function runDbtIfAvailable() {
   }
 }
 
-export function runDbtForTable(inputTable: string, columns?: string[]): void {
+export function runDbtForTable(inputTable: string, columns?: string[], mapping?: Record<string, string | null>): void {
   if (!dbtAvailable()) {
     console.log(`[dbt] not installed — skipping dbt for '${inputTable}'`);
     return;
   }
   try {
     console.log(`[dbt] Running pipeline for '${inputTable}'...`);
-    const colLower = (columns || []).map(c => c.toLowerCase());
     const vars = JSON.stringify({
       input_table: inputTable,
-      has_segment: colLower.includes('segment'),
-      has_category: colLower.includes('category'),
+      sales_col: mapping?.sales_col || null,
+      date_col: mapping?.date_col || null,
+      customer_col: mapping?.customer_col || null,
+      segment_col: mapping?.segment_col || null,
+      category_col: mapping?.category_col || null,
+      profit_col: mapping?.profit_col || null,
+      id_col: mapping?.id_col || null,
+      region_col: mapping?.region_col || null,
     });
     runDbt(`run --vars '${vars}' --profiles-dir .`);
     console.log(`[dbt] Pipeline complete for '${inputTable}' ✅`);
   } catch (err) {
     console.warn(`[dbt] Pipeline failed for '${inputTable}':`, (err as Error).message);
+  }
+}
+
+export function runDbtTest(vars: string): string {
+  if (!dbtAvailable()) return "dbt not available";
+  try {
+    return execSync(`"${DBT_EXE}" test --vars '${vars}' --profiles-dir .`, {
+      cwd: path.join(ROOT, "dbt"),
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (err: any) {
+    return err.stdout || err.message || "Test execution failed";
   }
 }
 

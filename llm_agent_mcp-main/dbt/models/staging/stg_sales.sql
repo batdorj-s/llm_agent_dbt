@@ -1,6 +1,12 @@
 {% set input_table = var('input_table', 'superstore_sales') %}
-{% set has_segment = var('has_segment', true) %}
-{% set has_category = var('has_category', true) %}
+{% set sales_col = var('sales_col', 'sales') %}
+{% set date_col = var('date_col', 'order_date') %}
+{% set customer_col = var('customer_col', 'customer_id') %}
+{% set profit_col = var('profit_col', 'profit') %}
+{% set id_col = var('id_col', 'order_id') %}
+{% set segment_col = var('segment_col', 'segment') %}
+{% set category_col = var('category_col', 'category') %}
+{% set region_col = var('region_col', null) %}
 
 with raw_sales as (
     {% if input_table == 'superstore_sales' %}
@@ -11,11 +17,12 @@ with raw_sales as (
 )
 
 select
-    order_id,
-    cast(order_date as timestamp) as order_date,
-    sales,
-    profit,
-    customer_id,
-    {% if has_segment %} segment {% else %} cast(null as varchar) as segment {% endif %},
-    {% if has_category %} category {% else %} cast(null as varchar) as category {% endif %}
+    {{ id_col }} as order_id,
+    cast({{ date_col }} as timestamp) as order_date,
+    {{ sales_col }} as sales,
+    {{ profit_col }} as profit,
+    {{ customer_col }} as customer_id,
+    {% if segment_col %} {{ segment_col }} {% else %} cast(null as varchar) as segment {% endif %},
+    {% if category_col %} {{ category_col }} {% else %} cast(null as varchar) as category {% endif %}
+    {% if region_col %}, {{ region_col }} as region {% endif %}
 from raw_sales

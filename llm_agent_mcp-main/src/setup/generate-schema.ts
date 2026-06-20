@@ -31,7 +31,17 @@ export async function generateSchemaYml(tableName: string, columns: string[]): P
       {
         name: "stg_sales",
         description: `Cleaned sales data sourced from ${tableName}.`,
-        columns: stgColumns,
+        columns: [
+          ...stgColumns,
+        ],
+        tests: [
+          {
+            assert_true: {
+              expression: "sales >= 0",
+              severity: "error",
+            },
+          },
+        ],
       },
       {
         name: "int_sales_enriched",
@@ -39,12 +49,34 @@ export async function generateSchemaYml(tableName: string, columns: string[]): P
         columns: [
           { name: "order_id", tests: ["unique", "not_null"] },
         ],
+        tests: [
+          {
+            assert_true: {
+              expression: "profit_margin_pct > -1000",
+              severity: "error",
+              name: "profit_margin_reasonable_lower",
+            },
+          },
+          {
+            assert_true: {
+              expression: "profit_margin_pct < 1000",
+              severity: "error",
+              name: "profit_margin_reasonable_upper",
+            },
+          },
+        ],
       },
       {
         name: "kpi_sales",
         description: "Daily aggregated sales and profit metrics by category.",
         tests: [
           { "dbt_utils.equal_rowcount": { compare_model: "ref('stg_sales')" } },
+          {
+            assert_true: {
+              expression: "total_sales >= 0",
+              severity: "error",
+            },
+          },
         ],
       },
       {
@@ -52,6 +84,14 @@ export async function generateSchemaYml(tableName: string, columns: string[]): P
         description: "Customer-level metrics.",
         columns: [
           { name: "customer_id", tests: ["unique", "not_null"] },
+        ],
+        tests: [
+          {
+            assert_true: {
+              expression: "total_spend >= 0",
+              severity: "error",
+            },
+          },
         ],
       },
     ],

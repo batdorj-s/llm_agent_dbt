@@ -10,7 +10,7 @@ import { agentLimiter } from "./rate-limiter.js";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
 import { setupKnowledgeBase } from "./rag.js";
-import { ensureProjectReady, runDbtForTable } from "./setup/init.js";
+import { ensureProjectReady, runDbtForTable, runDbtTest } from "./setup/init.js";
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
@@ -237,6 +237,20 @@ app.delete("/api/admin/files/:id", async (req, res) => {
   }
 });
 
+function buildColumnMapping(cols: string[]): Record<string, string | null> {
+  const colLower = cols.map(c => c.toLowerCase());
+  return {
+    sales_col: cols.find(c => /sales|revenue|amount|price/i.test(c)) || null,
+    date_col: cols.find(c => /date|time|timestamp|month|year|day/i.test(c)) || null,
+    customer_col: cols.find(c => /customer_id|user_id|client_id|account_id|email/i.test(c)) || null,
+    segment_col: cols.find(c => /segment|group|type|class|tier|bucket/i.test(c)) || null,
+    category_col: cols.find(c => /category|product|item|brand|department|sub_category/i.test(c)) || null,
+    profit_col: cols.find(c => /profit|margin|cogs/i.test(c)) || null,
+    id_col: cols.find(c => /_id$|^id$|order_id|transaction|invoice/i.test(c)) || null,
+    region_col: cols.find(c => /region|city|state|country|area|location|market/i.test(c)) || null,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Admin: Upload CSV Dataset
 // ─────────────────────────────────────────────────────────────
@@ -300,9 +314,26 @@ app.post("/api/admin/upload-csv", async (req, res) => {
     // Hybrid dbt: if table has standard KPI columns, run dbt pipeline
     if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
         && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
+
+        const mapping = buildColumnMapping(cols);
         try {
-            runDbtForTable(sanitizedTableName, cols);
+            runDbtForTable(sanitizedTableName, cols, mapping);
             await generateSchemaYml(sanitizedTableName, cols);
+
+            const testOutput = runDbtTest(JSON.stringify({ input_table: sanitizedTableName, ...mapping }));
+            const hasFailures = /FAILED|ERROR/i.test(testOutput);
+            if (hasFailures) {
+                const warningText = `⚠️ DATA QUALITY WARNING for table '${sanitizedTableName}': dbt tests detected issues. Agents should verify data before reporting.`;
+                await addDocumentToCatalog(`dbt_warning_${sanitizedTableName}`, warningText, {
+                    category: "data_catalog",
+                    department: "analytics",
+                    author: "system",
+                    source_name: "Data Quality Gate",
+                }, [sanitizedTableName, "dbt_warning", "data_quality"]);
+                console.warn(`[Upload] dbt tests FAILED for '${sanitizedTableName}' — RAG warning added`);
+            } else {
+                console.log(`[Upload] dbt tests PASSED for '${sanitizedTableName}' ✅`);
+            }
         } catch (err) {
             console.warn(`[Upload] dbt pipeline error for '${sanitizedTableName}':`, (err as Error).message);
         }

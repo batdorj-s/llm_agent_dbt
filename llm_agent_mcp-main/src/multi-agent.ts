@@ -487,7 +487,8 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
     if (onChunk) onChunk(prefix);
 
     const financePrompt = prompts.finance_agent;
-    const systemPrompt = `${financePrompt}\n\nHere is the retrieved business context:\n${context}`;
+    const qualityChecklistFinance = prompts.data_quality_checklist || "";
+    const systemPrompt = `${financePrompt}\n\n${qualityChecklistFinance}\n\nHere is the retrieved business context:\n${context}`;
     
     const executeMessages = trimMessages([
         { role: "system", content: systemPrompt },
@@ -853,7 +854,10 @@ Task: ${query}`;
         };
     }
 
-    const explainSystemPrompt = (prompts.tech_agent_explain as string).replace("{visual_instruction}", "DO NOT generate any <visual> tags. Visualizations will be added automatically after your response.");
+    const qualityChecklist = prompts.data_quality_checklist || "";
+    const explainSystemPrompt = (prompts.tech_agent_explain as string)
+      .replace("{visual_instruction}", "DO NOT generate any <visual> tags. Visualizations will be added automatically after your response.")
+      .replace("{{ data_quality_checklist }}", qualityChecklist);
     const explainPrompt = `${explainSystemPrompt}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}`;
 
     const explainMessages = trimMessages([
