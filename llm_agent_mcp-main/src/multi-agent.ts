@@ -469,6 +469,38 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
     }
 }
 
+function generateVisualTag(jsonResults: string): string {
+    let data: any[];
+    try {
+        data = JSON.parse(jsonResults);
+    } catch {
+        return '';
+    }
+    if (!Array.isArray(data) || data.length <= 1) return '';
+    const keys = Object.keys(data[0]);
+    if (keys.length === 0) return '';
+
+    const labelKey = keys.find(k => k.toLowerCase() === 'label') || keys[0];
+    const numericKeys = keys.filter(k => k !== labelKey && !isNaN(parseFloat(data[0][k])));
+    const valueKey = keys.find(k => k.toLowerCase() === 'value') || (numericKeys.length > 0 ? numericKeys[numericKeys.length - 1] : keys[keys.length - 1]);
+
+    const sampleLabel = String(data[0][labelKey] || '').toLowerCase();
+    const timeIndicators = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
+        '2020', '2021', '2022', '2023', '2024', '2025', '2026', 'month', 'year', 'date'];
+    const isTimeSeries = timeIndicators.some(p => sampleLabel.includes(p) || sampleLabel.startsWith(p))
+        || data.some((r: any) => /^\d{4}/.test(String(r[labelKey] || '')));
+
+    const chartType = isTimeSeries ? 'line' : (data.length <= 6 ? 'pie' : 'bar');
+
+    const visualData = data.map((row: any) => ({
+        label: String(row[labelKey] ?? ''),
+        value: parseFloat(row[valueKey]) || 0
+    }));
+
+    const visual = { title: "Дүн шинжилгээ", type: chartType, data: visualData, config: { xAxis: "label", yAxis: "value" } };
+    return `<visual>${JSON.stringify(visual)}</visual>`;
+}
+
 async function techAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
     const onChunk = config?.configurable?.onChunk;
 
@@ -568,7 +600,39 @@ Task: ${query}`;
             ]), "Dashboard design");
 
             const raw = dashResponse.content as string;
-            const fullText = `${dashPrefix}**${activeEntry.table_name}**-д зориулсан Dashboard:\n\`\`\`json\n${raw}\n\`\`\``;
+            let widgets: any[];
+            try {
+                const jsonMatch = raw.match(/\[[\s\S]*\]/);
+                if (!jsonMatch) throw new Error("No JSON array found in LLM response");
+                widgets = JSON.parse(jsonMatch[0]);
+            } catch (parseErr) {
+                const fallback = `${dashPrefix}⚠️ Dashboard өгөгдлийг боловсруулахад алдаа гарлаа. Анхны хариу:\n\`\`\`json\n${raw}\n\`\`\``;
+                if (onChunk) onChunk(fallback);
+                return { messages: [{ role: "assistant", content: fallback }] };
+            }
+
+            for (const widget of widgets) {
+                if (widget.sql) {
+                    try {
+                        const sqlResult = await handleExecuteSql({ query: widget.sql });
+                        if (sqlResult.ok && sqlResult.results) {
+                            if (widget.type === "kpi") {
+                                widget.value = sqlResult.results[0]?.value ?? null;
+                            } else {
+                                widget.data = sqlResult.results;
+                            }
+                        } else {
+                            widget.error = sqlResult.text;
+                        }
+                    } catch (sqlErr) {
+                        widget.error = (sqlErr as Error).message;
+                    }
+                    delete widget.sql;
+                }
+            }
+
+            const dashboardJson = JSON.stringify(widgets);
+            const fullText = `${dashPrefix}<dashboard>${dashboardJson}</dashboard>`;
             if (onChunk) onChunk(fullText);
             return { messages: [{ role: "assistant", content: fullText }] };
         } catch (dashErr) {
@@ -724,8 +788,7 @@ Task: ${query}`;
         };
     }
 
-    const visualInstruction = prompts.visual_designer;
-    const explainSystemPrompt = (prompts.tech_agent_explain as string).replace("{visual_instruction}", visualInstruction);
+    const explainSystemPrompt = (prompts.tech_agent_explain as string).replace("{visual_instruction}", "DO NOT generate any <visual> tags. Visualizations will be added automatically after your response.");
     const explainPrompt = `${explainSystemPrompt}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}`;
 
     const explainMessages = trimMessages([
@@ -766,6 +829,13 @@ Task: ${query}`;
         console.warn("[Tech Agent] Explanation failed:", (explainErr as Error).message);
         if (onChunk) onChunk(fallback);
         accumulatedText += fallback;
+    }
+
+    accumulatedText = accumulatedText.replace(/<visual>[\s\S]*?<\/visual>/g, '');
+    const visualTag = generateVisualTag(sandboxResult);
+    if (visualTag) {
+        accumulatedText += `\n\n${visualTag}`;
+        if (onChunk) onChunk(`\n\n${visualTag}`);
     }
 
     return {
