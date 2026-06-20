@@ -10,7 +10,8 @@ import { agentLimiter } from "./rate-limiter.js";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
 import { setupKnowledgeBase } from "./rag.js";
-import { ensureProjectReady } from "./setup/init.js";
+import { ensureProjectReady, runDbtForTable } from "./setup/init.js";
+import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile } from "./db/data-lake.js";
@@ -261,8 +262,9 @@ app.post("/api/admin/upload-csv", async (req, res) => {
     const catalog = await getCatalog();
     const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
 
+    let cols: string[] = [];
     if (tableInfo) {
-      const cols: string[] = JSON.parse(tableInfo.columns_info);
+      cols = JSON.parse(tableInfo.columns_info) as string[];
       const [samples, profile] = await Promise.all([
         getColumnSamples(sanitizedTableName, cols, 5),
         getColumnProfile(sanitizedTableName, cols),
@@ -285,6 +287,18 @@ app.post("/api/admin/upload-csv", async (req, res) => {
     );
 
     await clearConversationMemory();
+
+    // Hybrid dbt: if table has standard KPI columns, run dbt pipeline
+    if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
+        && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
+        try {
+            runDbtForTable(sanitizedTableName, cols);
+            await generateSchemaYml(sanitizedTableName, cols);
+        } catch (err) {
+            console.warn(`[Upload] dbt pipeline error for '${sanitizedTableName}':`, (err as Error).message);
+        }
+    }
+
     res.json({ success: true, message: `Table '${sanitizedTableName}' successfully imported.` });
   } catch (err: any) {
     console.error("[API] CSV Upload Error:", err);

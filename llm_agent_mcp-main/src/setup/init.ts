@@ -35,7 +35,7 @@ function runDbt(args: string): void {
   execSync(`"${DBT_EXE}" ${args}`, { cwd: path.join(ROOT, "dbt"), stdio: "inherit" });
 }
 
-function dbtAvailable(): boolean {
+export function dbtAvailable(): boolean {
   try {
     runDbt("--version");
     return true;
@@ -58,6 +58,26 @@ function runDbtIfAvailable() {
     console.log("[Setup] dbt run complete ✅");
   } catch (err) {
     console.warn("[Setup] dbt run failed — KPI repository will use raw-table fallback:", (err as Error).message);
+  }
+}
+
+export function runDbtForTable(inputTable: string, columns?: string[]): void {
+  if (!dbtAvailable()) {
+    console.log(`[dbt] not installed — skipping dbt for '${inputTable}'`);
+    return;
+  }
+  try {
+    console.log(`[dbt] Running pipeline for '${inputTable}'...`);
+    const colLower = (columns || []).map(c => c.toLowerCase());
+    const vars = JSON.stringify({
+      input_table: inputTable,
+      has_segment: colLower.includes('segment'),
+      has_category: colLower.includes('category'),
+    });
+    runDbt(`run --vars '${vars}' --profiles-dir .`);
+    console.log(`[dbt] Pipeline complete for '${inputTable}' ✅`);
+  } catch (err) {
+    console.warn(`[dbt] Pipeline failed for '${inputTable}':`, (err as Error).message);
   }
 }
 

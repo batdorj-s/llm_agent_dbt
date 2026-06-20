@@ -7,49 +7,7 @@ export class SQLiteKpiRepository implements IKpiRepository {
     }
 
     async getKpi(metric: KpiMetric["name"]): Promise<KpiMetric | null> {
-        try {
-            await initDataLake();
-
-            const targetResult = await getPool().query(
-                `SELECT target_value, unit FROM kpi_targets WHERE metric_name = $1`,
-                [metric]
-            );
-            const targetRow = targetResult.rows[0] as any;
-            if (!targetRow) return null;
-
-            let current = 0;
-
-            if (metric === "sales") {
-                const result = await getPool().query(`SELECT COALESCE(SUM(total_sales), 0) as total FROM kpi_sales`);
-                current = Number(result.rows[0]?.total || 0);
-            } else if (metric === "users") {
-                const result = await getPool().query(`SELECT COUNT(DISTINCT customer_id) as count FROM user_metrics`);
-                current = Number(result.rows[0]?.count || 0);
-            } else if (metric === "churn_rate") {
-                const result = await getPool().query(`
-                    SELECT
-                        (SELECT COUNT(*) FROM user_metrics WHERE total_orders = 1) * 100.0 /
-                        NULLIF((SELECT COUNT(*) FROM user_metrics), 0) as rate
-                `);
-                current = Number(result.rows[0]?.rate || 0);
-            }
-
-            return {
-                name: metric,
-                current: Math.round(current * 100) / 100,
-                target: targetRow.target_value,
-                unit: targetRow.unit,
-                updatedAt: new Date().toISOString()
-            };
-        } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            if (errMsg.includes("does not exist") || errMsg.includes("relation") || errMsg.includes("not found")) {
-                console.warn(`[DB] dbt views not found, falling back to raw table for KPI ${metric}`);
-            } else {
-                console.warn(`[DB] KPI query failed (${errMsg}), falling back to raw table`);
-            }
-            return this.getKpiFallback(metric);
-        }
+        return this.getKpiFallback(metric);
     }
 
     private async getKpiFallback(metric: KpiMetric["name"]): Promise<KpiMetric | null> {
@@ -113,39 +71,7 @@ export class SQLiteKpiRepository implements IKpiRepository {
     }
 
     async getSalesHistory(limit: number): Promise<SalesRecord[]> {
-        try {
-            await initDataLake();
-            const rows = await getPool().query(`
-                SELECT
-                    TO_CHAR(order_date::timestamp, 'YYYY-MM') as month,
-                    SUM(total_sales) as revenue
-                FROM kpi_sales
-                GROUP BY month
-                ORDER BY month DESC
-                LIMIT $1
-            `, [limit]);
-
-            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-
-            return [...rows.rows].reverse().map(row => {
-                if (!row.month) return { month: "Unknown", revenue: row.revenue };
-                const parts = row.month.split("-");
-                const year = parts[0];
-                const monthIdx = parseInt(parts[1]) - 1;
-                return {
-                    month: `${monthNames[monthIdx]} ${year}`,
-                    revenue: Math.round(row.revenue)
-                };
-            });
-        } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            if (errMsg.includes("does not exist") || errMsg.includes("relation")) {
-                console.warn("[DB] kpi_sales view not found, falling back to raw table for history");
-            } else {
-                console.warn(`[DB] Sales history query failed (${errMsg}), falling back to raw table`);
-            }
-            return this.getSalesHistoryFallback(limit);
-        }
+        return this.getSalesHistoryFallback(limit);
     }
 
     private async getSalesHistoryFallback(limit: number): Promise<SalesRecord[]> {
