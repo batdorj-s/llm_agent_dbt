@@ -587,6 +587,7 @@ async function techAgentNode(state: any, config?: any): Promise<Partial<AgentSta
 
         const pythonPrompt = `You are a Python data analyst. Write executable Python 3 code for this task.
 Use pandas if reading CSV files (superstore_sales.csv or retail_sales_dataset.csv may exist in the sandbox).
+IMPORTANT - Memory safety: NEVER load entire datasets into memory. ALWAYS use df.head(500) or df.sample(500) or pd.read_csv(nrows=1000) to limit data size. The sandbox has limited RAM.
 Return ONLY the Python code inside a markdown \`\`\`python block. No explanation outside the block.
 
 Task: ${query}`;

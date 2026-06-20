@@ -339,6 +339,10 @@ export default function Home() {
   // Graphic Mode
   const [isGraphicModeEnabled, setIsGraphicModeEnabled] = useState<boolean>(false);
 
+  // Feedback states
+  const [feedbackState, setFeedbackState] = useState<Record<string, 'positive' | 'negative' | null>>({});
+  const [feedbackSentMsgs, setFeedbackSentMsgs] = useState<Record<string, string>>({});
+
   // Document Upload states
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docDescInput, setDocDescInput] = useState<string>("");
@@ -747,6 +751,38 @@ export default function Home() {
   const handleCancelMessage = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+    }
+  };
+
+  const handleFeedback = async (msgId: string, rating: 'positive' | 'negative') => {
+    if (!token || feedbackState[msgId]) return;
+    setFeedbackState(prev => ({ ...prev, [msgId]: rating }));
+    const msgIndex = messages.findIndex(m => m.id === msgId);
+    const agentMsg = messages[msgIndex];
+    const userMsg = msgIndex > 0 ? messages.slice(0, msgIndex).reverse().find(m => m.sender === 'user') : null;
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          message: userMsg?.text || agentMsg?.text || "",
+          response: agentMsg?.text || "",
+          rating,
+          threadId,
+        }),
+      });
+      if (!res.ok) {
+        setFeedbackState(prev => ({ ...prev, [msgId]: null }));
+      }
+      const icon = rating === 'positive' ? '😊' : '💡';
+      setFeedbackSentMsgs(prev => ({ ...prev, [msgId]: icon }));
+      setTimeout(() => setFeedbackSentMsgs(prev => {
+        const next = { ...prev };
+        delete next[msgId];
+        return next;
+      }), 2000);
+    } catch {
+      setFeedbackState(prev => ({ ...prev, [msgId]: null }));
     }
   };
 
@@ -1328,6 +1364,37 @@ export default function Home() {
                               </div>
                             )}
                           </div>
+                          {msg.text && !isChatLoading && (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <button
+                                onClick={() => handleFeedback(msg.id, 'positive')}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                                  feedbackState[msg.id] === 'positive'
+                                    ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/30'
+                                    : 'text-foreground/40 hover:text-emerald-500 hover:bg-emerald-500/5 border border-transparent'
+                                }`}
+                                title="Сайн хариуллаа"
+                                disabled={!!feedbackState[msg.id]}
+                              >
+                                👍
+                              </button>
+                              <button
+                                onClick={() => handleFeedback(msg.id, 'negative')}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                                  feedbackState[msg.id] === 'negative'
+                                    ? 'text-red-500 bg-red-500/10 border border-red-500/30'
+                                    : 'text-foreground/40 hover:text-red-500 hover:bg-red-500/5 border border-transparent'
+                                }`}
+                                title="Буруу хариуллаа"
+                                disabled={!!feedbackState[msg.id]}
+                              >
+                                👎
+                              </button>
+                              {feedbackSentMsgs[msg.id] && feedbackState[msg.id] && (
+                                <span className="text-[9px] text-foreground/50 ml-1">{feedbackSentMsgs[msg.id]}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

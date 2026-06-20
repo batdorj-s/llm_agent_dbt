@@ -7,8 +7,9 @@ dotenv.config();
 
 let _sandboxInstance: any = null;
 
-const SANDBOX_TIMEOUT_MS = 30_000;
+const SANDBOX_TIMEOUT_MS = 20_000;
 const SANDBOX_CREATE_TIMEOUT_MS = 60_000;
+const SANDBOX_MAX_OUTPUT_CHARS = 10_000;
 
 function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number): Promise<T> {
     let handle: ReturnType<typeof setTimeout>;
@@ -18,6 +19,33 @@ function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number): 
         }, timeoutMs);
     });
     return Promise.race([promise, timeout]).finally(() => clearTimeout(handle!));
+}
+
+function preparePythonCode(code: string): string {
+    const safeLines = [
+        "# ⚠️ Memory safety: sampling first rows to prevent OOM",
+        "import pandas as pd",
+        "_orig_read_csv = pd.read_csv",
+        "_orig_read_excel = pd.read_excel",
+        "def _safe_read_csv(*args, **kwargs):",
+        "    if 'nrows' not in kwargs:",
+        "        kwargs['nrows'] = 1000",
+        "    if 'dtype' not in kwargs:",
+        "        kwargs['dtype'] = 'object'",
+        "    return _orig_read_csv(*args, **kwargs)",
+        "pd.read_csv = _safe_read_csv",
+        "def _safe_read_excel(*args, **kwargs):",
+        "    if 'nrows' not in kwargs:",
+        "        kwargs['nrows'] = 1000",
+        "    return _orig_read_excel(*args, **kwargs)",
+        "pd.read_excel = _safe_read_excel",
+        "_orig_head = pd.DataFrame.head",
+        "def _safe_head(df, n=5):",
+        "    return _orig_head(df, min(n, 500))",
+        "pd.DataFrame.head = _safe_head",
+        "",
+    ];
+    return safeLines.join("\n") + "\n" + code;
 }
 
 // Mock sandbox for development/PoC if no E2B API Key is provided
@@ -74,16 +102,24 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
             }
         }
 
-        console.log("🐍 Executing Python Code...");
+        console.log("🐍 Executing Python Code (memory safe)...");
+        const safeCode = preparePythonCode(code);
         const execution: any = await withTimeout(
-            _sandboxInstance.runCode(code, { timeout: timeoutMs }),
+            _sandboxInstance.runCode(safeCode, { timeout: timeoutMs }),
             "Python execution",
-            timeoutMs + 5_000
+            timeoutMs
         );
 
         let output = "";
-        if (execution.logs.stdout.length > 0) output += `STDOUT:\n${execution.logs.stdout.join('\n')}\n`;
-        if (execution.logs.stderr.length > 0) output += `STDERR:\n${execution.logs.stderr.join('\n')}\n`;
+        if (execution.logs.stdout.length > 0) {
+            const stdout = execution.logs.stdout.join('\n');
+            output += `STDOUT:\n${stdout.slice(0, SANDBOX_MAX_OUTPUT_CHARS)}\n`;
+            if (stdout.length > SANDBOX_MAX_OUTPUT_CHARS) output += "\n[Output truncated — too large]\n";
+        }
+        if (execution.logs.stderr.length > 0) {
+            const stderr = execution.logs.stderr.join('\n');
+            output += `STDERR:\n${stderr.slice(0, SANDBOX_MAX_OUTPUT_CHARS)}\n`;
+        }
 
         try {
             const chartContent = await _sandboxInstance.files.read("analysis_plot.png");
