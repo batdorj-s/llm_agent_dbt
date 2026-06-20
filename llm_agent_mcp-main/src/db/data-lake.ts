@@ -4,7 +4,8 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const AGG_FUNCS = "count|sum|avg|min|max|coalesce|nullif|abs|round|ceil|floor|trunc|power|sqrt|replace|trim|lower|upper|length|total|group_concat|string_agg|array_agg|json_agg|jsonb_agg|bool_and|bool_or|every|bit_and|bit_or|corr|covar_samp|covar_pop|regr_slope|regr_intercept|regr_count|regr_r2|regr_avgx|regr_avgy|regr_sxx|regr_syy|regr_sxy|stddev|stddev_samp|stddev_pop|variance|var_samp|var_pop|percentile_cont|percentile_disc|mode|rank|row_number|dense_rank|ntile|lag|lead|first_value|last_value|nth_value|cume_dist|percent_rank";
+const AGG_FUNCS = "count|sum|avg|min|max|coalesce|nullif|abs|round|ceil|floor|trunc|power|sqrt|replace|trim|lower|upper|length|total|group_concat|string_agg|array_agg|json_agg|jsonb_agg|bool_and|bool_or|every|bit_and|bit_or|corr|covar_samp|covar_pop|regr_slope|regr_intercept|regr_count|regr_r2|regr_avgx|regr_avgy|regr_sxx|regr_syy|regr_sxy|stddev|stddev_samp|stddev_pop|variance|var_samp|var_pop|percentile_cont|percentile_disc|mode|rank|row_number|dense_rank|ntile|lag|lead|first_value|last_value|nth_value|cume_dist|percent_rank|to_date|to_char|to_timestamp|to_number|date_trunc|extract|date_part|date_add|date_sub|datediff|date_format";
+const SQL_FUNCS = new Set("to_date|to_char|to_timestamp|to_number|date_trunc|extract|date_part|date_add|date_sub|datediff|date_format|str_to_date|cast|convert|position|substring|substr|concat|format|locate|instr|left|right|repeat|space|pad|lpad|rpad|initcap|reverse|translate|chr|ascii|encode|decode|md5|sha1|sha2|sha256|sha512|gen_random_uuid|now|current_date|current_time|current_timestamp|localtime|localtimestamp|timezone|age|isfinite|justify_days|justify_hours|justify_interval|make_date|make_time|make_timestamp|make_timestamptz|overlay".split("|"));
 
 let pool: Pool | null = null;
 let _pgAvailable = false;
@@ -393,9 +394,11 @@ export async function validateSqlColumns(query: string) {
     if (!catalog || catalog.length === 0) throw new Error("Catalog is empty — no tables to validate against.");
 
     const tableColumnsMap = new Map<string, { columns: string[]; description: string }>();
+    const allColumnNames = new Set<string>();
     for (const entry of catalog) {
         const cols: string[] = JSON.parse(entry.columns_info);
         tableColumnsMap.set(entry.table_name.toLowerCase(), { columns: cols, description: entry.description || "N/A" });
+        for (const c of cols) allColumnNames.add(c.toLowerCase());
     }
 
     const aliasToTable = new Map<string, string>();
@@ -404,6 +407,8 @@ export async function validateSqlColumns(query: string) {
     while ((match = tableAliasPattern.exec(query)) !== null) {
         const tableName = match[1].toLowerCase();
         if (cteNames.has(tableName)) continue;
+        if (SQL_FUNCS.has(tableName)) continue;
+        if (allColumnNames.has(tableName)) continue;
         const alias = match[2] ? match[2].toLowerCase() : tableName;
         aliasToTable.set(alias, tableName);
     }

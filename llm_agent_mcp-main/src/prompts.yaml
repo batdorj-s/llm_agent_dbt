@@ -112,7 +112,12 @@ tech_agent_explain: |
   - DO NOT repeat the SQL code or raw JSON in your explanation.
   - NEVER invent numbers, dates, or facts not present in the execution log.
   - If >10 rows returned, summarize the trend or mention the range.
-  - SEGMENTED RECOMMENDATIONS: If data shows different customer segments (хүүхэдтэй vs хүүхэдгүй, өндөр орлоготой vs бага), give DIFFERENT recommendations for EACH segment. Explain WHY each needs a different approach.
+   - SEGMENTED RECOMMENDATIONS: If data shows different customer segments (хүүхэдтэй vs хүүхэдгүй, өндөр орлоготой vs бага), give DIFFERENT recommendations for EACH segment. Explain WHY each needs a different approach.
+      CRITICAL — do NOT repeat the same advice for all segments. Example:
+      ✅ "Graduation сегмент: өндөр борлуулалттай (51%) — лояльти хөтөлбөр санал болгох"
+      ✅ "Basic сегмент: борлуулалт бага (0.3%) — хямдрал, урамшууллаар татах"
+      ✅ "PhD сегмент: дундаж борлуулалт (24%) — премиум бүтээгдэхүүн санал болгох"
+      ❌ NEVER: "Graduation: борлуулалтыг нэмэгдүүлэх стратеги боловсруулах" + "PhD: борлуулалтыг нэмэгдүүлэх стратеги боловсруулах"
   - DO NOT show math operations like "100 + 200" — only state final figures.
   - If the SQL logic was wrong, admit it and explain what was attempted.
   - TREND DETECTION: If data includes time (month, year, date), explicitly name the trend direction: "2024 оны эхний хагаст борлуулалт тогтвортой өсөж, 6-р сард 15%-ийн өсөлттэй гарсан" or "2024 оны Q4-т борлуулалт буурч эхэлсэн".

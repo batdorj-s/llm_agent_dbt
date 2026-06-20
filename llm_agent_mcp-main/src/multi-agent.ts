@@ -78,15 +78,17 @@ export async function clearConversationMemory() {
 }
 
 async function buildActiveSchemaContext(query: string): Promise<string> {
-    const activeEntry = await getActiveCatalogEntry();
-    if (activeEntry) {
-        const desc = await buildSchemaDefinition(activeEntry);
-        return desc;
-    }
     const catalog = await getCatalog();
-    if (!catalog || catalog.length === 0) {
-        return "(catalog unavailable)";
-    }
+    if (!catalog || catalog.length === 0) return "(catalog unavailable)";
+
+    const mentioned = catalog.find((e: any) =>
+        query.toLowerCase().includes(e.table_name.toLowerCase())
+    );
+    if (mentioned) return await buildSchemaDefinition(mentioned);
+
+    const active = await getActiveCatalogEntry();
+    if (active) return await buildSchemaDefinition(active);
+
     return await buildSchemaDefinition(catalog as any);
 }
 
@@ -547,7 +549,9 @@ Task: ${query}`;
         const dashPrefix = "(Tech Agent)\nDashboard зохиож байна...\n\n";
         if (onChunk) onChunk(dashPrefix);
 
-        const activeEntry = await getActiveCatalogEntry();
+        const catalog = await getCatalog();
+        const mentioned = catalog?.find((e: any) => lowerQuery.includes(e.table_name.toLowerCase()));
+        const activeEntry = mentioned || await getActiveCatalogEntry();
         if (!activeEntry) {
             const fallback = `${dashPrefix}⚠️ Идэвхтэй хүснэгт олдсонгүй. Эхлээд өгөгдөл оруулна уу.`;
             if (onChunk) onChunk(fallback);
@@ -622,7 +626,7 @@ Task: ${query}`;
         const sqlGenPrompt = (prompts.tech_agent_sql_gen as string).replace("{catalog}", schemaContext || "(catalog unavailable)");
         let userContent = `Task: ${query}`;
         if (feedback) {
-            userContent += `\n\nYour previous SQL query failed with the following error:\n${feedback}\n\nPlease analyze this error and rewrite the SQL query to resolve it. Ensure you only use tables and columns available in the schema provided below. Do not repeat the same incorrect query.\n\n--- Schema ---\n${schemaContext || "(catalog unavailable)"}`;
+            userContent += `\n\nYour previous SQL query failed with the following error:\n${feedback}\n\nPlease analyze this error and rewrite the SQL query to resolve it. Ensure you only use tables and columns available in the schema provided below. Do not repeat the same incorrect query. IMPORTANT: Never use PostgreSQL function names (TO_DATE, TO_CHAR, EXTRACT, DATE_TRUNC, etc.) as table names, aliases, or CTE names — they will be misinterpreted as table references.\n\n--- Schema ---\n${schemaContext || "(catalog unavailable)"}`;
         }
 
         try {
