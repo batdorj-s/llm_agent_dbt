@@ -19,7 +19,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
 
     const activeEntry = await getActiveCatalogEntry();
     if (!activeEntry) {
-        const fallback = `${prefix}⚠️ Идэвхтэй хүснэгт олдсонгүй. Эхлээд өгөгдөл оруулна уу.`;
+        const fallback = `${prefix}⚠️ Идэвхтэй хүснэгт олдсонгүй. Зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
         if (onChunk) onChunk(fallback);
         return { messages: [{ role: "assistant", content: fallback }] };
     }

@@ -55,13 +55,32 @@ export const AgentStateAnnotation = Annotation.Root({
 const checkpointer = new MemorySaver();
 const LLM_TIMEOUT_MS = 40000;
 const SQL_GEN_TIMEOUT_MS = 55000;
-const MAX_HISTORY_MESSAGES = 6;
+const MAX_HISTORY_MESSAGES = 10;
 
 function trimMessages(messages: any[]): any[] {
     const systemMsg = messages.filter((m: any) => m.role === "system");
     const nonSystem = messages.filter((m: any) => m.role !== "system");
     const trimmed = nonSystem.slice(-MAX_HISTORY_MESSAGES);
     return [...systemMsg, ...trimmed];
+}
+
+function buildContextSummary(messages: Message[]): string {
+    const assistantMsgs = messages.filter(m => m.role === "assistant").slice(-2);
+    if (assistantMsgs.length === 0) return "";
+    const parts: string[] = [];
+    for (const msg of assistantMsgs) {
+        const text = msg.content.replace(/<visual>[\s\S]*?<\/visual>/g, "").replace(/<dashboard>[\s\S]*?<\/dashboard>/g, "").trim();
+        if (text.length > 500) {
+            const sentences = text.split(/[.?\n]/).filter(s => s.trim());
+            const summary = sentences.slice(0, 3).join(". ") + ".";
+            parts.push(summary);
+        } else {
+            parts.push(text);
+        }
+    }
+    return parts.length > 0
+        ? `\n\n## Context Summary (from previous assistant responses)\n${parts.join("\n---\n")}`
+        : "";
 }
 
 export async function clearConversationMemory() {
@@ -402,7 +421,7 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
     }
 
     if (route === "END") {
-        const text = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Би танд санхүүгийн асуултууд, борлуулалтын KPI болон код ажиллуулах даалгавар өгөхөд тусалж чадна. Надаас 'борлуулалтын зорилтот дүн' эсвэл код ажиллуулах талаар асуугаарай.";
+        const text = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Би танд санхүүгийн асуултууд, борлуулалтын KPI болон код ажиллуулах даалгавар өгөхөд тусалж чадна.\n\nТа дараах зүйлсийг асууж болно:\n- 📊 **Борлуулалтын тайлан** — KPI үзүүлэлт, орлого, зорилт\n- 📈 **Өгөгдлийн шинжилгээ** — SQL query, тооцоолол, график\n- 🔮 **Таамаглал** — Forecast, сегментчлэл, корреляци\n\nЭсвэл дээрх файл оруулах хэсгээр CSV өгөгдлөө upload хийгээрэй.";
         if (onChunk) onChunk(text);
         return {
             nextAgent: "END",
@@ -488,7 +507,8 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
 
     const financePrompt = prompts.finance_agent;
     const qualityChecklistFinance = prompts.data_quality_checklist || "";
-    const systemPrompt = `${financePrompt}\n\n${qualityChecklistFinance}\n\nHere is the retrieved business context:\n${context}`;
+    const contextSummary = buildContextSummary(state.messages);
+    const systemPrompt = `${financePrompt}\n\n${qualityChecklistFinance}${contextSummary}\n\nHere is the retrieved business context:\n${context}`;
     
     const executeMessages = trimMessages([
         { role: "system", content: systemPrompt },
@@ -616,7 +636,7 @@ Task: ${query}`;
             const resultBlock = `### Гүйцэтгэлийн үр дүн\n\`\`\`\n${output}\n\`\`\`\n`;
             if (onChunk) onChunk(resultBlock);
 
-            const explainPrompt = `Summarize the Python execution results for a business user in Mongolian. Be concise.\n\nCode:\n${pythonCode}\n\nOutput:\n${output}`;
+            const explainPrompt = `Summarize the Python execution results for a business user in Mongolian. Be concise. Include "Тооцооны аргачлал:" section explaining how numbers were calculated.\n\nCode:\n${pythonCode}\n\nOutput:\n${output}`;
             const stream = await withTimeout(llm.stream([
                 { role: "system", content: explainPrompt },
                 { role: "user", content: query },
@@ -651,7 +671,7 @@ Task: ${query}`;
         const mentioned = catalog?.find((e: any) => lowerQuery.includes(e.table_name.toLowerCase()));
         const activeEntry = mentioned || await getActiveCatalogEntry();
         if (!activeEntry) {
-            const fallback = `${dashPrefix}⚠️ Идэвхтэй хүснэгт олдсонгүй. Эхлээд өгөгдөл оруулна уу.`;
+            const fallback = `${dashPrefix}⚠️ Идэвхтэй хүснэгт олдсонгүй. Эхлээд зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
             if (onChunk) onChunk(fallback);
             return { messages: [{ role: "assistant", content: fallback }] };
         }
@@ -847,7 +867,7 @@ Task: ${query}`;
     }
 
     if (!isSuccess) {
-        const fallback = `${accumulatedText}\n\n⚠️ Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.`;
+        const fallback = `${accumulatedText}\n\n⚠️ Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Хэрэв та баганын нэр эсвэл хүснэгтийн нэр зааж өгвөл би илүү нарийвчлалтай хариулж чадна.`;
         if (onChunk) onChunk("\n\n⚠️ Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.");
         return {
             messages: [{ role: "assistant", content: fallback }]
@@ -855,10 +875,11 @@ Task: ${query}`;
     }
 
     const qualityChecklist = prompts.data_quality_checklist || "";
+    const contextSummary = buildContextSummary(state.messages);
     const explainSystemPrompt = (prompts.tech_agent_explain as string)
       .replace("{visual_instruction}", "DO NOT generate any <visual> tags. Visualizations will be added automatically after your response.")
       .replace("{{ data_quality_checklist }}", qualityChecklist);
-    const explainPrompt = `${explainSystemPrompt}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}`;
+    const explainPrompt = `${explainSystemPrompt}${contextSummary}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}`;
 
     const explainMessages = trimMessages([
         { role: "system", content: explainPrompt },
@@ -894,7 +915,7 @@ Task: ${query}`;
             if (onChunk) onChunk(text);
         }
     } catch (explainErr) {
-        const fallback = "\n\n⚠️ Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.";
+        const fallback = `\n\n⚠️ Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Санал болгох: өгөгдлийн сангийн хүснэгт/баганын нэрээ шалгана уу.`;
         console.warn("[Tech Agent] Explanation failed:", (explainErr as Error).message);
         if (onChunk) onChunk(fallback);
         accumulatedText += fallback;

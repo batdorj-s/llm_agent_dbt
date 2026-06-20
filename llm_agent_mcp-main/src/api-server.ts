@@ -457,7 +457,10 @@ app.post("/api/feedback", async (req, res) => {
     }
 
     console.log(`[Feedback] ${rating} feedback from ${auth.payload.userId}: "${message.slice(0, 80)}..."`);
-    res.json({ success: true, message: rating === "negative" ? "Feedback recorded. Thank you — we will improve." : "Feedback recorded. Thank you!" });
+    const suggestions = rating === "negative"
+        ? "Таны санал бүртгэгдлээ. Дараах зүйлсийг санал болгож байна:\n- **Файл оруулах**: Хэрэв өгөгдөл дутуу байвал CSV файлаа upload хийгээрэй\n- **Тодорхой асуулт**: Баганын нэр, огноогоо дурдаж асууна уу\n- **Агент солих**: 'SQL query бич' эсвэл 'борлуулалтын тайлан' гэх мэт чиглэл өгнө үү"
+        : "Санал өгсөнд баярлалаа!";
+    res.json({ success: true, message: suggestions });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

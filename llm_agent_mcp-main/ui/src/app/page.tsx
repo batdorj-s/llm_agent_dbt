@@ -304,6 +304,34 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [streamEnabled, setStreamEnabled] = useState(true);
+  const [lastAgentType, setLastAgentType] = useState<string | null>(null);
+
+  const SUGGESTIONS_INITIAL = [
+    { label: "📊 Борлуулалтын тайлан", query: "Борлуулалтын тайлан гаргаж өгнө үү" },
+    { label: "📈 KPI үзүүлэлт", query: "Гол KPI үзүүлэлтүүдийг харуул" },
+    { label: "🔍 Сегментчлэл", query: "Хэрэглэгчдийн сегментчлэлийн шинжилгээ хий" },
+    { label: "🔮 Таамаглал", query: "Дараагийн саруудын борлуулалтын таамаглал гарга" },
+    { label: "📋 Dashboard", query: "Dashboard харуул" },
+    { label: "📤 Upload", query: "Өгөгдөл Upload хэрхэн хийх вэ" },
+  ];
+
+  const FOLLOW_UP_SUGGESTIONS: Record<string, { label: string; query: string }[]> = {
+    "Finance Agent": [
+      { label: "Дэлгэрэнгүй мэдээлэл", query: "Өмнөх хариултаа дэлгэрэнгүй тайлбарла" },
+      { label: "Өмнөх сартай харьцуулах", query: "Өмнөх сарын үзүүлэлттэй харьцуул" },
+      { label: "Графикаар харуул", query: "Энэ өгөгдлийг графикаар харуул" },
+    ],
+    "Tech Agent": [
+      { label: "Top 5 харуул", query: "Хамгийн их борлуулалттай эхний 5-ыг харуул" },
+      { label: "График зур", query: "Өгөгдлийн график зурж харуул" },
+      { label: "Dashboard", query: "Энэ өгөгдлийг dashboard болгож харуул" },
+    ],
+    "DataScientistAgent": [
+      { label: "Forecast шинэчлэх", query: "Шинэ өгөгдлөөр таамаглалаа шинэчил" },
+      { label: "Cluster дэлгэрэнгүй", query: "Бүлэглэлтийн дэлгэрэнгүй шинжилгээ харуул" },
+      { label: "Корреляцийн матриц", query: "Корреляцийн матриц харуул" },
+    ],
+  };
 
   // Dashboard / System metrics states
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
@@ -653,6 +681,7 @@ export default function Home() {
 
                   setActiveRoutingState(nodeState);
                   setLastAgentResponded(detectedAgent);
+                  setLastAgentType(detectedAgent);
 
                   setMessages((prev) =>
                     prev.map((msg) =>
@@ -1331,9 +1360,22 @@ export default function Home() {
             {/* CHAT MESSAGES THREAD */}
             <div className="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-6 flex flex-col justify-start">
               {messages.length === 0 ? (
-                <div className="text-center text-foreground/40 my-auto">
-                  <p className="font-semibold">Orchestration thread active.</p>
-                  <p className="text-[10px] mt-1">Submit a financial question or coding task to begin.</p>
+                <div className="flex flex-col items-center justify-center my-auto gap-6">
+                  <div className="text-center text-foreground/40">
+                    <p className="font-semibold">Orchestration thread active.</p>
+                    <p className="text-[10px] mt-1">Доорх саналуудаас сонгох эсвэл өөрөө асуултаа бичнэ үү.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+                    {SUGGESTIONS_INITIAL.map((s, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSendMessage(undefined, s.query)}
+                        className="px-3 py-1.5 text-xs bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/70 transition-all cursor-pointer"
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 messages.map((msg) => (
@@ -1400,6 +1442,19 @@ export default function Home() {
                     </div>
                   </div>
                 ))
+              )}
+              {messages.length > 0 && lastAgentType && FOLLOW_UP_SUGGESTIONS[lastAgentType] && !isChatLoading && (
+                <div className="flex flex-wrap gap-2 justify-start max-w-2xl pt-2">
+                  {FOLLOW_UP_SUGGESTIONS[lastAgentType].map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleSendMessage(undefined, s.query)}
+                      className="px-2.5 py-1 text-[10px] bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/50 transition-all cursor-pointer"
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               )}
               <div ref={messagesEndRef} />
             </div>
