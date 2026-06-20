@@ -75,7 +75,7 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
         }
 
         console.log("🐍 Executing Python Code...");
-        const execution = await withTimeout(
+        const execution: any = await withTimeout(
             _sandboxInstance.runCode(code, { timeout: timeoutMs }),
             "Python execution",
             timeoutMs + 5_000
