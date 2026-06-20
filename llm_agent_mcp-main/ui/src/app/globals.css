@@ -1,33 +1,29 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f5f7;
-  --foreground: #1d1d1f;
+  --background: #ffffff;
+  --foreground: #09090b;
   --card-bg: #ffffff;
-  --card-border: #d2d2d7;
-  --sidebar-bg: #f5f5f7;
+  --card-border: #e4e4e7;
+  --sidebar-bg: #fafafa;
   --input-bg: #ffffff;
-  --msg-user-bg: #ffffff;
-  --msg-agent-border: #d2d2d7;
-  --accent: #0071e3;
+  --msg-user-bg: #f4f4f5;
+  --msg-agent-border: #e4e4e7;
+  --accent: #000000;
   --accent-foreground: #ffffff;
-  --code-bg: #1d1d1f;
-  --code-text: #f5f5f7;
 }
 
 .dark {
-  --background: #1d1d1f;
-  --foreground: #f5f5f7;
-  --card-bg: #2d2d2f;
-  --card-border: #424245;
-  --sidebar-bg: #1d1d1f;
-  --input-bg: #2d2d2f;
-  --msg-user-bg: #2d2d2f;
-  --msg-agent-border: #424245;
-  --accent: #0071e3;
-  --accent-foreground: #ffffff;
-  --code-bg: #000000;
-  --code-text: #f5f5f7;
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  --card-bg: #09090b;
+  --card-border: #27272a;
+  --sidebar-bg: #18181b;
+  --input-bg: #09090b;
+  --msg-user-bg: #18181b;
+  --msg-agent-border: #27272a;
+  --accent: #ffffff;
+  --accent-foreground: #000000;
 }
 
 @theme inline {
@@ -38,8 +34,6 @@
   --color-sidebar: var(--sidebar-bg);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  --color-codebg: var(--code-bg);
-  --color-codetext: var(--code-text);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -55,74 +49,6 @@ body {
   font-family: var(--font-sans), sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
   overscroll-behavior: none;
-}
-
-/* Apple-style frosted glass header */
-.apple-header {
-  background: rgba(255,255,255,0.72);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(0,0,0,0.08);
-}
-.dark .apple-header {
-  background: rgba(29,29,31,0.78);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-
-/* Apple-style user message bubble */
-.apple-user-bubble {
-  background: var(--accent);
-  color: #fff;
-  border-radius: 18px 18px 4px 18px;
-  padding: 10px 16px;
-  font-size: 13px;
-  line-height: 1.4;
-  max-width: 80%;
-  align-self: flex-end;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
-
-/* Apple-style agent message card */
-.apple-agent-card {
-  border-left: 2.5px solid var(--accent);
-  padding-left: 14px;
-  padding-top: 2px;
-  padding-bottom: 2px;
-  transition: border-color 0.2s ease;
-}
-
-/* Apple send button */
-.apple-send-btn {
-  background: var(--accent);
-  color: #fff;
-  border-radius: 20px;
-  padding: 8px 14px;
-  font-weight: 600;
-  font-size: 12px;
-  transition: all 0.15s ease;
-}
-.apple-send-btn:hover {
-  opacity: 0.85;
-}
-.apple-send-btn:active {
-  transform: scale(0.95);
-}
-
-/* Apple input field */
-.apple-input {
-  border-radius: 20px;
-  border: 1px solid transparent;
-  background: var(--sidebar-bg);
-  padding: 8px 16px;
-  font-size: 13px;
-  transition: all 0.15s ease;
-}
-.apple-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(0,113,227,0.15);
 }
 
 /* Custom scrollbars - Minimalist monochrome */
