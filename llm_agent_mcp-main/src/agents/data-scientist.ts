@@ -88,15 +88,32 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     const numericCols = findNumericColumns(columnList);
     const categoryCols = findCategoryColumns(columnList);
 
-    const samplingSql = buildSamplingSql(tableName, columnList);
     let sampleData: any[] = [];
+    let exportCsvSql: string | null = null;
+
     try {
-        const sampleResult = await handleExecuteSql({ query: samplingSql });
-        if (sampleResult.ok && sampleResult.results) {
-            sampleData = Array.isArray(sampleResult.results) ? sampleResult.results : [sampleResult.results];
+        if (isForecast && dateCol) {
+            const aggCol = numericCols[0] || columnList[0];
+            const forecastSql = `SELECT "${dateCol}"::date AS period, SUM(COALESCE("${aggCol}", 0)) AS value FROM "${tableName}" GROUP BY period ORDER BY period`;
+            console.log(`[DataScientist] Forecast mode: aggregating by ${dateCol} with ${aggCol}`);
+            const aggResult = await handleExecuteSql({ query: forecastSql });
+            if (aggResult.ok && aggResult.results) {
+                sampleData = Array.isArray(aggResult.results) ? aggResult.results : [aggResult.results];
+                exportCsvSql = forecastSql;
+                console.log(`[DataScientist] Forecast data: ${sampleData.length} aggregated rows`);
+            }
+        }
+
+        if (sampleData.length === 0) {
+            const samplingSql = buildSamplingSql(tableName, columnList);
+            const sampleResult = await handleExecuteSql({ query: samplingSql });
+            if (sampleResult.ok && sampleResult.results) {
+                sampleData = Array.isArray(sampleResult.results) ? sampleResult.results : [sampleResult.results];
+            }
+            exportCsvSql = buildExportSql(tableName, columnList);
         }
     } catch (err) {
-        console.warn("[DataScientist] Sample data fetch failed:", (err as Error).message);
+        console.warn("[DataScientist] Data fetch failed:", (err as Error).message);
     }
 
     const pythonSystemPrompt = buildPythonPrompt(
@@ -150,7 +167,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
             return { messages: [{ role: "assistant", content: fallback }] };
         }
 
-        const output = await runPythonCode(pythonCode);
+        const output = await runPythonCode(pythonCode, undefined, true);
 
         let cleanOutput = output;
         let chartTag = "";
@@ -209,7 +226,12 @@ CRITICAL:
 
 function buildSamplingSql(tableName: string, columns: string[]): string {
     const safeCols = columns.map(c => `"${c}"`).join(", ");
-    return `SELECT ${safeCols} FROM "${tableName}" LIMIT 200;`;
+    return `SELECT ${safeCols} FROM "${tableName}" LIMIT 500;`;
+}
+
+function buildExportSql(tableName: string, columns: string[]): string {
+    const safeCols = columns.map(c => `"${c}"`).join(", ");
+    return `SELECT ${safeCols} FROM "${tableName}" LIMIT 3000;`;
 }
 
 function findDateColumn(columns: string[]): string | null {
@@ -243,7 +265,11 @@ function buildPythonPrompt(
     schemaDef: string, sampleData: any[],
     ragContext: string = ""
 ): string {
+    const totalRows = sampleData.length;
     const sampleJson = JSON.stringify(sampleData.slice(0, 5), null, 2);
+    const dataSource = analysisType === "forecast" && totalRows <= 500
+        ? `SQL-aggregated (${totalRows} rows, grouped by ${dateCol || "period"}) — full dataset used`
+        : `Sampled ${totalRows} rows from the full table`;
     const dateHint = dateCol ? `- Date column: "${dateCol}" (use for time-series if applicable)` : "- No date column detected";
 
     const chartRules: Record<string, { chart: string; reason: string }> = {
@@ -297,7 +323,8 @@ Categorical columns: ${categoryCols.join(", ") || "auto-detect from data"}
 ${schemaDef}
 ${ragContext}
 
-## Sample Data (first 5 rows)
+## Data Source: ${dataSource}
+## Sample Data (first 5 rows of ${totalRows} total)
 ${sampleJson}
 
 ## Analysis Type: ${analysisType.toUpperCase()}
@@ -346,7 +373,7 @@ plt.close()
 
 ## Rules
 1. Import all libraries inside the code. Do NOT assume pre-installed packages beyond: pandas, numpy, scikit-learn, statsmodels, scipy, matplotlib, seaborn
-2. Load data from the hardcoded dictionary below - do NOT read any external file:
+2. Load data from the hardcoded dictionary below — do NOT read any external file or CSV:
    data = ${JSON.stringify(sampleData, null, 2)}
 3. Convert the list of dicts to a pandas DataFrame: df = pd.DataFrame(data)
 4. Handle missing values with df.fillna(0) or df.dropna()
@@ -356,7 +383,7 @@ plt.close()
 8. ALWAYS save the chart as 'analysis_plot.png' using plt.savefig().
 9. After saving the chart, print the text "##CHART_SAVED##" on its own line so the system knows the chart was generated.
 10. Return ONLY the Python code inside a markdown \`\`\`python block. No explanation outside the block.
-11. MEMORY SAFETY: Use df.head(200) or df.sample(200) for any large dataset operations. Never convert the full DataFrame to numpy arrays if avoidable. If you need to iterate, use .itertuples() for memory efficiency.`;
+11. ${analysisType === "forecast" ? `The data is PRE-AGGREGATED by ${dateCol || "period"} (${totalRows} rows). Use it directly for time-series forecasting. If you need more granular data, note that this is already the full aggregated dataset.` : `The data contains ${totalRows} sampled rows from the full table — sufficient for analysis.`}`;
 }
 
 function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number = LLM_TIMEOUT_MS): Promise<T> {

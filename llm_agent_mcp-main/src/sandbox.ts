@@ -49,7 +49,7 @@ function preparePythonCode(code: string): string {
 }
 
 // Mock sandbox for development/PoC if no E2B API Key is provided
-export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TIMEOUT_MS): Promise<string> {
+export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TIMEOUT_MS, skipMemorySafe: boolean = false): Promise<string> {
     const hasKey = process.env.E2B_API_KEY && process.env.E2B_API_KEY !== 'your_e2b_api_key_here';
 
     if (!hasKey) {
@@ -102,8 +102,8 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
             }
         }
 
-        console.log("🐍 Executing Python Code (memory safe)...");
-        const safeCode = preparePythonCode(code);
+        const safeCode = skipMemorySafe ? code : preparePythonCode(code);
+        console.log(`🐍 Executing Python Code${skipMemorySafe ? " (full data mode)" : " (memory safe)"}...`);
         const execution: any = await withTimeout(
             _sandboxInstance.runCode(safeCode, { timeout: timeoutMs }),
             "Python execution",
