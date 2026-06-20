@@ -63,9 +63,38 @@ export class SQLiteKpiRepository implements IKpiRepository {
         if (!catalog) return null;
 
         const columns = JSON.parse(catalog.columns_info) as string[];
-        const salesCol = columns.find(c => /amount|sales|revenue|price/i.test(c)) || columns[columns.length - 1];
-        const userCol = columns.find(c => /customer_id|user_id|_id/i.test(c)) || columns[0];
-        const dateCol = columns.find(c => /date|time/i.test(c)) || columns[1] || "date";
+
+        const typeResult = await getPool().query(
+            `SELECT column_name, data_type FROM information_schema.columns
+             WHERE table_name = $1 AND table_schema = 'public'`,
+            [catalog.table_name]
+        );
+        const typeMap = new Map<string, string>();
+        for (const row of typeResult.rows as Array<{ column_name: string; data_type: string }>) {
+            typeMap.set(row.column_name.toLowerCase(), row.data_type);
+        }
+
+        const isNumeric = (col: string) => {
+            const t = typeMap.get(col.toLowerCase());
+            return t && /numeric|integer|double|real|float|money|dec/i.test(t);
+        };
+
+        const salesCol = columns.find(c => /amount|sales|revenue|price/i.test(c))
+            || columns.find(c => /total|income|spend|value|cost|profit/i.test(c))
+            || columns.find(c => isNumeric(c))
+            || null;
+        if (!salesCol) return null;
+
+        const userCol = columns.find(c => /customer_id|user_id|_id/i.test(c))
+            || columns.find(c => /customer|client|user|member|account/i.test(c))
+            || null;
+        if (!userCol) return null;
+
+        const dateCol = columns.find(c => /date|time/i.test(c))
+            || columns.find(c => /timestamp/i.test(c))
+            || columns.find(c => /year|month|day/i.test(c))
+            || null;
+        if (!dateCol) return null;
 
         return { tableName: catalog.table_name, salesCol, userCol, dateCol };
     }

@@ -78,6 +78,11 @@ export async function clearConversationMemory() {
 }
 
 async function buildActiveSchemaContext(query: string): Promise<string> {
+    const activeEntry = await getActiveCatalogEntry();
+    if (activeEntry) {
+        const desc = await buildSchemaDefinition(activeEntry);
+        return desc;
+    }
     const catalog = await getCatalog();
     if (!catalog || catalog.length === 0) {
         return "(catalog unavailable)";
@@ -245,6 +250,7 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         "хамгийн бага", "хамгийн өндөр",
         "хэд", "хэдэн", "нийт хэдэн", "гүйлгээ", "бүтээгдэхүүн", "бараа",
         "chart", "graph", "visualize", "plot", "харагдуул", "зур",
+        "dashboard", "ханалтын самбар", "хана", "widget", "вижет",
         "count", "sum", "average", "avg", "total", "group by", "order by", "where", "filter",
         "show me", "list", "give me", "find", "get", "fetch", "select",
         "өгөгдөл", "мэдээлэл", "харуулах", "тооцоолох", "тооцоо",
@@ -533,6 +539,40 @@ Task: ${query}`;
     }
 
     console.log("[Tech Agent] Activated. Writing SQL query...");
+
+    // Dashboard designer routing
+    const lowerQuery = query.toLowerCase();
+    if (lowerQuery.includes("dashboard") || lowerQuery.includes("ханалтын самбар") || lowerQuery.includes("хана") || lowerQuery.includes("widget") || lowerQuery.includes("вижет")) {
+        console.log("[Tech Agent] Dashboard request detected.");
+        const dashPrefix = "(Tech Agent)\nDashboard зохиож байна...\n\n";
+        if (onChunk) onChunk(dashPrefix);
+
+        const activeEntry = await getActiveCatalogEntry();
+        if (!activeEntry) {
+            const fallback = `${dashPrefix}⚠️ Идэвхтэй хүснэгт олдсонгүй. Эхлээд өгөгдөл оруулна уу.`;
+            if (onChunk) onChunk(fallback);
+            return { messages: [{ role: "assistant", content: fallback }] };
+        }
+
+        const schema = await buildSchemaDefinition(activeEntry);
+        const dashboardPrompt = (prompts.dashboard_designer as string).replace("{schema}", schema);
+
+        try {
+            const dashResponse = await withTimeout(llm.invoke([
+                { role: "system", content: dashboardPrompt },
+                { role: "user", content: `Generate a dashboard for the table: ${activeEntry.table_name}` }
+            ]), "Dashboard design");
+
+            const raw = dashResponse.content as string;
+            const fullText = `${dashPrefix}**${activeEntry.table_name}**-д зориулсан Dashboard:\n\`\`\`json\n${raw}\n\`\`\``;
+            if (onChunk) onChunk(fullText);
+            return { messages: [{ role: "assistant", content: fullText }] };
+        } catch (dashErr) {
+            const fallback = `${dashPrefix}⚠️ Dashboard үүсгэхэд алдаа гарлаа: ${(dashErr as Error).message}`;
+            if (onChunk) onChunk(fallback);
+            return { messages: [{ role: "assistant", content: fallback }] };
+        }
+    }
     const prefix = "(Tech Agent)\nМэдээллийн сангаас дата шүүж байна... (MCP execute_sql → Data Lake)\n\n";
     if (onChunk) onChunk(prefix);
 
@@ -680,7 +720,7 @@ Task: ${query}`;
         };
     }
 
-    const visualInstruction = state.visualRequest ? prompts.visual_designer : "";
+    const visualInstruction = prompts.visual_designer;
     const explainSystemPrompt = (prompts.tech_agent_explain as string).replace("{visual_instruction}", visualInstruction);
     const explainPrompt = `${explainSystemPrompt}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}`;
 

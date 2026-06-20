@@ -1,36 +1,38 @@
 version: 2
-
 models:
   - name: stg_sales
-    description: "Cleaned and standardized sales data."
+    description: Cleaned sales data sourced from test_chart.
     columns:
-      - name: category
-        description: "The product category."
+      - name: order_id
+        description: Column from test_chart.order_id.
         tests:
-          - accepted_values:
-              values: ['Furniture', 'Office Supplies', 'Technology']
-      - name: segment
-        description: "Customer segment."
+          - unique
+          - not_null
+      - name: order_date
+        description: Column from test_chart.order_date.
         tests:
-          - accepted_values:
-              values: ['Consumer', 'Corporate', 'Home Office']
-
+          - not_null
+      - name: sales
+        description: Column from test_chart.sales.
+      - name: customer_id
+        description: Column from test_chart.customer_id.
+        tests:
+          - unique
+          - not_null
   - name: int_sales_enriched
-    description: "Intermediate model with calculated metrics like profit margin."
+    description: Intermediate model with calculated metrics like profit margin.
     columns:
       - name: order_id
         tests:
           - unique
           - not_null
-
   - name: kpi_sales
-    description: "Daily aggregated sales and profit metrics by category."
+    description: Daily aggregated sales and profit metrics by category.
     tests:
       - dbt_utils.equal_rowcount:
-          compare_model: ref('stg_sales') # Example of dbt-utils test
-
+          compare_model: ref('stg_sales')
   - name: user_metrics
-    description: "Customer-level metrics."
+    description: Customer-level metrics.
     columns:
       - name: customer_id
         tests:

@@ -13,7 +13,7 @@ import {
   Square
 } from "lucide-react";
 
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend } from "recharts";
 
 interface Message {
   id: string;
@@ -23,6 +23,8 @@ interface Message {
   agentName?: string;
   isError?: boolean;
 }
+
+const DEFAULT_COLORS = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#06b6d4"];
 
 const VisualMessage = ({ visualJson }: { visualJson: string }) => {
   let cleaned = visualJson.trim();
@@ -34,7 +36,7 @@ const VisualMessage = ({ visualJson }: { visualJson: string }) => {
   }
   const sanitizedJson = `{${cleaned}}`;
 
-  let data: { title?: string; type?: string; data?: unknown[] };
+  let data: { title?: string; type?: string; data?: Record<string, unknown>[]; config?: Record<string, unknown> };
   try {
     data = JSON.parse(sanitizedJson);
   } catch (e) {
@@ -46,25 +48,77 @@ const VisualMessage = ({ visualJson }: { visualJson: string }) => {
     return <div className="text-[9px] text-red-500">Invalid data format</div>;
   }
 
+  const config = data.config || {};
+  const colors = (config.colors as string[]) || DEFAULT_COLORS;
+  const series = config.series as string[] | undefined;
+  const stacked = config.stacked === true;
+
+  const renderMultiSeries = (ChartComponent: any, DataComponent: any, extraProps?: Record<string, unknown>) => {
+    const s = series || ["value"];
+    return (
+      <ChartComponent data={data.data} layout={extraProps?.layout || undefined}>
+        {extraProps?.layout === "vertical" ? null : <XAxis dataKey="label" stroke="#888888" fontSize={9} />}
+        {extraProps?.layout === "vertical" ? <YAxis dataKey="label" type="category" stroke="#888888" fontSize={9} /> : <YAxis stroke="#888888" fontSize={9} />}
+        {extraProps?.layout === "vertical" ? <XAxis type="number" stroke="#888888" fontSize={9} /> : null}
+        <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+        {s.length > 1 && <Legend wrapperStyle={{ fontSize: "9px" }} />}
+        {s.map((key, i) => (
+          <DataComponent key={key} type="monotone" dataKey={key} fill={colors[i % colors.length]} stroke={colors[i % colors.length]} stackId={stacked ? "stack" : undefined} />
+        ))}
+      </ChartComponent>
+    );
+  };
+
   return (
     <div className="bg-sidebar border border-border rounded-lg p-4 mt-2 max-w-lg transition-colors duration-200">
       <h4 className="text-[10px] font-bold text-foreground/60 uppercase mb-3">{data.title}</h4>
       <div className="h-48 w-full">
         <ResponsiveContainer width="100%" height="100%">
           {data.type === "bar" ? (
-            <BarChart data={data.data}>
-              <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-              <YAxis stroke="#888888" fontSize={9} />
-              <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
-              <Bar dataKey="value" fill="var(--foreground)" />
-            </BarChart>
+            stacked ? renderMultiSeries(BarChart, Bar) : series && series.length > 1 ? renderMultiSeries(BarChart, Bar) : (
+              <BarChart data={data.data}>
+                <XAxis dataKey="label" stroke="#888888" fontSize={9} />
+                <YAxis stroke="#888888" fontSize={9} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+                <Bar dataKey="value" fill={colors[0]} />
+              </BarChart>
+            )
+          ) : data.type === "horizontal_bar" ? (
+            series && series.length > 1 ? renderMultiSeries(BarChart, Bar, { layout: "vertical" }) : (
+              <BarChart data={data.data} layout="vertical">
+                <XAxis type="number" stroke="#888888" fontSize={9} />
+                <YAxis dataKey="label" type="category" stroke="#888888" fontSize={9} width={80} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+                <Bar dataKey="value" fill={colors[0]} />
+              </BarChart>
+            )
           ) : data.type === "line" ? (
-            <LineChart data={data.data}>
-              <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-              <YAxis stroke="#888888" fontSize={9} />
+            series && series.length > 1 ? renderMultiSeries(LineChart, Line) : (
+              <LineChart data={data.data}>
+                <XAxis dataKey="label" stroke="#888888" fontSize={9} />
+                <YAxis stroke="#888888" fontSize={9} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+                <Line type="monotone" dataKey="value" stroke={colors[0]} />
+              </LineChart>
+            )
+          ) : data.type === "area" ? (
+            series && series.length > 1 ? renderMultiSeries(AreaChart, Area) : (
+              <AreaChart data={data.data}>
+                <XAxis dataKey="label" stroke="#888888" fontSize={9} />
+                <YAxis stroke="#888888" fontSize={9} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+                <Area type="monotone" dataKey="value" fill={colors[0]} stroke={colors[0]} fillOpacity={0.3} />
+              </AreaChart>
+            )
+          ) : data.type === "pie" ? (
+            <PieChart>
               <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
-              <Line type="monotone" dataKey="value" stroke="var(--foreground)" />
-            </LineChart>
+              <Pie data={data.data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={70} label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${value ?? 0}`}>
+                {data.data.map((_, i) => (
+                  <Cell key={i} fill={colors[i % colors.length]} />
+                ))}
+              </Pie>
+            </PieChart>
           ) : null}
         </ResponsiveContainer>
       </div>
