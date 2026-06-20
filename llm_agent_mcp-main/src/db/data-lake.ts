@@ -123,6 +123,7 @@ export async function initDataLake(): Promise<void> {
         } catch (err: any) {
             console.warn(`[Data Lake] Table creation failed: ${(err as Error).message}`);
             _pgAvailable = false;
+            _initPromise = null;
         }
     })();
 
