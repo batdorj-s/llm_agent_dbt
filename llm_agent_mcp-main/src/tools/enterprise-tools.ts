@@ -1,10 +1,7 @@
 import { getRepository } from "../db/kpi-repository.js";
-import { getCatalog, executeSql } from "../db/data-lake.js";
+import { getCatalog, executeSql, DANGEROUS_SQL } from "../db/data-lake.js";
 
 export type KpiMetricName = "sales" | "users" | "churn_rate";
-
-const DANGEROUS_SQL =
-  /\b(DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|REPLACE|TRUNCATE|GRANT|REVOKE)\b/i;
 
 export async function handleGetKpi({ metric }: { metric: KpiMetricName }) {
   const repo = await getRepository();

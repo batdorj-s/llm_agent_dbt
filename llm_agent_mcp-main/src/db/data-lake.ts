@@ -8,6 +8,7 @@ const AGG_FUNCS = "count|sum|avg|min|max|coalesce|nullif|abs|round|ceil|floor|tr
 
 let pool: Pool | null = null;
 let _pgAvailable = false;
+let _initPromise: Promise<void> | null = null;
 
 export type DataLakeCatalogEntry = {
     id: number;
@@ -37,86 +38,95 @@ export function isPgAvailable(): boolean {
     return _pgAvailable;
 }
 
-const DANGEROUS_SQL = /\b(DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|REPLACE|TRUNCATE|GRANT|REVOKE)\b/i;
+export const DANGEROUS_SQL = /\b(DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|REPLACE|TRUNCATE|GRANT|REVOKE)\b/i;
 
 export async function initDataLake(): Promise<void> {
     if (pool) return;
+    if (_initPromise) return _initPromise;
 
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-        console.warn("[Data Lake] DATABASE_URL not configured.");
-        return;
-    }
+    _initPromise = (async () => {
+        if (pool) return;
 
-    console.log("[Data Lake] Connecting to PostgreSQL...");
-    const isLocal = databaseUrl.includes("127.0.0.1") || databaseUrl.includes("localhost") || databaseUrl.includes("host.docker.internal");
-    pool = new Pool({ connectionString: databaseUrl, ssl: isLocal ? false : { rejectUnauthorized: false } });
-
-    try {
-        await pool.query("SELECT 1");
-        _pgAvailable = true;
-    } catch (err: any) {
-        const errMsg = (err as Error).message;
-        console.warn(`[Data Lake] PostgreSQL unavailable: ${errMsg}`);
-        await pool.end().catch(() => {});
-        pool = null;
-        _pgAvailable = false;
-        return;
-    }
-
-    try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS data_lake_catalog (
-                id SERIAL PRIMARY KEY,
-                table_name TEXT UNIQUE NOT NULL,
-                created_by TEXT,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                columns_info TEXT,
-                description TEXT
-            )
-        `);
-
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS uploaded_files (
-                id TEXT PRIMARY KEY,
-                filename TEXT NOT NULL,
-                type TEXT NOT NULL,
-                description TEXT,
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )
-        `);
-
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS kpi_targets (
-                metric_name TEXT PRIMARY KEY,
-                target_value REAL NOT NULL,
-                unit TEXT NOT NULL
-            )
-        `);
-
-        const existing = await pool.query("SELECT metric_name FROM kpi_targets");
-        if (existing.rows.length === 0) {
-            await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["sales", 500000, "USD"]);
-            await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["users", 2000, "users"]);
-            await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["churn_rate", 2.0, "%"]);
+        const databaseUrl = process.env.DATABASE_URL;
+        if (!databaseUrl) {
+            console.warn("[Data Lake] DATABASE_URL not configured.");
+            return;
         }
 
-        console.log("[Data Lake] Connected to PostgreSQL ✅");
-        await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data", true);
-        await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing", true);
+        console.log("[Data Lake] Connecting to PostgreSQL...");
+        const isLocal = databaseUrl.includes("127.0.0.1") || databaseUrl.includes("localhost") || databaseUrl.includes("host.docker.internal");
+        pool = new Pool({ connectionString: databaseUrl, ssl: isLocal ? false : { rejectUnauthorized: false } });
 
-        const oldTables = ["datasetdescreption", "test_mixed_data", "test_int_dec", "upload_test"];
-        for (const tbl of oldTables) {
-            try {
-                await pool.query(`DROP TABLE IF EXISTS "${tbl}" CASCADE`);
-                await pool.query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [tbl]);
-            } catch {
-                // ignore cleanup errors
+        try {
+            await pool.query("SELECT 1");
+        } catch (err: any) {
+            const errMsg = (err as Error).message;
+            console.warn(`[Data Lake] PostgreSQL unavailable: ${errMsg}`);
+            await pool.end().catch(() => {});
+            pool = null;
+            _pgAvailable = false;
+            _initPromise = null;
+            return;
+        }
+
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS data_lake_catalog (
+                    id SERIAL PRIMARY KEY,
+                    table_name TEXT UNIQUE NOT NULL,
+                    created_by TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    columns_info TEXT,
+                    description TEXT
+                )
+            `);
+
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS uploaded_files (
+                    id TEXT PRIMARY KEY,
+                    filename TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
+
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS kpi_targets (
+                    metric_name TEXT PRIMARY KEY,
+                    target_value REAL NOT NULL,
+                    unit TEXT NOT NULL
+                )
+            `);
+
+            const existing = await pool.query("SELECT metric_name FROM kpi_targets");
+            if (existing.rows.length === 0) {
+                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["sales", 500000, "USD"]);
+                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["users", 2000, "users"]);
+                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["churn_rate", 2.0, "%"]);
             }
+
+            _pgAvailable = true;
+            console.log("[Data Lake] Connected to PostgreSQL ✅");
+            await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data", false);
+            await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing", false);
+
+            const oldTables = ["datasetdescription", "test_mixed_data", "test_int_dec", "upload_test"];
+            for (const tbl of oldTables) {
+                try {
+                    await pool.query(`DROP TABLE IF EXISTS "${tbl}" CASCADE`);
+                    await pool.query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [tbl]);
+                } catch {
+                    // ignore cleanup errors
+                }
+            }
+        } catch (err: any) {
+            console.warn(`[Data Lake] Table creation failed: ${(err as Error).message}`);
+            _pgAvailable = false;
         }
-    } catch (err: any) {
-        console.warn(`[Data Lake] Table creation failed: ${(err as Error).message}`);
-    }
+    })();
+
+    return _initPromise;
 }
 
 export async function getActiveCatalogEntry(): Promise<DataLakeCatalogEntry | null> {
@@ -467,10 +477,14 @@ export async function executeSql(query: string, readOnly: boolean = true): Promi
     await initDataLake();
     if (!_pgAvailable || !pool) throw new Error("Data Lake unavailable (PostgreSQL not connected).");
 
+    if (DANGEROUS_SQL.test(query)) {
+        throw new Error("Only SELECT/WITH queries are permitted. Mutating operations are strictly prohibited.");
+    }
+
     await validateSqlColumns(query);
 
     const normalized = query.trim().toUpperCase();
-    const isSelect = normalized.startsWith("SELECT") || normalized.startsWith("WITH");
+    const isSelect = /^\s*SELECT\b/i.test(normalized) || (/^\s*WITH\b/i.test(normalized) && /SELECT\b/i.test(normalized.replace(/^\s*WITH[\s\S]*?SELECT\b/i, "")));
 
     if (readOnly && !isSelect) {
         throw new Error("Only SELECT/WITH queries allowed in read-only mode.");

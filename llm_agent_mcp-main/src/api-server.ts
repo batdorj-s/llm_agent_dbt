@@ -24,7 +24,7 @@ import mammoth from "mammoth";
 dotenv.config();
 
 const app = express();
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
 app.use(express.json({ limit: "50mb" }));
 
 // Configure Multer for file uploads
@@ -89,9 +89,10 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     const threadIdFinal = threadId ?? `thread_${Date.now()}`;
-    await runMultiAgent(message, role, threadIdFinal, visualRequest);
+    const response = await runMultiAgent(message, role, threadIdFinal, visualRequest);
 
     res.json({
+      response,
       threadId: threadIdFinal,
       role,
       remaining: limit.remaining,
@@ -198,7 +199,7 @@ app.post("/api/admin/run-code", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 app.get("/api/admin/files", async (req, res) => {
   const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success) return res.status(401).json({ error: auth.error });
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
 
   await initDataLake();
   const result = await getPool().query(`SELECT * FROM uploaded_files ORDER BY created_at DESC`);
@@ -207,7 +208,7 @@ app.get("/api/admin/files", async (req, res) => {
 
 app.delete("/api/admin/files/:id", async (req, res) => {
   const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success) return res.status(401).json({ error: auth.error });
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
 
   const { id } = req.params;
   await initDataLake();
@@ -376,4 +377,7 @@ async function start() {
     console.log(`\n🚀 API Server running at http://localhost:${PORT}`);
   });
 }
-start().catch(console.error);
+start().catch((err) => {
+  console.error("Failed to start API server:", err);
+  process.exit(1);
+});

@@ -42,7 +42,12 @@ export class SQLiteKpiRepository implements IKpiRepository {
                 updatedAt: new Date().toISOString()
             };
         } catch (err) {
-            console.warn(`[DB] dbt views not found, falling back to raw table for KPI ${metric}`);
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (errMsg.includes("does not exist") || errMsg.includes("relation") || errMsg.includes("not found")) {
+                console.warn(`[DB] dbt views not found, falling back to raw table for KPI ${metric}`);
+            } else {
+                console.warn(`[DB] KPI query failed (${errMsg}), falling back to raw table`);
+            }
             return this.getKpiFallback(metric);
         }
     }
@@ -73,6 +78,11 @@ export class SQLiteKpiRepository implements IKpiRepository {
                     `SELECT COUNT(DISTINCT "${tableInfo.userCol}") as count FROM "${tableInfo.tableName}"`
                 );
                 current = Number(result.rows[0]?.count || 0);
+            } else if (metric === "churn_rate") {
+                const result = await getPool().query(
+                    `SELECT COUNT(*) FILTER (WHERE "${tableInfo.dateCol}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as rate FROM "${tableInfo.tableName}"`
+                );
+                current = Number(result.rows[0]?.rate || 0);
             }
 
             return {
@@ -117,7 +127,7 @@ export class SQLiteKpiRepository implements IKpiRepository {
 
             const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-            return rows.rows.reverse().map(row => {
+            return [...rows.rows].reverse().map(row => {
                 if (!row.month) return { month: "Unknown", revenue: row.revenue };
                 const parts = row.month.split("-");
                 const year = parts[0];
@@ -128,7 +138,12 @@ export class SQLiteKpiRepository implements IKpiRepository {
                 };
             });
         } catch (err) {
-            console.warn("[DB] kpi_sales view not found, falling back to raw table for history");
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (errMsg.includes("does not exist") || errMsg.includes("relation")) {
+                console.warn("[DB] kpi_sales view not found, falling back to raw table for history");
+            } else {
+                console.warn(`[DB] Sales history query failed (${errMsg}), falling back to raw table`);
+            }
             return this.getSalesHistoryFallback(limit);
         }
     }
@@ -151,7 +166,7 @@ export class SQLiteKpiRepository implements IKpiRepository {
 
             const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-            return rows.rows.reverse().map(row => {
+            return [...rows.rows].reverse().map(row => {
                 if (!row.month) return { month: "Unknown", revenue: row.revenue };
                 const parts = row.month.split("-");
                 const year = parts[0];
@@ -162,6 +177,7 @@ export class SQLiteKpiRepository implements IKpiRepository {
                 };
             });
         } catch (err) {
+            console.warn(`[DB] Sales history fallback failed: ${err instanceof Error ? err.message : String(err)}`);
             return [];
         }
     }

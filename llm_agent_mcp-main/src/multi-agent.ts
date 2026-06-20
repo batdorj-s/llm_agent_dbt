@@ -5,23 +5,15 @@ import { searchKnowledgeBase } from "./rag.js";
 import { buildFinanceKpiContext, handleExecuteSql, isPythonQuery } from "./tools/enterprise-tools.js";
 import { runPythonCode } from "./sandbox.js";
 import { verifyToken } from "./auth.js";
-import { agentLimiter, sandboxLimiter } from "./rate-limiter.js";
 import fs from "fs";
 import yaml from "yaml";
 import { z } from "zod";
-import { CallbackHandler } from "langfuse-langchain";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 const promptFile = fs.readFileSync("./src/prompts.yaml", "utf8");
 const prompts = yaml.parse(promptFile);
-
-const langfuseHandler = new CallbackHandler({
-    secretKey: process.env.LANGFUSE_SECRET_KEY || "mock_sk",
-    publicKey: process.env.LANGFUSE_PUBLIC_KEY || "mock_pk",
-    baseUrl: process.env.LANGFUSE_HOST || "https://cloud.langfuse.com",
-});
 
 export type UserRole = "admin";
 export type NextAgent = "FinanceAgent" | "TechAgent" | "END";
@@ -61,11 +53,19 @@ const checkpointer = new MemorySaver();
 const LLM_TIMEOUT_MS = 60000;
 
 export async function clearConversationMemory() {
-    const storage = (checkpointer as any).storage as Record<string, unknown> | undefined;
-    if (!storage) return;
+    try {
+        const storage = (checkpointer as any).storage as Record<string, unknown> | undefined;
+        if (!storage) return;
 
-    for (const threadId of Object.keys(storage)) {
-        await checkpointer.deleteThread(threadId);
+        for (const threadId of Object.keys(storage)) {
+            try {
+                await checkpointer.deleteThread(threadId);
+            } catch {
+                // ignore individual thread deletion errors
+            }
+        }
+    } catch {
+        // ignore if storage is inaccessible
     }
 }
 
@@ -234,7 +234,7 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query", "код ажиллуул",
         "харуул", "нийт", "нийлбэр", "дундаж", "тоо", "тоолох", "жагсаал", "жагсаалт",
         "шинжилгээ", "шинжил", "задла", "задлан", "гаргаж", "гаргах", "тооцо", "тооцоол",
-        "хамгийн бага", "хамгийн бага", "хамгийн өндөр", "ямар", "ямар ямар",
+        "хамгийн бага", "хамгийн өндөр", "ямар", "ямар ямар",
         "хэд", "хэдэн", "нийт хэдэн", "гүйлгээ", "бүтээгдэхүүн", "бараа",
         "chart", "graph", "visualize", "plot", "харагдуул", "зур",
         "count", "sum", "average", "avg", "total", "group by", "order by", "where", "filter",
@@ -249,11 +249,11 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         "rank", "percentage", "distribution", "breakdown",
         "describe", "stats", "statistics", "overview",
         "first", "last", "limit", "offset",
-        "purchase", "channel", "suva", "суваг", "суваг", "худалдан авалт", "худалдаа",
-        "platform", "платформ", "source", "source", "эх сурвалж",
-        "даргаар", "худалдан авалт", "зарлага", "зардал", "кампанит",
+        "purchase", "channel", "suva", "суваг", "худалдан авалт", "худалдаа",
+        "platform", "платформ", "source", "эх сурвалж",
+        "даргаар", "зарлага", "зардал", "кампанит",
         "campaign", "marketing", "маркетинг", "ad", "advertising", "зар",
-        "conversion", "conversion", "хөрвүүлэлт", "impression", "reach",
+        "conversion", "хөрвүүлэлт", "impression", "reach",
         "click", "тогших", "rate", "cost", "spend",
     ];
     const financeSignals = [
@@ -740,12 +740,15 @@ const workflow = new StateGraph(AgentStateAnnotation)
 
 export const multiAgentApp = workflow.compile({ checkpointer });
 
-export async function runMultiAgent(query: string, userRole: UserRole, threadId: string, visualRequest: boolean = false) {
+export async function runMultiAgent(query: string, userRole: UserRole, threadId: string, visualRequest: boolean = false): Promise<string> {
     const config = { configurable: { thread_id: threadId } };
-    await multiAgentApp.invoke(
+    const result = await multiAgentApp.invoke(
         { messages: [{ role: "user", content: query }], userRole, visualRequest },
         config
     );
+    const messages = (result as any).messages as Message[];
+    const lastMsg = messages[messages.length - 1];
+    return lastMsg?.content ?? "";
 }
 
 export async function runMultiAgentStream(

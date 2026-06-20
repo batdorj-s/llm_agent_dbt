@@ -42,7 +42,7 @@ server.tool(
   "Fetches the Data Lake catalog, showing all available tables, who created them, when, and their columns.",
   {},
   async () => {
-    const result = handleGetCatalog();
+    const result = await handleGetCatalog();
     return { content: [{ type: "text", text: result.text }] };
   }
 );
@@ -54,7 +54,7 @@ server.tool(
     query: z.string().describe("The SQL query to execute."),
   },
   async ({ query }) => {
-    const result = handleExecuteSql({ query });
+    const result = await handleExecuteSql({ query });
     return { content: [{ type: "text", text: result.text }] };
   }
 );

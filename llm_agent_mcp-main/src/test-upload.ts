@@ -16,12 +16,12 @@ async function runTest() {
     console.log("1. Created test CSV file ✅");
 
     // 2. Initialize DB & Seed
-    initDataLake();
-    seedCsv(testCsvPath, testTableName, "TestAdmin", "Dynamic test dataset");
+    await initDataLake();
+    await seedCsv(testCsvPath, testTableName, "TestAdmin", "Dynamic test dataset");
     console.log("2. Seeded CSV to SQLite ✅");
 
     // 3. Verify Catalog
-    const catalog = getCatalog();
+    const catalog = await getCatalog();
     const tableInfo = catalog.find((row: any) => row.table_name === testTableName) as any;
     if (!tableInfo) {
       throw new Error("Table not found in Data Lake Catalog!");

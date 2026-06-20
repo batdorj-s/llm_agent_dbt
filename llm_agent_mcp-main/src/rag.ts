@@ -151,7 +151,7 @@ export async function searchKnowledgeBase(query: string, limit: number = 2) {
 
   // Improved keyword-scored in-memory fallback
   const results = inMemorySearch(query, limit);
-  const fallback = results.length > 0 ? results : [knowledgeDocuments[0]];
+  const fallback = results.length > 0 ? results : [];
 
   console.log(`[VectorDB] In-memory returned ${fallback.length} results`);
   return {
