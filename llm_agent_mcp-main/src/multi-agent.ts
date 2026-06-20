@@ -3,6 +3,8 @@ import { createLLM, createLLMWithOrder, printProviderStatus } from "./llm-provid
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "./db/data-lake.js";
 import { searchKnowledgeBase } from "./rag.js";
 import { buildFinanceKpiContext, handleExecuteSql, isPythonQuery } from "./tools/enterprise-tools.js";
+import { dataScientistNode } from "./agents/data-scientist.js";
+import { safeJsonParse } from "./utils.js";
 import { runPythonCode } from "./sandbox.js";
 import { verifyToken } from "./auth.js";
 import fs from "fs";
@@ -16,7 +18,7 @@ const promptFile = fs.readFileSync("./src/prompts.yaml", "utf8");
 const prompts = yaml.parse(promptFile);
 
 export type UserRole = "admin";
-export type NextAgent = "FinanceAgent" | "TechAgent" | "END";
+export type NextAgent = "FinanceAgent" | "TechAgent" | "DataScientistAgent" | "END";
 
 export interface Message {
     role: "user" | "assistant" | "system";
@@ -239,8 +241,8 @@ async function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: num
 }
 
 const RouteSchema = z.object({
-    route: z.enum(["FinanceAgent", "TechAgent", "END"])
-        .describe("Which agent to route to. FinanceAgent for business/financial queries, TechAgent for coding/data/math, END otherwise."),
+    route: z.enum(["FinanceAgent", "TechAgent", "DataScientistAgent", "END"])
+        .describe("Which agent to route to. FinanceAgent for business/financial queries, TechAgent for coding/data/math, DataScientistAgent for forecasting/trends/clustering/statistics, END otherwise."),
     reason: z.string().describe("One sentence explaining the routing decision.")
 });
 
@@ -289,16 +291,33 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
         "conversion", "хөрвүүлэлт", "impression", "reach",
         "click", "тогших", "rate", "cost", "spend",
     ];
+    const dataScienceSignals = [
+        "таамагла", "forecast", "predict", "ирээдүй", "дараагийн", "урьдчилан",
+        "хандлага", "trend analysis", "seasonal", "seasonality",
+        "бүлэглэлт", "cluster", "customer segmentation", "сегментчилэл",
+        "корреляци", "correlation", "хамаарал", "нөлөөлөл",
+        "regression", "регресс", "linear model", "machine learning",
+        "anova", "t-test", "chi-square", "hypothesis", "статистик тест",
+        "outlier detection", "гажуудал илрүүлэх", "anomaly",
+        "prophet", "arima", "time series", "хугацааны цуваа",
+        "k-means", "kmeans", "pca", "dimension reduction",
+        "feature importance", "coefficient", "р square", "r-squared",
+        "deep learning", "нейрон", "neural",
+    ];
     const financeSignals = [
         "sales target", "revenue target", "profit target", "margin target", "kpi", "kpi target",
         "борлуулалтын төлөвлөгөө", "орлогын төлөвлөгөө", "ашгийн төлөвлөгөө",
     ];
 
     const hasTech = techSignals.some((word) => lowerMessage.includes(word)) || mentionsKnownTable;
+    const hasDataScience = dataScienceSignals.some((word) => lowerMessage.includes(word));
     const hasFinance = financeSignals.some((word) => lowerMessage.includes(word));
 
     let immediateRoute: NextAgent | null = null;
-    if (hasTech && hasFinance) {
+    if (hasDataScience) {
+        console.log("[Supervisor] Data science query detected. Routing to DataScientistAgent.");
+        immediateRoute = "DataScientistAgent";
+    } else if (hasTech && hasFinance) {
         console.log("[Supervisor] Hybrid query detected. Defaulting to TechAgent for data analysis.");
         immediateRoute = "TechAgent";
     } else if (hasTech) {
@@ -364,7 +383,9 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
     }
 
     let route: NextAgent = "END";
-    if (mentionsKnownTable || techSignals.some((word) => lowerMessage.includes(word))) {
+    if (dataScienceSignals.some((word) => lowerMessage.includes(word))) {
+        route = "DataScientistAgent";
+    } else if (mentionsKnownTable || techSignals.some((word) => lowerMessage.includes(word))) {
         route = "TechAgent";
     } else if (financeSignals.some((word) => lowerMessage.includes(word))) {
         route = "FinanceAgent";
@@ -489,7 +510,9 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
 function generateVisualTag(jsonResults: string): string {
     let data: any[];
     try {
-        data = JSON.parse(jsonResults);
+        const { data: parsed } = safeJsonParse<any[]>(jsonResults, []);
+        if (!Array.isArray(parsed)) throw new Error("Not an array");
+        data = parsed;
     } catch {
         return '';
     }
@@ -619,9 +642,9 @@ Task: ${query}`;
             const raw = dashResponse.content as string;
             let widgets: any[];
             try {
-                const jsonMatch = raw.match(/\[[\s\S]*\]/);
-                if (!jsonMatch) throw new Error("No JSON array found in LLM response");
-                widgets = JSON.parse(jsonMatch[0]);
+                const { data, cleaned } = safeJsonParse<any[]>(raw, []);
+                if (!Array.isArray(data) || data.length === 0) throw new Error("No valid JSON array found");
+                widgets = data;
             } catch (parseErr) {
                 const fallback = `${dashPrefix}⚠️ Dashboard өгөгдлийг боловсруулахад алдаа гарлаа. Анхны хариу:\n\`\`\`json\n${raw}\n\`\`\``;
                 if (onChunk) onChunk(fallback);
@@ -723,7 +746,7 @@ Task: ${query}`;
                 codeGenResponse = await executeCodeGen(llm);
             } catch (err: any) {
                 console.warn("[Tech Agent] Primary LLM for SQL failed, attempting fallback:", err.message);
-                const fallbackLLM = await createLLMWithOrder({ temperature: 0, providerOrder: ["gemini", "groq", "openai"] });
+                const fallbackLLM = await createLLMWithOrder({ temperature: 0, providerOrder: ["groq", "gemini", "openai"] });
                 if (fallbackLLM) {
                     codeGenResponse = await executeCodeGen(fallbackLLM);
                 } else {
@@ -868,14 +891,17 @@ const workflow = new StateGraph(AgentStateAnnotation)
     .addNode("Supervisor", supervisorNode)
     .addNode("FinanceAgent", financeAgentNode)
     .addNode("TechAgent", techAgentNode)
+    .addNode("DataScientistAgent", dataScientistNode)
     .addEdge("__start__", "Supervisor")
     .addConditionalEdges("Supervisor", routerCondition, {
         "FinanceAgent": "FinanceAgent",
         "TechAgent": "TechAgent",
+        "DataScientistAgent": "DataScientistAgent",
         "__end__": "__end__"
     })
     .addEdge("FinanceAgent", "__end__")
-    .addEdge("TechAgent", "__end__");
+    .addEdge("TechAgent", "__end__")
+    .addEdge("DataScientistAgent", "__end__");
 
 export const multiAgentApp = workflow.compile({ checkpointer });
 

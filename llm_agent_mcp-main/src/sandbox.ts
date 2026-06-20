@@ -1,6 +1,7 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import dotenv from "dotenv";
 import fs from "fs";
+import path from "path";
 
 dotenv.config();
 
@@ -12,14 +13,28 @@ export async function runPythonCode(code: string): Promise<string> {
 
     if (!hasKey) {
         console.warn("⚠️ No E2B_API_KEY found. Running Sandbox in Mock Mode.");
+        const mockChartPath = path.join(process.cwd(), "analysis_plot.png");
+        if (fs.existsSync(mockChartPath)) {
+            const base64 = fs.readFileSync(mockChartPath).toString("base64");
+            return [
+                "##CHART_SAVED##",
+                `##BASE64_IMAGE:${base64}`,
+                "",
+                "(Mock Sandbox Output — E2B_API_KEY not configured)",
+                "----------------------------------------------",
+                `Executed Python code snippet:`,
+                code.length > 200 ? code.slice(0, 200) + "..." : code,
+                "",
+                "Result: In a real environment, this code would be executed in an E2B MicroVM."
+            ].join("\n");
+        }
         return [
             "(Mock Sandbox Output — E2B_API_KEY not configured)",
             "----------------------------------------------",
             `Executed Python code snippet:`,
             code.length > 200 ? code.slice(0, 200) + "..." : code,
             "",
-            "Result: In a real environment, this code would be executed in an E2B MicroVM.",
-            "Local PoC result: Successfully processed data in mock environment."
+            "Result: In a real environment, this code would be executed in an E2B MicroVM."
         ].join("\n");
     }
 
@@ -48,6 +63,16 @@ export async function runPythonCode(code: string): Promise<string> {
         let output = "";
         if (execution.logs.stdout.length > 0) output += `STDOUT:\n${execution.logs.stdout.join('\n')}\n`;
         if (execution.logs.stderr.length > 0) output += `STDERR:\n${execution.logs.stderr.join('\n')}\n`;
+
+        try {
+            const chartContent = await _sandboxInstance.files.read("analysis_plot.png");
+            if (chartContent) {
+                const base64 = Buffer.from(chartContent).toString("base64");
+                output += `\n##CHART_SAVED##\n##BASE64_IMAGE:${base64}\n`;
+            }
+        } catch {
+            console.log("🔒 No chart file found in sandbox output.");
+        }
 
         return output || "Execution complete. No output.";
     } catch (error: any) {

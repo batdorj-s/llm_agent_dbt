@@ -1,0 +1,107 @@
+{
+  "description": "End-to-end test cases for multi-agent data analysis system",
+  "tests": [
+    {
+      "id": "finance-001",
+      "agent": "FinanceAgent",
+      "query": "Борлуулалтын төлөвлөгөө хэд байна?",
+      "expected_behavior": "Uses RAG context to answer; if not found, says 'Энэ мэдээлэл одоогоор боломжгүй байна'"
+    },
+    {
+      "id": "finance-002",
+      "agent": "FinanceAgent",
+      "query": "Энэ улирлын KPI зорилт юу вэ?",
+      "expected_behavior": "Responds with KPI metric names, current values, and target progress if available"
+    },
+    {
+      "id": "finance-003",
+      "agent": "FinanceAgent",
+      "query": "Өнгөрсөн сарын орлого хэд байсан бэ?",
+      "expected_behavior": "If RAG has no data, responds with 'боломжгүй' — never invents numbers"
+    },
+    {
+      "id": "tech-001",
+      "agent": "TechAgent",
+      "query": "Бүтээгдэхүүний борлуулалтыг сараар харуул.",
+      "expected_behavior": "Generates SQL with DATE_TRUNC('month', ...) and GROUP BY, executes it, returns results"
+    },
+    {
+      "id": "tech-002",
+      "agent": "TechAgent",
+      "query": "superstore_sales-ийн нийт борлуулалтын дүнг харуул.",
+      "expected_behavior": "Generates SELECT SUM(sales) or similar aggregate SQL"
+    },
+    {
+      "id": "tech-003",
+      "agent": "TechAgent",
+      "query": "bank-ийн тодорхой ажлын байртай харилцагчдыг шүүж харуул.",
+      "expected_behavior": "SQL uses ILIKE for job column matching (case-insensitive)"
+    },
+    {
+      "id": "tech-004",
+      "agent": "TechAgent",
+      "query": "Өнгөрсөн 3 сарын борлуулалтыг харуул.",
+      "expected_behavior": "SQL uses CURRENT_DATE - INTERVAL '3 months' (dynamic date filter, no hardcoded dates)"
+    },
+    {
+      "id": "tech-005",
+      "agent": "TechAgent",
+      "query": "superstore_sales-ийн категори тус бүрийн борлуулалт ба ашгийг харьцуулах dashboard үүсгэ.",
+      "expected_behavior": "Routes to dashboard designer, generates widget JSON with SQL for bar/pie/kpi widgets"
+    },
+    {
+      "id": "tech-006",
+      "agent": "TechAgent",
+      "query": "Хэдэн харилцагч байна?",
+      "expected_behavior": "Uses deterministic SQL path (buildDeterministicTechSql) — COUNT(*) — no LLM call"
+    },
+    {
+      "id": "tech-007",
+      "agent": "TechAgent",
+      "query": "Нийт хэдэн мөр байна, дундаж balance хэд вэ?",
+      "expected_behavior": "Uses deterministic SQL path — COUNT(*) + AVG(balance) — no LLM call"
+    },
+    {
+      "id": "tech-008",
+      "agent": "TechAgent",
+      "query": "Хамгийн их борлуулалттай эхний 5 бүтээгдэхүүнийг харуул.",
+      "expected_behavior": "Uses deterministic SQL path — TOP 5 by revenue — no LLM call"
+    },
+    {
+      "id": "ds-001",
+      "agent": "DataScientistAgent",
+      "query": "superstore_sales-ийн ирэх 3 сарын борлуулалтыг таамаглаж өгөөч.",
+      "expected_behavior": "Routes to DataScientistAgent, samples 500 rows via SQL, generates Python with statsmodels, executes in E2B sandbox, explains in Mongolian"
+    },
+    {
+      "id": "ds-002",
+      "agent": "DataScientistAgent",
+      "query": "superstore_sales-ийн хэрэглэгчдийг худалдан авалтын зан төлөвөөр нь хэдэн бүлэгт хувааж болох вэ?",
+      "expected_behavior": "Routes to DataScientistAgent as clustering query, generates Python with KMeans"
+    },
+    {
+      "id": "ds-003",
+      "agent": "DataScientistAgent",
+      "query": "superstore_sales-ийн маркетингийн зардал болон борлуулалтын хооронд ямар хамаарал байна вэ?",
+      "expected_behavior": "Routes to DataScientistAgent as correlation query, generates Python with .corr()"
+    },
+    {
+      "id": "supervisor-ds-route",
+      "agent": "Supervisor",
+      "query": "Дараагийн улирлын борлуулалтыг таамагла",
+      "expected_behavior": "Keywords 'таамагла' detected — routes to DataScientistAgent (no LLM needed)"
+    },
+    {
+      "id": "supervisor-finance-route",
+      "agent": "Supervisor",
+      "query": "Борлуулалтын KPI хэд байна",
+      "expected_behavior": "Keywords 'KPI'/'борлуулалт' — routes to FinanceAgent (or TechAgent if table active)"
+    },
+    {
+      "id": "supervisor-end-route",
+      "agent": "Supervisor",
+      "query": "Сайн уу",
+      "expected_behavior": "No routing keywords — routes to END"
+    }
+  ]
+}
