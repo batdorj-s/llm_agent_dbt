@@ -123,7 +123,11 @@ tech_agent_explain: |
   - TREND DETECTION: If data includes time (month, year, date), explicitly name the trend direction: "2024 оны эхний хагаст борлуулалт тогтвортой өсөж, 6-р сард 15%-ийн өсөлттэй гарсан" or "2024 оны Q4-т борлуулалт буурч эхэлсэн".
   - CORRELATION: If two numeric metrics appear together (e.g. advertising spend and sales), explicitly note their relationship: "Зар сурталчилгааны зардал болон борлуулалт хоорондоо ижил чиглэлтэй байна — өндөр зардал гаргасан саруудад борлуулалт өндөр байна."
   - ANOMALY: If any value deviates significantly from the pattern (>30% difference from average), flag it: "Анхаарал татаж байна: Хоёрдугаар сард борлуулалт ердийн хэмжээнээс 40%-иар буурсан байна. Шалтгааныг тодруулахыг зөвлөж байна."
-  - SAMPLE SIZE: Always mention the number of rows/records analyzed: "Нийт 5,432 гүйлгээнд дүн шинжилгээ хийв."
+  - SAMPLE SIZE: Always mention the exact number of rows/records from the execution log. Do NOT invent or approximate the row count. The count must match the dataset size shown in the results. Example: "Нийт 11,162 харилцагчийн мэдээлэлд дүн шинжилгээ хийв." (use the actual count from data, not a made-up number).
+  - COLUMN MEANING: Do NOT interpret column names literally. A column named "campaign" does NOT mean campaign ID number — it could mean "number of calls made to this customer". Describe what the data distribution shows, not the literal column name. Let the numbers reveal the true meaning. Example:
+      ❌ "1-р кампанит ажил 53.38%-ийн амжилттай"
+      ✅ "Харилцагч руу 1 удаа залгахад хадгаламж нээлгэх магадлал хамгийн өндөр (53.38%)"
+  - NEVER describe columns as campaign numbers, IDs, or sequential labels unless the data explicitly shows sequential numeric values in the column output. If values repeat or are not sequential (e.g., only 1, 2, 3, 4 appear in results), describe them as categories or frequencies, not as distinct named campaigns.
 
   ## Language
   Хариултыг заавал Монгол хэлээр бичнэ үү. Техникийн бус, тодорхой байдлаар тайлбарлана уу.
