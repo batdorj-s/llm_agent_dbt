@@ -3,6 +3,8 @@ import { getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js
 import { handleExecuteSql } from "../tools/enterprise-tools.js";
 import { runPythonCode } from "../sandbox.js";
 import { sandboxLimiter } from "../rate-limiter.js";
+import { searchKnowledgeBase } from "../rag.js";
+import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "../rag.js";
 
 const LLM_TIMEOUT_MS = 40000;
 const PYTHON_GEN_TIMEOUT_MS = 55000;
@@ -32,6 +34,36 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     console.log(`[DataScientist] Active table: ${tableName}, columns: ${columnList.join(", ")}`);
 
     const llm = await createLLM({ temperature: 0 });
+
+    let ragContext = "";
+    try {
+        let filter;
+        if (llm) {
+            try {
+                filter = await selfQueryTransform(query, (prompt: string) =>
+                    llm.invoke([
+                        { role: "system", content: prompt },
+                        { role: "user", content: query }
+                    ]).then((r: any) => r.content as string)
+                );
+                console.log(`[DataScientist] Self-query filter: ${JSON.stringify(filter)}`);
+            } catch (sqErr) {
+                console.warn("[DataScientist] Self-query failed:", (sqErr as Error).message);
+            }
+        }
+
+        const ragData = filter
+            ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "DataScientistAgent", limit: 2, filter })
+            : await searchKnowledgeBase(query, "DataScientistAgent", 2);
+        const docs = ragData.documents?.[0] ?? [];
+        if (docs.length > 0) {
+            ragContext = "\n\n## Relevant Knowledge\n" + docs.join("\n\n---\n\n");
+            console.log(`[DataScientist] Enriched with ${docs.length} RAG docs`);
+        }
+    } catch (err) {
+        console.warn("[DataScientist] RAG fetch failed:", (err as Error).message);
+    }
+
     if (!llm) {
         const fallback = `${prefix}⚠️ LLM API key тохируулаагүй байна.`;
         if (onChunk) onChunk(fallback);
@@ -70,7 +102,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     const pythonSystemPrompt = buildPythonPrompt(
         analysisType, tableName, columnList,
         dateCol, numericCols, categoryCols,
-        schemaDef, sampleData
+        schemaDef, sampleData, ragContext
     );
 
     try {
@@ -208,7 +240,8 @@ function findCategoryColumns(columns: string[]): string[] {
 function buildPythonPrompt(
     analysisType: string, tableName: string, columns: string[],
     dateCol: string | null, numericCols: string[], categoryCols: string[],
-    schemaDef: string, sampleData: any[]
+    schemaDef: string, sampleData: any[],
+    ragContext: string = ""
 ): string {
     const sampleJson = JSON.stringify(sampleData.slice(0, 5), null, 2);
     const dateHint = dateCol ? `- Date column: "${dateCol}" (use for time-series if applicable)` : "- No date column detected";
@@ -262,6 +295,7 @@ Categorical columns: ${categoryCols.join(", ") || "auto-detect from data"}
 
 ## Schema
 ${schemaDef}
+${ragContext}
 
 ## Sample Data (first 5 rows)
 ${sampleJson}

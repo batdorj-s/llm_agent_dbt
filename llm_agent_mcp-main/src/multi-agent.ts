@@ -2,6 +2,7 @@ import { StateGraph, MessagesAnnotation, MemorySaver, Annotation } from "@langch
 import { createLLM, createLLMWithOrder, printProviderStatus } from "./llm-provider.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "./db/data-lake.js";
 import { searchKnowledgeBase } from "./rag.js";
+import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "./rag.js";
 import { buildFinanceKpiContext, handleExecuteSql, isPythonQuery } from "./tools/enterprise-tools.js";
 import { dataScientistNode } from "./agents/data-scientist.js";
 import { safeJsonParse } from "./utils.js";
@@ -418,13 +419,37 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
     const lastMsg = state.messages[state.messages.length - 1];
     const query = lastMsg ? lastMsg.content : "sales targets";
 
+    const llm = await createLLM({ temperature: 0 });
+
     console.log(`[Finance Agent] Fetching RAG context for query: "${query}"`);
     let context = "No context available.";
     try {
-        const ragData = await searchKnowledgeBase(query, 2);
+        let filter;
+        if (llm) {
+            try {
+                const structuredLlm = (llm as any).withStructuredOutput
+                    ? llm
+                    : await createLLMWithOrder({ temperature: 0, providerOrder: ["groq", "gemini"] });
+                if (structuredLlm) {
+                    filter = await selfQueryTransform(query, (prompt: string) =>
+                        structuredLlm.invoke([
+                            { role: "system", content: prompt },
+                            { role: "user", content: query }
+                        ]).then((r: any) => r.content as string)
+                    );
+                    console.log(`[Finance Agent] Self-query filter: ${JSON.stringify(filter)}`);
+                }
+            } catch (sqErr) {
+                console.warn("[Finance Agent] Self-query failed, using plain search:", (sqErr as Error).message);
+            }
+        }
+
+        const ragData = filter
+            ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "FinanceAgent", limit: 3, filter })
+            : await searchKnowledgeBase(query, "FinanceAgent", 3);
         const docs = ragData.documents?.[0] ?? [];
         if (docs.length > 0) {
-            context = docs.join("\n");
+            context = docs.join("\n\n---\n\n");
         } else {
             console.warn("[Finance Agent] RAG returned no documents.");
         }
@@ -450,7 +475,6 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
         return techAgentNode(state, config);
     }
 
-    const llm = await createLLM({ temperature: 0 });
     if (!llm) {
         const fallback = `(Finance Agent)\nBased on RAG:\n${context}`;
         if (onChunk) onChunk(fallback);

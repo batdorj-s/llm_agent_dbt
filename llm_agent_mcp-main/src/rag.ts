@@ -1,54 +1,98 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-// ─────────────────────────────────────────────────────────────
-// Knowledge Base Documents
-// ─────────────────────────────────────────────────────────────
-export let knowledgeDocuments = [
+export interface RagDocument {
+  id: string;
+  text: string;
+  metadata: {
+    category: "finance" | "technical" | "business_policy" | "data_catalog" | "previous_analysis";
+    department: string;
+    author?: string;
+    created_at?: string;
+    source_name?: string;
+  };
+  keywords: string[];
+}
+
+export interface SelfQueryFilter {
+  query: string;
+  categories?: string[];
+  departments?: string[];
+  author?: string;
+  year?: number;
+}
+
+export let knowledgeDocuments: RagDocument[] = [
   {
     id: "doc1",
-    text: "Business Glossary: 'Sales' refers to the total revenue generated from closed deals, calculated from the active Data Lake dataset's revenue or amount column. The current annual target is set to 500,000 USD.",
-    metadata: { category: "glossary", department: "sales" },
-    keywords: ["sales", "revenue", "target", "deals", "finance", "dataset", "kpi", "kpi target"]
+    text: "Sales refers to the total revenue generated from closed deals, calculated from the active Data Lake dataset's revenue or amount column. The current annual target is set to 500,000 USD.",
+    metadata: { category: "finance", department: "sales", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
+    keywords: ["sales", "revenue", "target", "deals", "kpi", "kpi target"]
   },
   {
     id: "doc2",
-    text: "Business Glossary: 'Churn Rate' is the percentage of users who have not made a purchase in over 6 months. The acceptable threshold is under 2.0%.",
-    metadata: { category: "glossary", department: "retention" },
+    text: "Churn Rate is the percentage of users who have not made a purchase in over 6 months. The acceptable threshold is under 2.0%.",
+    metadata: { category: "finance", department: "retention", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
     keywords: ["churn", "users", "cancel", "subscription", "retention", "percentage"]
   },
   {
     id: "doc3",
-    text: "Policy: The Enterprise AI Orchestrator uses a unified Admin access model. All authenticated users have full access to SQL analysis, Python sandboxing, and KPI management.",
-    metadata: { category: "policy", department: "security" },
-    keywords: ["policy", "rbac", "admin", "access", "security", "compliance", "data", "unified"]
+    text: "The Enterprise AI Orchestrator uses a unified Admin access model. All authenticated users have full access to SQL analysis, Python sandboxing, and KPI management.",
+    metadata: { category: "business_policy", department: "security", author: "admin", created_at: "2026-01-01", source_name: "Access Policy" },
+    keywords: ["policy", "rbac", "admin", "access", "security", "compliance", "unified"]
   },
   {
     id: "doc4",
     text: "Data Lake Catalog: Use the active uploaded table from the catalog for transaction analytics. Always read the live schema before writing SQL, and do not assume older table names or columns unless they appear in the current catalog.",
-    metadata: { category: "catalog", department: "analytics" },
-    keywords: ["catalog", "columns", "date", "sales", "category", "data lake", "sqlite", "sql", "schema"]
+    metadata: { category: "data_catalog", department: "analytics", author: "admin", created_at: "2026-01-01", source_name: "Data Lake Guide" },
+    keywords: ["catalog", "columns", "sales", "category", "data lake", "sql", "schema"]
   },
   {
     id: "doc5",
     text: "Data Lake Catalog: Historical trend analysis should use the live catalog entry for the currently loaded dataset. If dates contain dots, normalize them with REPLACE(column, '.', '-') before date grouping.",
-    metadata: { category: "catalog", department: "analytics" },
-    keywords: ["catalog", "columns", "order_date", "sales", "category", "region", "data lake", "sqlite", "sql", "date"]
-  }
+    metadata: { category: "data_catalog", department: "analytics", author: "admin", created_at: "2026-01-01", source_name: "Data Lake Guide" },
+    keywords: ["catalog", "columns", "order_date", "sales", "category", "data lake", "sql", "date"]
+  },
+  {
+    id: "doc6",
+    text: "SQL Best Practices: Always use ILIKE for case-insensitive text matching. Use DATE_TRUNC for time-series grouping. Use COALESCE to handle null values. Never use backticks — PostgreSQL uses double quotes for identifiers.",
+    metadata: { category: "technical", department: "engineering", author: "admin", created_at: "2026-01-01", source_name: "SQL Style Guide" },
+    keywords: ["sql", "ilike", "date_trunc", "coalesce", "postgresql", "best practices", "query"]
+  },
+  {
+    id: "doc7",
+    text: "Dashboard Design: A dashboard consists of 4-6 widgets. Each widget has a type (kpi, bar, line, pie, area), a title in Mongolian, a SQL query, and a unit. KPI widgets return a single number. Bar/Pie charts group by categorical columns. Line/Area charts group by date columns.",
+    metadata: { category: "technical", department: "engineering", author: "admin", created_at: "2026-01-01", source_name: "Dashboard Guide" },
+    keywords: ["dashboard", "widget", "kpi", "bar", "line", "pie", "chart", "visualization"]
+  },
+  {
+    id: "doc8",
+    text: "Python Analysis: The E2B Sandbox supports pandas, numpy, scikit-learn, statsmodels, scipy, matplotlib, and seaborn. Data is passed as inline JSON. Plots must be saved as 'analysis_plot.png'. Output text is captured from stdout.",
+    metadata: { category: "technical", department: "engineering", author: "admin", created_at: "2026-01-01", source_name: "Sandbox Guide" },
+    keywords: ["python", "sandbox", "e2b", "pandas", "matplotlib", "plot", "analysis"]
+  },
 ];
 
 export const mockDocuments = knowledgeDocuments;
 
-// ─────────────────────────────────────────────────────────────
-// Improved In-Memory Search (keyword scoring)
-// ─────────────────────────────────────────────────────────────
-function inMemorySearch(query: string, limit: number) {
+const ROLE_CATEGORY_MAP: Record<string, string[]> = {
+  FinanceAgent: ["finance", "business_policy"],
+  TechAgent: ["technical", "data_catalog"],
+  DataScientistAgent: ["technical", "data_catalog", "previous_analysis"],
+};
+
+function inMemorySearch(query: string, limit: number, categories?: string[]) {
   const queryWords = query.toLowerCase().split(/\W+/).filter(Boolean);
 
-  const scored = knowledgeDocuments.map(doc => {
+  let docs = knowledgeDocuments;
+  if (categories && categories.length > 0) {
+    docs = docs.filter(d => categories.includes(d.metadata.category));
+  }
+
+  const scored = docs.map(doc => {
     const score = queryWords.reduce((acc, word) => {
-      if (doc.keywords.includes(word)) return acc + 2;          // Exact keyword match
-      if (doc.text.toLowerCase().includes(word)) return acc + 1; // Partial text match
+      if (doc.keywords.includes(word)) return acc + 2;
+      if (doc.text.toLowerCase().includes(word)) return acc + 1;
       return acc;
     }, 0);
     return { doc, score };
@@ -60,14 +104,39 @@ function inMemorySearch(query: string, limit: number) {
     .map(s => s.doc);
 }
 
-// ─────────────────────────────────────────────────────────────
-// ChromaDB + OpenAI Embedding Setup (when env vars available)
-// ─────────────────────────────────────────────────────────────
+function recursiveSearch(query: string, limit: number, categories?: string[]): RagDocument[] {
+  const results = inMemorySearch(query, limit, categories);
+
+  if (results.length < limit && categories) {
+    const queryWords = query.toLowerCase().split(/\W+/).filter(Boolean);
+    for (const word of queryWords) {
+      if (word.length < 3) continue;
+      const extra = inMemorySearch(word, 1, categories);
+      for (const doc of extra) {
+        if (!results.find(r => r.id === doc.id)) {
+          results.push(doc);
+        }
+      }
+      if (results.length >= limit) break;
+    }
+  }
+
+  return results.slice(0, limit);
+}
+
+function formatWithSource(docs: RagDocument[]): string {
+  return docs.map(doc => {
+    const source = doc.metadata.source_name ? `[Source: ${doc.metadata.source_name}]` : "";
+    const dept = doc.metadata.department ? `(${doc.metadata.department})` : "";
+    return `${source}${dept ? " " + dept : ""}\n${doc.text}`;
+  }).join("\n\n---\n\n");
+}
+
 let chromaClient: any = null;
 let collection: any = null;
 
 async function getChromaCollection() {
-  if (collection) return collection; // Cached
+  if (collection) return collection;
 
   const hasChromaUrl = process.env.CHROMA_URL;
   const hasOpenAIKey = process.env.OPENAI_API_KEY &&
@@ -99,9 +168,6 @@ async function getChromaCollection() {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Setup — Seed Documents into ChromaDB (if available)
-// ─────────────────────────────────────────────────────────────
 export async function setupKnowledgeBase() {
   const col = await getChromaCollection();
 
@@ -113,59 +179,180 @@ export async function setupKnowledgeBase() {
       await col.add({
         ids: knowledgeDocuments.map(d => d.id),
         documents: knowledgeDocuments.map(d => d.text),
-        metadatas: knowledgeDocuments.map(d => d.metadata),
+        metadatas: knowledgeDocuments.map(d => ({ ...d.metadata, category: d.metadata.category })),
       });
-      console.log(`✅ ChromaDB setup complete. Added ${knowledgeDocuments.length} documents.`);
+      console.log(`[VectorDB] ChromaDB setup complete. Added ${knowledgeDocuments.length} documents.`);
     } else {
-      console.log(`✅ ChromaDB already contains ${existing} documents.`);
+      console.log(`[VectorDB] ChromaDB already contains ${existing} documents.`);
     }
   } else {
-    console.log("Setting up In-Memory Vector DB (ChromaDB/OpenAI unavailable)...");
-    console.log(`✅ In-Memory DB ready. ${knowledgeDocuments.length} documents loaded.`);
+    console.log(`[VectorDB] In-Memory DB ready. ${knowledgeDocuments.length} documents loaded.`);
   }
 
   return true;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Search — Semantic (ChromaDB) or Keyword (In-Memory fallback)
-// ─────────────────────────────────────────────────────────────
-export async function searchKnowledgeBase(query: string, limit: number = 2) {
-  console.log(`[VectorDB] Searching for: "${query}"`);
+export async function searchKnowledgeBase(
+  query: string,
+  agentRole: string = "FinanceAgent",
+  limit: number = 3
+): Promise<{ documents: string[][]; metadatas: any[][] }> {
+  return searchKnowledgeBaseWithFilter({ query, agentRole, limit });
+}
+
+export async function searchKnowledgeBaseWithFilter(
+  params: {
+    query: string;
+    agentRole?: string;
+    limit?: number;
+    filter?: SelfQueryFilter;
+  }
+): Promise<{ documents: string[][]; metadatas: any[][] }> {
+  const { query, agentRole, limit, filter } = {
+    agentRole: "FinanceAgent",
+    limit: 3,
+    ...params
+  };
+  console.log(`[RAG] Agent="${agentRole}" searching: "${query}"${filter ? ` | self-query: ${JSON.stringify(filter)}` : ""}`);
+
+  let categories = ROLE_CATEGORY_MAP[agentRole] || ["finance", "business_policy"];
+
+  if (filter?.categories && filter.categories.length > 0) {
+    categories = categories.filter(c => filter.categories!.includes(c));
+    if (categories.length === 0) categories = filter.categories;
+  }
+  const departmentFilter = filter?.departments?.filter(Boolean) || [];
 
   const col = await getChromaCollection();
 
   if (col) {
     try {
-      // Genuine semantic vector search
+      const chromaWhere: Record<string, any> = { category: { "$in": categories } };
+      if (departmentFilter.length > 0) {
+        chromaWhere.department = { "$in": departmentFilter };
+      }
+
       const results = await col.query({
         queryTexts: [query],
         nResults: limit,
+        where: chromaWhere,
       });
-      console.log(`[VectorDB] ChromaDB returned ${results.documents[0].length} results`);
-      return results;
+      console.log(`[RAG] ChromaDB returned ${results.documents[0]?.length || 0} results`);
+      if (results.documents[0]?.length > 0) {
+        const formatted = results.documents[0].map((text: string, i: number) => {
+          const meta = results.metadatas[0][i] || {};
+          const source = meta.source_name ? `[Source: ${meta.source_name}]` : "";
+          const dept = meta.department ? `(${meta.department})` : "";
+          return `${source}${dept ? " " + dept : ""}\n${text}`;
+        });
+        return {
+          documents: [formatted],
+          metadatas: results.metadatas,
+        };
+      }
     } catch (err) {
-      console.warn("[VectorDB] ChromaDB query failed, falling back to in-memory:", (err as Error).message);
+      console.warn("[RAG] ChromaDB query failed, falling back to in-memory:", (err as Error).message);
     }
   }
 
-  // Improved keyword-scored in-memory fallback
-  const results = inMemorySearch(query, limit);
-  const fallback = results.length > 0 ? results : [];
+  let results = recursiveSearch(query, limit, categories);
 
-  console.log(`[VectorDB] In-memory returned ${fallback.length} results`);
+  if (departmentFilter.length > 0 && results.length > 0) {
+    results = results.filter(r => departmentFilter.includes(r.metadata.department));
+  }
+
+  if (filter?.year && results.length > 0) {
+    results = results.filter(r => {
+      if (!r.metadata.created_at) return true;
+      return r.metadata.created_at.startsWith(String(filter.year));
+    });
+  }
+
+  if (results.length === 0 && departmentFilter.length > 0) {
+    results = recursiveSearch(query, limit, categories);
+  }
+
+  const docs = formatWithSource(results);
+  console.log(`[RAG] In-memory returned ${results.length} results for ${agentRole}`);
+
   return {
-    documents: [fallback.map(r => r.text)],
-    metadatas: [fallback.map(r => r.metadata)],
+    documents: [results.map(r => r.text)],
+    metadatas: [results.map(r => r.metadata)],
   };
 }
 
-// ─────────────────────────────────────────────────────────────
-// Dynamic document addition (API Upload feature)
-// ─────────────────────────────────────────────────────────────
-export async function addDocumentToCatalog(id: string, text: string, metadata: any, keywords: string[]) {
-  console.log(`[VectorDB] Adding new document: ${id}`);
-  knowledgeDocuments.push({ id, text, metadata, keywords });
+/**
+ * Self-Querying: Uses LLM to extract structured metadata filters from a natural language query.
+ * Pass an LLM `.invoke()` function as `llmInvoke`.
+ */
+export async function selfQueryTransform(
+  query: string,
+  llmInvoke: (prompt: string) => Promise<string>
+): Promise<SelfQueryFilter> {
+  const systemPrompt = `Extract search filters from the user's query. Return ONLY a JSON object with these fields:
+- "query": the core search query (remove date/year references, keep the main subject)
+- "categories": array of relevant categories from: finance, technical, business_policy, data_catalog, previous_analysis
+- "departments": array of relevant departments if mentioned (e.g. sales, engineering, analytics, security, retention)
+- "year": 4-digit year if a specific year is mentioned (e.g. 2024, 2025)
+
+Examples:
+Input: "2024 оны маркетингийн тайланг харуул"
+Output: {"query":"маркетингийн тайлан","categories":["finance","business_policy"],"departments":[],"year":2024}
+
+Input: "SQL бичихдээ ILIKE хэрхэн ашиглах вэ"
+Output: {"query":"ILIKE SQL usage","categories":["technical"],"departments":["engineering"],"year":null}
+
+Input: "Борлуулалтын KPI ямар байна"
+Output: {"query":"sales KPI","categories":["finance"],"departments":["sales"],"year":null}
+
+If unsure, return: {"query":"${query.replace(/"/g, "'")}","categories":[],"departments":[],"year":null}
+Respond with ONLY the JSON. No markdown, no explanation.`;
+
+  try {
+    const response = await llmInvoke(systemPrompt);
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        query: parsed.query || query,
+        categories: Array.isArray(parsed.categories) ? parsed.categories : [],
+        departments: Array.isArray(parsed.departments) ? parsed.departments : [],
+        year: typeof parsed.year === "number" ? parsed.year : undefined,
+      };
+    }
+  } catch (err) {
+    console.warn("[RAG] Self-query transform failed:", (err as Error).message);
+  }
+
+  return { query };
+}
+
+export async function addDocumentToCatalog(
+  id: string,
+  text: string,
+  metadata: {
+    category: "finance" | "technical" | "business_policy" | "data_catalog" | "previous_analysis";
+    department?: string;
+    author?: string;
+    source_name?: string;
+  },
+  keywords: string[]
+) {
+  const doc: RagDocument = {
+    id,
+    text,
+    metadata: {
+      category: metadata.category,
+      department: metadata.department || "general",
+      author: metadata.author || "system",
+      created_at: new Date().toISOString(),
+      source_name: metadata.source_name || `Upload: ${id}`,
+    },
+    keywords,
+  };
+
+  knowledgeDocuments.push(doc);
+  console.log(`[RAG] Added document: ${id} (${metadata.category})`);
 
   const col = await getChromaCollection();
   if (col) {
@@ -173,13 +360,11 @@ export async function addDocumentToCatalog(id: string, text: string, metadata: a
       await col.add({
         ids: [id],
         documents: [text],
-        metadatas: [metadata],
+        metadatas: [{ ...doc.metadata, category: doc.metadata.category }],
       });
-      console.log(`[VectorDB] Successfully added document ${id} to ChromaDB ✅`);
+      console.log(`[RAG] Successfully added ${id} to ChromaDB ✅`);
     } catch (err: any) {
-      console.error(`[VectorDB] Failed to add document ${id} to ChromaDB:`, err.message);
+      console.error(`[RAG] Failed to add ${id} to ChromaDB:`, err.message);
     }
-  } else {
-    console.log(`[VectorDB] Added document ${id} to In-Memory DB ✅`);
   }
 }

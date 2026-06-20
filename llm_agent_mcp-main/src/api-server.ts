@@ -277,7 +277,12 @@ app.post("/api/admin/upload-csv", async (req, res) => {
         return vals && vals.length > 0 ? `"${c}" (${typeLabel}${rangeInfo}, e.g. ${vals.join(", ")})` : `"${c}" (${typeLabel}${rangeInfo})`;
       }).join(", ");
       const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}.`;
-      await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, { category: "catalog" }, [sanitizedTableName]);
+      await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, {
+        category: "data_catalog",
+        department: "analytics",
+        author: userId || "unknown",
+        source_name: `Upload: ${sanitizedTableName}`,
+      }, [sanitizedTableName]);
     }
 
     await getPool().query(
@@ -344,7 +349,7 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     await addDocumentToCatalog(
         docId, 
         `Document: ${originalName}\nDescription: ${description}\n\nContent:\n${extractedText}`,
-        { category: category || "manual", department: department || "general", uploadedBy: auth.payload.userId },
+        { category: (category === "manual" ? "business_policy" : "data_catalog") as "business_policy" | "data_catalog", department: department || "general", author: auth.payload.userId },
         [originalName.toLowerCase(), "document"]
     );
 

@@ -37,7 +37,7 @@ async function runTest() {
     await addDocumentToCatalog(
       `test_upload_doc_${Date.now()}`,
       ragText,
-      { category: "catalog", department: "analytics", uploadedBy: "TestAdmin" },
+      { category: "data_catalog", department: "analytics", author: "TestAdmin" },
       [testTableName, "catalog", "sqlite"]
     );
     console.log("4. Indexed in RAG ✅");
