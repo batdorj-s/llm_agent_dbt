@@ -39,8 +39,8 @@ export async function financeAgentNode(state: any, config?: any): Promise<Partia
         }
 
         const ragData = filter
-            ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "FinanceAgent", limit: 3, filter })
-            : await searchKnowledgeBase(query, "FinanceAgent", 3);
+            ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "FinanceAgent", limit: 3, filter, userId: state.userId })
+            : await searchKnowledgeBase(query, "FinanceAgent", 3, state.userId);
         const docs = ragData.documents?.[0] ?? [];
         if (docs.length > 0) {
             context = docs.join("\n\n---\n\n");

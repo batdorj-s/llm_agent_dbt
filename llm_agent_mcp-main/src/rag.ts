@@ -1,5 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
+import fs from "fs";
+import path from "path";
 
 export interface RagDocument {
   id: string;
@@ -81,10 +83,16 @@ const ROLE_CATEGORY_MAP: Record<string, string[]> = {
   DataScientistAgent: ["technical", "data_catalog", "previous_analysis"],
 };
 
-function inMemorySearch(query: string, limit: number, categories?: string[]) {
+function inMemorySearch(query: string, limit: number, categories?: string[], userId?: string) {
   const queryWords = query.toLowerCase().split(/\W+/).filter(Boolean);
 
   let docs = knowledgeDocuments;
+  if (userId) {
+    docs = docs.filter(d => !d.metadata.author || d.metadata.author === "admin" || d.metadata.author === "system" || d.metadata.author === userId);
+  } else {
+    // If no userId is specified, only return system/admin documents for security
+    docs = docs.filter(d => !d.metadata.author || d.metadata.author === "admin" || d.metadata.author === "system");
+  }
   if (categories && categories.length > 0) {
     docs = docs.filter(d => categories.includes(d.metadata.category));
   }
@@ -104,14 +112,14 @@ function inMemorySearch(query: string, limit: number, categories?: string[]) {
     .map(s => s.doc);
 }
 
-function recursiveSearch(query: string, limit: number, categories?: string[]): RagDocument[] {
-  const results = inMemorySearch(query, limit, categories);
+function recursiveSearch(query: string, limit: number, categories?: string[], userId?: string): RagDocument[] {
+  const results = inMemorySearch(query, limit, categories, userId);
 
   if (results.length < limit && categories) {
     const queryWords = query.toLowerCase().split(/\W+/).filter(Boolean);
     for (const word of queryWords) {
       if (word.length < 3) continue;
-      const extra = inMemorySearch(word, 1, categories);
+      const extra = inMemorySearch(word, 1, categories, userId);
       for (const doc of extra) {
         if (!results.find(r => r.id === doc.id)) {
           results.push(doc);
@@ -169,6 +177,35 @@ async function getChromaCollection() {
 }
 
 export async function setupKnowledgeBase() {
+  // Load approved feedback from failed_queries.json first
+  try {
+    const failedQueriesPath = path.join(process.cwd(), "logs", "failed_queries.json");
+    if (fs.existsSync(failedQueriesPath)) {
+      const data = JSON.parse(fs.readFileSync(failedQueriesPath, "utf8"));
+      for (const entry of data) {
+        if (entry.status === "approved" && entry.response) {
+          const ragText = `Failed Query: User asked "${entry.message}". The system responded with: "${entry.response}". This response was rated as incorrect.`;
+          if (!knowledgeDocuments.some(d => d.id === entry.id)) {
+            knowledgeDocuments.push({
+              id: entry.id,
+              text: ragText,
+              metadata: {
+                category: "previous_analysis",
+                department: "analytics",
+                author: entry.userId || "system",
+                created_at: entry.timestamp || new Date().toISOString(),
+                source_name: "User Feedback",
+              },
+              keywords: ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)],
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[RAG] Failed to load approved feedback on startup:", (err as Error).message);
+  }
+
   const col = await getChromaCollection();
 
   if (col) {
@@ -195,9 +232,10 @@ export async function setupKnowledgeBase() {
 export async function searchKnowledgeBase(
   query: string,
   agentRole: string = "FinanceAgent",
-  limit: number = 3
+  limit: number = 3,
+  userId?: string
 ): Promise<{ documents: string[][]; metadatas: any[][] }> {
-  return searchKnowledgeBaseWithFilter({ query, agentRole, limit });
+  return searchKnowledgeBaseWithFilter({ query, agentRole, limit, userId });
 }
 
 export async function searchKnowledgeBaseWithFilter(
@@ -206,14 +244,15 @@ export async function searchKnowledgeBaseWithFilter(
     agentRole?: string;
     limit?: number;
     filter?: SelfQueryFilter;
+    userId?: string;
   }
 ): Promise<{ documents: string[][]; metadatas: any[][] }> {
-  const { query, agentRole, limit, filter } = {
+  const { query, agentRole, limit, filter, userId } = {
     agentRole: "FinanceAgent",
     limit: 3,
     ...params
   };
-  console.log(`[RAG] Agent="${agentRole}" searching: "${query}"${filter ? ` | self-query: ${JSON.stringify(filter)}` : ""}`);
+  console.log(`[RAG] Agent="${agentRole}" searching: "${query}"${filter ? ` | self-query: ${JSON.stringify(filter)}` : ""}${userId ? ` | user: ${userId}` : ""}`);
 
   let categories = ROLE_CATEGORY_MAP[agentRole] || ["finance", "business_policy"];
 
@@ -227,35 +266,69 @@ export async function searchKnowledgeBaseWithFilter(
 
   if (col) {
     try {
-      const chromaWhere: Record<string, any> = { category: { "$in": categories } };
+      const conditions: any[] = [
+        { category: { "$in": categories } }
+      ];
       if (departmentFilter.length > 0) {
-        chromaWhere.department = { "$in": departmentFilter };
+        conditions.push({ department: { "$in": departmentFilter } });
       }
+      if (userId) {
+        conditions.push({
+          "$or": [
+            { author: "admin" },
+            { author: "system" },
+            { author: userId }
+          ]
+        });
+      } else {
+        conditions.push({
+          "$or": [
+            { author: "admin" },
+            { author: "system" }
+          ]
+        });
+      }
+      const chromaWhere = conditions.length > 1 ? { "$and": conditions } : conditions[0];
 
       const results = await col.query({
         queryTexts: [query],
-        nResults: limit,
+        nResults: limit * 2,
         where: chromaWhere,
       });
       console.log(`[RAG] ChromaDB returned ${results.documents[0]?.length || 0} results`);
       if (results.documents[0]?.length > 0) {
-        const formatted = results.documents[0].map((text: string, i: number) => {
+        let matched: any[] = [];
+        results.documents[0].forEach((text: string, i: number) => {
           const meta = results.metadatas[0][i] || {};
-          const source = meta.source_name ? `[Source: ${meta.source_name}]` : "";
-          const dept = meta.department ? `(${meta.department})` : "";
-          return `${source}${dept ? " " + dept : ""}\n${text}`;
+          const author = meta.author;
+          const allowed = userId
+            ? (!author || author === "admin" || author === "system" || author === userId)
+            : (!author || author === "admin" || author === "system");
+          if (allowed) {
+            matched.push({ text, meta });
+          }
         });
-        return {
-          documents: [formatted],
-          metadatas: results.metadatas,
-        };
+        
+        matched = matched.slice(0, limit);
+
+        if (matched.length > 0) {
+          const formatted = matched.map(m => {
+            const source = m.meta.source_name ? `[Source: ${m.meta.source_name}]` : "";
+            const dept = m.meta.department ? `(${m.meta.department})` : "";
+            return `${source}${dept ? " " + dept : ""}\n${m.text}`;
+          });
+          return {
+            documents: [formatted],
+            metadatas: [matched.map(m => m.meta)],
+          };
+        }
       }
     } catch (err) {
       console.warn("[RAG] ChromaDB query failed, falling back to in-memory:", (err as Error).message);
     }
   }
 
-  let results = recursiveSearch(query, limit, categories);
+  let results = recursiveSearch(query, limit, categories, userId);
 
   if (departmentFilter.length > 0 && results.length > 0) {
     results = results.filter(r => departmentFilter.includes(r.metadata.department));
@@ -269,7 +342,7 @@ export async function searchKnowledgeBaseWithFilter(
   }
 
   if (results.length === 0 && departmentFilter.length > 0) {
-    results = recursiveSearch(query, limit, categories);
+    results = recursiveSearch(query, limit, categories, userId);
   }
 
   const docs = formatWithSource(results);

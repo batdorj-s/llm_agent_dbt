@@ -52,12 +52,12 @@ const workflow = new StateGraph(AgentStateAnnotation)
 
 export const multiAgentApp = workflow.compile({ checkpointer });
 
-export async function runMultiAgent(query: string, userRole: UserRole, threadId: string, visualRequest: boolean = false): Promise<string> {
+export async function runMultiAgent(query: string, userRole: UserRole, threadId: string, visualRequest: boolean = false, userId?: string): Promise<string> {
     const tracing = initTracing();
     const config: Record<string, any> = { configurable: { thread_id: threadId } };
     if (tracing.handler) config.callbacks = [tracing.handler];
     const result = await multiAgentApp.invoke(
-        { messages: [{ role: "user", content: query }], userRole, visualRequest },
+        { messages: [{ role: "user", content: query }], userRole, visualRequest, userId },
         config
     );
     const messages = (result as any).messages;
@@ -70,13 +70,14 @@ export async function runMultiAgentStream(
     userRole: UserRole,
     threadId: string,
     onChunk: (chunk: string) => void,
-    visualRequest: boolean = false
+    visualRequest: boolean = false,
+    userId?: string
 ): Promise<void> {
     const tracing = initTracing();
     const config: Record<string, any> = { configurable: { thread_id: threadId, onChunk } };
     if (tracing.handler) config.callbacks = [tracing.handler];
     await multiAgentApp.invoke(
-        { messages: [{ role: "user", content: query }], userRole, visualRequest },
+        { messages: [{ role: "user", content: query }], userRole, visualRequest, userId },
         config
     );
 }
@@ -90,7 +91,7 @@ export async function runMultiAgentSecure(
     if (!auth.success || !auth.payload) throw new Error(`Authentication failed: ${auth.error}`);
     const { userId, role } = auth.payload;
     const result = await multiAgentApp.invoke(
-        { messages: [{ role: "user", content: query }], userRole: role },
+        { messages: [{ role: "user", content: query }], userRole: role, userId },
         { configurable: { thread_id: threadId } }
     );
     const lastMsg = (result as any).messages[(result as any).messages.length - 1];

@@ -97,7 +97,7 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     const threadIdFinal = threadId ?? `thread_${Date.now()}`;
-    const response = await runMultiAgent(message, role, threadIdFinal, visualRequest);
+    const response = await runMultiAgent(message, role, threadIdFinal, visualRequest, userId);
 
     res.json({
       response,
@@ -139,7 +139,7 @@ app.post("/api/chat/stream", async (req, res) => {
     await runMultiAgentStream(message, role, threadIdFinal, (chunk) => {
       fullResponse += chunk;
       res.write(`data: ${JSON.stringify({ chunk, type: "delta" })}\n\n`);
-    }, visualRequest);
+    }, visualRequest, userId);
     res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);
   } catch (err: any) {
     res.write(`data: ${JSON.stringify({ type: "error", error: err.message })}\n\n`);
@@ -680,6 +680,7 @@ app.post("/api/feedback", async (req, res) => {
     message,
     response: response || "",
     rating,
+    status: rating === "negative" ? "pending" : "approved",
     threadId: threadId || null,
     timestamp: new Date().toISOString(),
   };
@@ -690,22 +691,89 @@ app.post("/api/feedback", async (req, res) => {
     existing.push(entry);
     fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(existing, null, 2), "utf8");
 
-    // Also add negative feedback as a RAG document so agents learn from failures
-    if (rating === "negative" && response) {
-      const ragText = `Failed Query: User asked "${message}". The system responded with: "${response}". This response was rated as incorrect.`;
-      await addDocumentToCatalog(`failed_${Date.now()}`, ragText, {
-        category: "previous_analysis",
-        department: "analytics",
-        author: auth.payload.userId,
-        source_name: "User Feedback",
-      }, ["failed_query", "feedback", ...message.toLowerCase().split(/\W+/).filter(Boolean)]);
-    }
+    // Do NOT add to RAG automatically. It must be approved by admin.
 
     console.log(`[Feedback] ${rating} feedback from ${auth.payload.userId}: "${message.slice(0, 80)}..."`);
     const suggestions = rating === "negative"
         ? "Таны санал бүртгэгдлээ. Дараах зүйлсийг санал болгож байна:\n- **Файл оруулах**: Хэрэв өгөгдөл дутуу байвал CSV файлаа upload хийгээрэй\n- **Тодорхой асуулт**: Баганын нэр, огноогоо дурдаж асууна уу\n- **Агент солих**: 'SQL query бич' эсвэл 'борлуулалтын тайлан' гэх мэт чиглэл өгнө үү"
         : "Санал өгсөнд баярлалаа!";
     res.json({ success: true, message: suggestions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/feedback/pending - get pending feedback items
+app.get("/api/admin/feedback/pending", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
+
+  try {
+    ensureFailedQueriesFile();
+    const all = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    const pending = all.filter((f: any) => f.status === "pending");
+    res.json(pending);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/feedback/:id/approve - approve a feedback entry and add to RAG
+app.post("/api/admin/feedback/:id/approve", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
+
+  const { id } = req.params;
+
+  try {
+    ensureFailedQueriesFile();
+    const all = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    const entry = all.find((f: any) => f.id === id);
+    if (!entry) return res.status(404).json({ error: "Feedback entry not found" });
+
+    if (entry.status === "approved") {
+      return res.json({ success: true, message: "Feedback already approved" });
+    }
+
+    entry.status = "approved";
+    fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
+
+    if (entry.response) {
+      const ragText = `Failed Query: User asked "${entry.message}". The system responded with: "${entry.response}". This response was rated as incorrect.`;
+      await addDocumentToCatalog(entry.id, ragText, {
+        category: "previous_analysis",
+        department: "analytics",
+        author: entry.userId,
+        source_name: "User Feedback",
+      }, ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)]);
+    }
+
+    res.json({ success: true, message: "Feedback approved and added to RAG" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/feedback/:id/reject - reject a feedback entry (do not add to RAG)
+app.post("/api/admin/feedback/:id/reject", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
+
+  const { id } = req.params;
+
+  try {
+    ensureFailedQueriesFile();
+    const all = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    const entry = all.find((f: any) => f.id === id);
+    if (!entry) return res.status(404).json({ error: "Feedback entry not found" });
+
+    entry.status = "rejected";
+    fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
+
+    res.json({ success: true, message: "Feedback rejected" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

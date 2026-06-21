@@ -11,6 +11,7 @@ export interface Message {
 export interface AgentState {
     messages: Message[];
     userRole: UserRole;
+    userId?: string;
     nextAgent?: NextAgent;
     visualRequest?: boolean;
 }
@@ -23,6 +24,10 @@ export const AgentStateAnnotation = Annotation.Root({
     userRole: Annotation<UserRole>({
         reducer: (x, y) => y ?? x,
         default: () => "admin",
+    }),
+    userId: Annotation<string | undefined>({
+        reducer: (x, y) => y ?? x,
+        default: () => undefined,
     }),
     nextAgent: Annotation<NextAgent>({
         reducer: (x, y) => y ?? x,
