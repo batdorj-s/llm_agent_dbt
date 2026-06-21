@@ -98,18 +98,29 @@ function computeResultStats(sandboxResult: string): string {
             const vals = rows.map((r: any) => Number(r[col])).filter((v: number) => !isNaN(v));
             if (vals.length === 0) continue;
             const n = vals.length;
+            const sorted = [...vals].sort((a, b) => a - b);
             const sum = vals.reduce((a: number, b: number) => a + b, 0);
             const mean = sum / n;
-            const min = Math.min(...vals);
-            const max = Math.max(...vals);
+            const min = sorted[0];
+            const max = sorted[n - 1];
+            const median = n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[Math.floor(n / 2)];
             const variance = vals.reduce((sq: number, v: number) => sq + (v - mean) ** 2, 0) / n;
             const std = Math.sqrt(variance);
-            lines.push(`- ${col}: avg=${mean.toFixed(1)}, min=${min.toFixed(1)}, max=${max.toFixed(1)}, std=${std.toFixed(1)}, count=${n}`);
 
-            const outliers = vals.filter((v: number) => Math.abs(v - mean) > 3 * std);
-            if (outliers.length > 0) {
-                const outlierVals = [...new Set(outliers.map((v: number) => v.toFixed(1)))].slice(0, 3).join(", ");
-                lines.push(`  Anomaly in "${col}": ${outlierVals} (exceeds ±3σ from mean ${mean.toFixed(1)})`);
+            const q1 = sorted[Math.floor(n * 0.25)];
+            const q3 = sorted[Math.floor(n * 0.75)];
+            const iqr = q3 - q1;
+
+            lines.push(`- ${col}: avg=${mean.toFixed(1)}, median=${median.toFixed(1)}, min=${min.toFixed(1)}, max=${max.toFixed(1)}, std=${std.toFixed(1)}, iqr=${iqr.toFixed(1)}, count=${n}`);
+
+            const threeSigmaOutliers = vals.filter((v: number) => Math.abs(v - mean) > 3 * std);
+            const iqrOutliers = vals.filter((v: number) => v < q1 - 1.5 * iqr || v > q3 + 1.5 * iqr);
+            const allOutliers = [...new Set([...threeSigmaOutliers, ...iqrOutliers])];
+
+            if (allOutliers.length > 0) {
+                const outlierStr = [...new Set(allOutliers.map((v: number) => v.toFixed(1)))].slice(0, 5).join(", ");
+                const pct = ((allOutliers.length / n) * 100).toFixed(1);
+                lines.push(`  Outliers in "${col}": ${outlierStr} (${allOutliers.length}/${n} = ${pct}% of rows, 3σ/IQR method)`);
             }
         }
         return lines.length > 1 ? lines.join("\n") : "";
@@ -273,6 +284,58 @@ function formatDeterministicTechResponse(query: string, sql: string, results: an
         JSON.stringify(results, null, 2),
         "```",
     ].join("\n");
+}
+
+function buildFallbackQuery(query: string, entry?: any): string | null {
+    if (!entry) return null;
+    const tableName = entry.table_name;
+    let columns: string[] = [];
+    try { columns = JSON.parse(entry.columns_info) as string[]; } catch { return null; }
+    if (columns.length === 0) return null;
+
+    const lowerQuery = query.toLowerCase();
+    const hasGrossIncome = columns.some(c => /gross_income/i.test(c));
+    const hasIncome = columns.some(c => /income/i.test(c));
+    const incomeCol = hasGrossIncome ? "gross_income" : (hasIncome ? "income" : null);
+
+    const isOutlierQuery = /outlier|гажуудал|хэт өндөр|хэт бага|аномали|anomaly|етгээд|стандарт хазайлт|standard deviation|z-score|3σ/i.test(lowerQuery);
+    const isIncomeQuery = /gross income|нийт борлуулалт|income|орлого|ашиг/i.test(lowerQuery);
+
+    if (isOutlierQuery && incomeCol) {
+        return [
+            `SELECT "${incomeCol}", COUNT(*) AS count`,
+            `FROM "${tableName}"`,
+            `WHERE "${incomeCol}" > (SELECT AVG("${incomeCol}") + 2 * STDDEV("${incomeCol}") FROM "${tableName}")`,
+            `   OR "${incomeCol}" < (SELECT AVG("${incomeCol}") - 2 * STDDEV("${incomeCol}") FROM "${tableName}")`,
+            `GROUP BY "${incomeCol}"`,
+            `ORDER BY "${incomeCol}" DESC`,
+            `LIMIT 20;`,
+        ].join("\n");
+    }
+
+    if (isIncomeQuery && incomeCol) {
+        return [
+            `SELECT`,
+            `  MIN("${incomeCol}") AS min_income,`,
+            `  MAX("${incomeCol}") AS max_income,`,
+            `  AVG("${incomeCol}") AS avg_income,`,
+            `  STDDEV("${incomeCol}") AS std_income,`,
+            `  COUNT(*) AS total_rows`,
+            `FROM "${tableName}";`,
+        ].join("\n");
+    }
+
+    const numericCol = columns.find(c => /gross_income|sales|revenue|amount|profit|unit_price|total/i.test(c));
+    const dateCol = columns.find(c => /date|time/i.test(c));
+    if (dateCol && numericCol) {
+        return `SELECT "${dateCol}" AS label, SUM("${numericCol}") AS value FROM "${tableName}" GROUP BY label ORDER BY label DESC LIMIT 10;`;
+    }
+    if (numericCol) {
+        return `SELECT "${numericCol}" AS value FROM "${tableName}" ORDER BY "${numericCol}" DESC LIMIT 10;`;
+    }
+
+    const sampleCols = columns.slice(0, 5).map((c: string) => `"${c}"`).join(", ");
+    return `SELECT ${sampleCols} FROM "${tableName}" LIMIT 10;`;
 }
 
 function isRateLimitError(err: unknown): boolean {
@@ -600,9 +663,30 @@ function generateVisualTag(jsonResults: string): string {
     const keys = Object.keys(data[0]);
     if (keys.length === 0) return '';
 
-    const labelKey = keys.find(k => k.toLowerCase() === 'label') || keys[0];
-    const numericKeys = keys.filter(k => k !== labelKey && !isNaN(parseFloat(data[0][k])));
-    const valueKey = keys.find(k => k.toLowerCase() === 'value') || (numericKeys.length > 0 ? numericKeys[numericKeys.length - 1] : keys[keys.length - 1]);
+    const allNumericKeys = keys.filter(k => {
+        return data.some((r: any) => {
+            const v = parseFloat(r[k]);
+            return !isNaN(v) && isFinite(v);
+        });
+    });
+    const allTextKeys = keys.filter(k => !allNumericKeys.includes(k));
+
+    let labelKey: string;
+    let valueKey: string;
+
+    if (keys.find(k => k.toLowerCase() === 'label')) {
+        labelKey = keys.find(k => k.toLowerCase() === 'label')!;
+        valueKey = keys.find(k => k.toLowerCase() === 'value') || allNumericKeys.find(k => k !== labelKey) || allNumericKeys[0] || keys[keys.length - 1];
+    } else if (allNumericKeys.length >= 2) {
+        valueKey = allNumericKeys[allNumericKeys.length - 1];
+        labelKey = allTextKeys[0] || allNumericKeys[0];
+    } else if (allNumericKeys.length === 1) {
+        valueKey = allNumericKeys[0];
+        labelKey = allTextKeys[0] || valueKey;
+    } else {
+        labelKey = keys[0];
+        valueKey = keys[keys.length - 1];
+    }
 
     const sampleLabel = String(data[0][labelKey] || '').toLowerCase();
     const timeIndicators = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
@@ -610,7 +694,21 @@ function generateVisualTag(jsonResults: string): string {
     const isTimeSeries = timeIndicators.some(p => sampleLabel.includes(p) || sampleLabel.startsWith(p))
         || data.some((r: any) => /^\d{4}/.test(String(r[labelKey] || '')));
 
-    const chartType = isTimeSeries ? 'line' : (data.length <= 6 ? 'pie' : 'bar');
+    if (isTimeSeries) {
+        const visualData = data.map((row: any) => ({
+            label: String(row[labelKey] ?? ''),
+            value: parseFloat(row[valueKey]) || 0
+        }));
+        const visual = { title: "Дүн шинжилгээ", type: "line", data: visualData, config: { xAxis: "label", yAxis: "value" } };
+        return `<visual>${JSON.stringify(visual)}</visual>`;
+    }
+
+    const allValues = data.map((r: any) => parseFloat(r[valueKey]) || 0);
+    const allIntegers = allValues.every(v => Number.isInteger(v) && v >= 0);
+    const allSmallInts = allIntegers && allValues.every(v => v <= 1000);
+    const isLikelyCounts = allSmallInts && allValues.some(v => v === 0 || v === 1);
+
+    const chartType = (data.length <= 6 && !isLikelyCounts) ? 'pie' : 'bar';
 
     const visualData = data.map((row: any) => ({
         label: String(row[labelKey] ?? ''),
@@ -908,11 +1006,32 @@ Task: ${query}`;
     }
 
     if (!isSuccess) {
-        const fallback = `${accumulatedText}\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Хэрэв та баганын нэр эсвэл хүснэгтийн нэр зааж өгвөл би илүү нарийвчлалтай хариулж чадна.`;
-        if (onChunk) onChunk("\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.");
-        return {
-            messages: [{ role: "assistant", content: fallback }]
-        };
+        const fallbackQuery = buildFallbackQuery(query, activeEntry);
+        if (fallbackQuery && activeEntry) {
+            try {
+                const fbResult = await handleExecuteSql({ query: fallbackQuery });
+                if (fbResult.ok && fbResult.results) {
+                    const fbData = Array.isArray(fbResult.results) ? fbResult.results : [fbResult.results];
+                    if (fbData.length > 0) {
+                        sandboxResult = JSON.stringify(fbData);
+                        sqlCode = fallbackQuery;
+                        isSuccess = true;
+                        const note = `\n### Fallback\n*Тусгай query амжилтгүй, өгөгдлийн сангийн түүвэр мэдээллээр хариулж байна.*\n\n`;
+                        if (onChunk) onChunk(note);
+                        accumulatedText += note;
+                    }
+                }
+            } catch (fbErr) {
+                console.warn("[Tech Agent] Fallback query failed:", (fbErr as Error).message);
+            }
+        }
+        if (!isSuccess) {
+            const fallback = `${accumulatedText}\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Хэрэв та баганын нэр эсвэл хүснэгтийн нэр зааж өгвөл би илүү нарийвчлалтай хариулж чадна.`;
+            if (onChunk) onChunk("\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.");
+            return {
+                messages: [{ role: "assistant", content: fallback }]
+            };
+        }
     }
 
     const dataStats = computeResultStats(sandboxResult);

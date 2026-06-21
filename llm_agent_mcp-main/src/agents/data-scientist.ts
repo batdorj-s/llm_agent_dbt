@@ -84,7 +84,9 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
 
     console.log(`[DataScientist] Analysis type detected: ${analysisType}`);
 
-    const dateCol = findDateColumn(columnList);
+    const columnTypes = parseColumnTypes(schemaDef);
+    const dateCol = findDateColumn(columnList, columnTypes);
+    const dateColType = dateCol ? (columnTypes[dateCol] || "unknown") : null;
     const numericCols = findNumericColumns(columnList);
     const categoryCols = findCategoryColumns(columnList);
 
@@ -94,8 +96,11 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     try {
         if (isForecast && dateCol) {
             const aggCol = numericCols[0] || columnList[0];
-            const forecastSql = `SELECT "${dateCol}"::date AS period, SUM(COALESCE("${aggCol}", 0)) AS value FROM "${tableName}" GROUP BY period ORDER BY period`;
-            console.log(`[DataScientist] Forecast mode: aggregating by ${dateCol} with ${aggCol}`);
+            const dateCast = dateColType === "INT"
+                ? `'1899-12-30'::date + "${dateCol}"::integer`
+                : `CAST("${dateCol}" AS DATE)`;
+            const forecastSql = `SELECT ${dateCast} AS period, SUM(COALESCE("${aggCol}", 0)) AS value FROM "${tableName}" GROUP BY period ORDER BY period`;
+            console.log(`[DataScientist] Forecast mode: ${dateCol} type=${dateColType}, casting as ${dateCast}`);
             const aggResult = await handleExecuteSql({ query: forecastSql });
             if (aggResult.ok && aggResult.results) {
                 sampleData = Array.isArray(aggResult.results) ? aggResult.results : [aggResult.results];
@@ -119,7 +124,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     const statsSummary = buildStatisticsSummary(sampleData, columnList);
     const pythonSystemPrompt = buildPythonPrompt(
         analysisType, tableName, columnList,
-        dateCol, numericCols, categoryCols,
+        dateCol, dateColType, numericCols, categoryCols,
         schemaDef, sampleData, ragContext, statsSummary
     );
 
@@ -242,26 +247,35 @@ function buildStatisticsSummary(sampleData: any[], columns: string[]): string {
         const vals = sampleData.map(r => Number(r[col])).filter(v => !isNaN(v));
         if (vals.length === 0) continue;
         const n = vals.length;
+        const sorted = [...vals].sort((a, b) => a - b);
         const sum = vals.reduce((a, b) => a + b, 0);
         const mean = sum / n;
-        const min = Math.min(...vals);
-        const max = Math.max(...vals);
+        const min = sorted[0];
+        const max = sorted[n - 1];
+        const median = n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[Math.floor(n / 2)];
         const variance = vals.reduce((sq, v) => sq + (v - mean) ** 2, 0) / n;
         const std = Math.sqrt(variance);
 
-        lines.push(`- ${col}: count=${n}, mean=${mean.toFixed(2)}, std=${std.toFixed(2)}, min=${min.toFixed(2)}, max=${max.toFixed(2)}`);
+        const q1 = sorted[Math.floor(n * 0.25)];
+        const q3 = sorted[Math.floor(n * 0.75)];
+        const iqr = q3 - q1;
 
-        const threshold = mean + 3 * std;
-        const outliers = vals.filter(v => Math.abs(v - mean) > 3 * std);
-        if (outliers.length > 0) {
-            const outlierVals = [...new Set(outliers.map(v => v.toFixed(2)))].slice(0, 5).join(", ");
-            outlierLines.push(`  Outliers in "${col}": ${outlierVals} (threshold: ±${(3 * std).toFixed(2)} from mean ${mean.toFixed(2)})`);
+        lines.push(`- ${col}: count=${n}, mean=${mean.toFixed(2)}, median=${median.toFixed(2)}, std=${std.toFixed(2)}, min=${min.toFixed(2)}, max=${max.toFixed(2)}, q1=${q1.toFixed(2)}, q3=${q3.toFixed(2)}, iqr=${iqr.toFixed(2)}`);
+
+        const threeSigmaOutliers = vals.filter(v => Math.abs(v - mean) > 3 * std);
+        const iqrOutliers = vals.filter(v => v < q1 - 1.5 * iqr || v > q3 + 1.5 * iqr);
+        const allOutliers = [...new Set([...threeSigmaOutliers, ...iqrOutliers])];
+
+        if (allOutliers.length > 0) {
+            const outlierVals = [...new Set(allOutliers.map(v => v.toFixed(2)))].slice(0, 5).join(", ");
+            const pct = ((allOutliers.length / n) * 100).toFixed(1);
+            outlierLines.push(`  Outliers in "${col}": ${outlierVals} (${allOutliers.length}/${n} = ${pct}%, 3σ+IQR method)`);
         }
     }
 
     let output = "## Data Statistics (Pre-computed)\n" + lines.join("\n");
     if (outlierLines.length > 0) {
-        output += "\n\n### Detected Outliers (>3σ from mean)\n" + outlierLines.join("\n");
+        output += "\n\n### Detected Outliers (>3σ or IQR)\n" + outlierLines.join("\n");
     }
     return output;
 }
@@ -276,14 +290,28 @@ function buildExportSql(tableName: string, columns: string[]): string {
     return `SELECT ${safeCols} FROM "${tableName}" LIMIT 3000;`;
 }
 
-function findDateColumn(columns: string[]): string | null {
+function findDateColumn(columns: string[], columnTypes?: Record<string, string>): string | null {
     const datePatterns = [/date/i, /time/i, /month/i, /year/i, /timestamp/i, /day/i, /order_date/i, /invoice/i];
     for (const col of columns) {
+        const type = columnTypes?.[col];
+        if (type === "DATE" || type === "TIMESTAMP") return col;
         for (const pat of datePatterns) {
             if (pat.test(col)) return col;
         }
     }
     return null;
+}
+
+function parseColumnTypes(schemaDef: string): Record<string, string> {
+    const types: Record<string, string> = {};
+    const lines = schemaDef.split("\n");
+    for (const line of lines) {
+        const match = line.match(/^-\s+(\w+)\s+\((\w+),/);
+        if (match) {
+            types[match[1]] = match[2];
+        }
+    }
+    return types;
 }
 
 function findNumericColumns(columns: string[]): string[] {
@@ -303,7 +331,7 @@ function findCategoryColumns(columns: string[]): string[] {
 
 function buildPythonPrompt(
     analysisType: string, tableName: string, columns: string[],
-    dateCol: string | null, numericCols: string[], categoryCols: string[],
+    dateCol: string | null, dateColType: string | null, numericCols: string[], categoryCols: string[],
     schemaDef: string, sampleData: any[],
     ragContext: string = "", statsSummary: string = ""
 ): string {
@@ -312,7 +340,9 @@ function buildPythonPrompt(
     const dataSource = analysisType === "forecast" && totalRows <= 500
         ? `SQL-aggregated (${totalRows} rows, grouped by ${dateCol || "period"}) — full dataset used`
         : `Sampled ${totalRows} rows from the full table`;
-    const dateHint = dateCol ? `- Date column: "${dateCol}" (use for time-series if applicable)` : "- No date column detected";
+    const dateHint = dateCol
+        ? `- Date column: "${dateCol}" (PostgreSQL type: ${dateColType || "unknown"}, use for time-series if applicable)`
+        : "- No date column detected";
 
     const chartRules: Record<string, { chart: string; reason: string }> = {
         forecast: { chart: "line", reason: "Time-series trends — line chart shows change over time clearly" },

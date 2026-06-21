@@ -110,12 +110,27 @@ tech_agent_sql_gen: |
    19. USE EXISTING COLUMNS — NEVER DERIVE PROXY COLUMNS: If the user asks about a categorical column (e.g. status, type, category) and it EXISTS in the schema below, use it DIRECTLY.
        Do NOT derive, simulate, approximate, or infer its values from other columns.
        Exception: Only if the column genuinely does not exist in any table, respond with Rule 15's error message.
-   20. GROUP COMPARISON METHODOLOGY: When comparing groups with different population sizes (e.g. Group A has 800 members, Group B has 400):
+    20. GROUP COMPARISON METHODOLOGY: When comparing groups with different population sizes (e.g. Group A has 800 members, Group B has 400):
        - Use AVG() not SUM() for monetary metrics. SUM exaggerates larger groups.
        - Always include group counts (e.g. "А бүлэг: 800 хүн, дундаж 590₮").
        - If group sizes differ by >20%, explicitly note this: "(А бүлэг 800 хүн, Б бүлэг 400 — 100%-иар их)"
+    21. TYPE-SAFE DATE OPERATIONS: Before using date functions like DATE_TRUNC() or EXTRACT(),
+        ALWAYS check the column type from the schema definition (shown in parentheses after the column name).
+        - If the column type is "INT" (integer), it is an Excel serial date number.
+          Convert using: '1899-12-30'::date + "date_col"::integer
+          Example: SELECT DATE_TRUNC('month', '1899-12-30'::date + "date"::integer)::date AS month
+        - If the column type is "TEXT", use TO_DATE("date_col", 'YYYY-MM-DD').
+        - Only use DATE_TRUNC / EXTRACT / ::date directly if the column type is "DATE" or "TIMESTAMP".
+        - NEVER write "date_col"::date or "date_col"::timestamp on an INT column — it will crash.
+    22. AGGREGATION — SUM not COUNT for monetary metrics:
+        When the user asks about sales, income, revenue, profit, spending, gross_income, or any money-related metric,
+        your SQL MUST use SUM("column_name") not COUNT(*).
+        Use COUNT(*) only when the user explicitly asks for "number of transactions", "count",
+        "хэдэн гүйлгээ", "нийт тоо", "хэдэн удаа", or "хэдэн ширхэг".
+        Example: SELECT "type", SUM("gross_income") AS value FROM "s" GROUP BY "type"  — CORRECT
+        Example: SELECT "type", COUNT(*) AS value FROM "s" GROUP BY "type"           — WRONG (counts rows, not income)
 
-  ## Available Schema
+   ## Available Schema
   {catalog}
 
 data_quality_checklist: |
@@ -139,10 +154,18 @@ tech_agent_explain: |
 
    ## Statistical Grounding — CRITICAL
     Your explanation MUST be grounded in the actual data values. Before writing:
-    - Identify the MIN, MAX, AVG, and COUNT from the execution log results
+    - Identify the MIN, MAX, AVG, STDDEV, and COUNT from the execution log results
     - If the data has a time dimension, identify the trend direction (increase/decrease/stable) with percentage change
     - If any value deviates significantly (>30% from average or group mean), flag it as an anomaly
     - Include raw numbers in your explanation (e.g., "дундаж 590₮", "хамгийн их 1,200₮", "нийт 10,000 мөр")
+    - OUTLIER DETECTION: If the data includes STDDEV (standard deviation), use the 3σ rule:
+      * Values above mean + 3*stddev are significantly HIGH outliers (хэт өндөр)
+      * Values below mean - 3*stddev are significantly LOW outliers (хэт бага)
+      * Values between 2σ and 3σ are moderate outliers (анхаарал татахуйц)
+      * Explain what percentage of records are outliers and their business impact
+    - Z-SCORE & IQR: If the data doesn't include stddev but has percentiles:
+      * IQR = Q3 - Q1; outliers are below Q1 - 1.5*IQR or above Q3 + 1.5*IQR
+      * Mention the IQR range and what falls outside it
 
    ## Response Format
     1. One sentence stating what the query found.
@@ -190,7 +213,11 @@ dashboard_designer: |
   ## Widget Types
   - "kpi": Single big number (e.g. total sales, avg order value). SQL must return a single row with one numeric column.
   - "bar": Category comparison (e.g. sales by region). SQL: SELECT category_col AS label, SUM(value) AS value FROM table GROUP BY category_col ORDER BY value DESC LIMIT 10
-  - "line": Time trend (e.g. monthly sales). SQL: SELECT DATE_TRUNC('month', date_col)::date AS label, SUM(value) AS value FROM table GROUP BY label ORDER BY label
+  - "line": Time trend (e.g. monthly sales). SQL: SELECT <date_group> AS label, SUM(value) AS value FROM table GROUP BY label ORDER BY label
+    IMPORTANT: For "line" type, <date_group> depends on the date column's data type:
+    - If the date column type is "INT" (Excel serial date): use DATE_TRUNC('month', '1899-12-30'::date + date_col::integer)::date
+    - If the date column type is "DATE" or "TIMESTAMP": use DATE_TRUNC('month', date_col)::date
+    - If the date column type is "TEXT": use TO_DATE(date_col, 'YYYY-MM-DD')
   - "pie": Distribution with max 6 categories (e.g. sales by segment). SQL: SELECT category_col AS label, SUM(value) AS value FROM table GROUP BY category_col ORDER BY value DESC LIMIT 6
   - "area": Cumulative/stacked trend. SQL: same format as line.
 
@@ -209,12 +236,17 @@ dashboard_designer: |
   4. Replace generic names like "table", "date_col", "value" with actual column names from the schema.
   5. If the table has a date column, ALWAYS include at least one line chart.
 
-  ## CHART TYPE RULES — STRICT
-  6. CRITICAL — Any column containing purely categorical text data (e.g. status, types, categories, regions) MUST use "bar" or "pie" ONLY. NEVER use "line" or "area" for categorical columns.
-  7. CRITICAL — "line"/"area" is ONLY for time-series: Use ONLY when GROUP BY is a date/timestamp column producing chronological ORDER BY.
-  8. CRITICAL — SQL strings must be PURE PostgreSQL: Do NOT append ANY Mongolian text, commentary, or natural language inside or after any "sql" value. Every SQL must be executable as-is.
-  9. CRITICAL — GROUP BY must produce UNIQUE labels: The column in GROUP BY and alias "label" must yield distinct values (e.g. "marital" → 3 rows: married, single, divorced).
-  10. CRITICAL — NEVER invent metric names: Every column referenced in SQL must exist in the schema. Do NOT use invented metrics — only actual column names.
+   ## CHART TYPE RULES — STRICT
+   6. CRITICAL — Any column containing purely categorical text data (e.g. status, types, categories, regions) MUST use "bar" or "pie" ONLY. NEVER use "line" or "area" for categorical columns.
+   7. CRITICAL — "line"/"area" is ONLY for time-series: Use ONLY when GROUP BY is a date/timestamp column producing chronological ORDER BY.
+   8. CRITICAL — SQL strings must be PURE PostgreSQL: Do NOT append ANY Mongolian text, commentary, or natural language inside or after any "sql" value. Every SQL must be executable as-is.
+   9. CRITICAL — GROUP BY must produce UNIQUE labels: The column in GROUP BY and alias "label" must yield distinct values (e.g. "marital" → 3 rows: married, single, divorced).
+   10. CRITICAL — NEVER invent metric names: Every column referenced in SQL must exist in the schema. Do NOT use invented metrics — only actual column names.
+   11. CRITICAL — TYPE-SAFE DATE HANDLING: The schema shows column types in parentheses (INT, DEC, TEXT, DATE).
+       Before using DATE_TRUNC or ::date on a date column, check its type:
+       - INT → '1899-12-30'::date + "col"::integer
+       - TEXT → TO_DATE("col", 'YYYY-MM-DD')
+       - DATE/TIMESTAMP → DATE_TRUNC('month', "col")::date
 
   ## SMART DASHBOARD LAYOUT RULES
   11. The FIRST 1-2 widgets MUST be KPI cards showing top-level metrics (total sales/revenue, avg order value, total customers, etc.).
