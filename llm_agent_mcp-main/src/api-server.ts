@@ -5,7 +5,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { createToken, verifyBearerHeader, verifyToken } from "./auth.js";
+import { createToken, isUsingDevJwtSecret, verifyBearerHeader, verifyToken } from "./auth.js";
 import { agentLimiter } from "./rate-limiter.js";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
@@ -227,8 +227,9 @@ app.delete("/api/admin/files/:id", async (req, res) => {
 
   try {
     if (file.type === "dataset") {
-      await getPool().query(`DROP TABLE IF EXISTS "${file.filename}"`);
-      await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [file.filename]);
+      const tableName = file.id || file.filename;
+      await getPool().query(`DROP TABLE IF EXISTS "${tableName}"`);
+      await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [tableName]);
       await clearConversationMemory();
     }
     await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [id]);
@@ -279,7 +280,7 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
       type: "document",
       preview: [],
       columns: [],
-      tableName: file.filename,
+      tableName: file.id || file.filename,
       description: file.description || "No description",
       content: content.substring(0, 10000), // cap at 10K chars
       hasDownload: fs.existsSync(path.join(DOCUMENTS_DIR, `${id}_${file.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`)),
@@ -739,6 +740,12 @@ async function start() {
     console.warn("[API] Data Lake initialization failed — running in limited mode:", (err as Error).message);
   }
   await setupKnowledgeBase();
+
+  if (isUsingDevJwtSecret()) {
+    console.warn("\n⚠️  WARNING: Using development JWT_SECRET. Set JWT_SECRET environment variable in production (min 32 chars).");
+    console.warn("   See .env.example or set: export JWT_SECRET=your-strong-random-secret-here\n");
+  }
+
   app.listen(PORT, () => {
     console.log(`\nAPI Server running at http://localhost:${PORT}`);
   });

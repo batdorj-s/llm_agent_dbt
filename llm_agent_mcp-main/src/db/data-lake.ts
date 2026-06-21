@@ -117,8 +117,20 @@ export async function initDataLake(): Promise<void> {
 
             _pgAvailable = true;
             console.log("[Data Lake] Connected to PostgreSQL");
-            await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data", false);
-            await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing", false);
+
+            const existingTables = await pool.query(`SELECT table_name FROM data_lake_catalog`);
+            const seeded = new Set(existingTables.rows.map((r: any) => r.table_name));
+
+            if (!seeded.has("superstore_sales")) {
+                await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data", false);
+            } else {
+                console.log("[Data Lake] superstore_sales already seeded, skipping.");
+            }
+            if (!seeded.has("retail_sales")) {
+                await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing", false);
+            } else {
+                console.log("[Data Lake] retail_sales already seeded, skipping.");
+            }
 
             const oldTables = ["datasetdescription", "test_mixed_data", "test_int_dec", "upload_test"];
             for (const tbl of oldTables) {
@@ -145,23 +157,24 @@ export async function getActiveCatalogEntry(): Promise<DataLakeCatalogEntry | nu
 
     try {
         const uploadedResult = await pool.query(`
-            SELECT filename FROM uploaded_files WHERE type = 'dataset'
+            SELECT id, filename FROM uploaded_files WHERE type = 'dataset'
             ORDER BY created_at DESC LIMIT 1
         `);
-        const uploadedDataset = uploadedResult.rows[0] as { filename?: string } | undefined;
+        const uploadedDataset = uploadedResult.rows[0] as { id?: string; filename?: string } | undefined;
 
-        if (uploadedDataset?.filename) {
+        if (uploadedDataset?.id) {
+            const tableName = uploadedDataset.id;
             const activeResult = await pool.query(`
                 SELECT * FROM data_lake_catalog WHERE table_name = $1
                 ORDER BY created_at DESC, id DESC LIMIT 1
-            `, [uploadedDataset.filename]);
+            `, [tableName]);
             if (activeResult.rows[0]) return activeResult.rows[0] as DataLakeCatalogEntry;
 
             const allEntries = await getCatalog();
-            const match = allEntries.find(r => r.table_name.toLowerCase() === uploadedDataset.filename!.toLowerCase());
+            const match = allEntries.find(r => r.table_name.toLowerCase() === tableName.toLowerCase());
             if (match) return match;
 
-            console.warn(`[Data Lake] Uploaded file '${uploadedDataset.filename}' not found.`);
+            console.warn(`[Data Lake] Uploaded table '${tableName}' not found in catalog.`);
         }
 
         const catalog = await getCatalog();

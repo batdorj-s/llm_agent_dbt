@@ -170,6 +170,118 @@ export async function createLLMWithOrder(options?: {
 }
 
 /**
+ * Check if an error is a rate-limit / quota error.
+ */
+function isRateLimitError(err: any): boolean {
+    const msg = (err?.message || "").toLowerCase();
+    return msg.includes("429") || msg.includes("rate limit") || msg.includes("quota") ||
+        msg.includes("too many requests") || msg.includes("rate_limit") ||
+        msg.includes("resource exhausted") || msg.includes("daily");
+}
+
+/**
+ * Try calling model.invoke() with automatic fallback across available providers.
+ * If the primary provider returns a rate-limit error, it cycles to the next configured provider.
+ */
+export async function invokeWithFallback(
+    messages: { role: string; content: string }[],
+    options?: {
+        temperature?: number;
+        streaming?: boolean;
+        providerOrder?: LLMProvider[];
+        timeout?: number;
+    }
+): Promise<{ content: string; provider: LLMProvider } | null> {
+    const temp = options?.temperature ?? 0;
+    const providerOrder = options?.providerOrder ?? DEFAULT_PROVIDER_ORDER;
+    const orderedProviders = providerOrder
+        .map((provider) => PROVIDERS.find((entry) => entry.provider === provider))
+        .filter((entry): entry is ProviderConfig => entry !== undefined && isKeySet(entry.envKey));
+
+    if (orderedProviders.length === 0) {
+        console.warn("[LLM] No API keys configured for any provider.");
+        return null;
+    }
+
+    let lastError: any = null;
+    for (const p of orderedProviders) {
+        try {
+            console.log(`[LLM] Invoking ${p.provider.toUpperCase()} — ${p.model}...`);
+            let model: any;
+
+            if (p.provider === "gemini") {
+                const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai");
+                model = new ChatGoogleGenerativeAI({
+                    model: p.model,
+                    apiKey: process.env.GOOGLE_API_KEY,
+                    temperature: temp,
+                    streaming: options?.streaming,
+                    maxRetries: 0,
+                });
+            } else if (p.provider === "groq") {
+                const { ChatGroq } = await import("@langchain/groq");
+                model = new ChatGroq({
+                    model: p.model,
+                    apiKey: process.env.GROQ_API_KEY,
+                    temperature: temp,
+                    streaming: options?.streaming,
+                    maxRetries: 0,
+                    timeout: 60000,
+                });
+            } else if (p.provider === "anthropic") {
+                const { ChatAnthropic } = await import("@langchain/anthropic");
+                model = new ChatAnthropic({
+                    model: p.model,
+                    apiKey: process.env.ANTHROPIC_API_KEY,
+                    temperature: temp,
+                    streaming: options?.streaming,
+                });
+            } else if (p.provider === "openai") {
+                const { ChatOpenAI } = await import("@langchain/openai");
+                model = new ChatOpenAI({
+                    model: p.model,
+                    apiKey: process.env.OPENAI_API_KEY,
+                    temperature: temp,
+                    streaming: options?.streaming,
+                });
+            } else {
+                continue;
+            }
+
+            const response = options?.timeout
+                ? await withTimeout(model.invoke(messages), `${p.provider} invoke`, options.timeout)
+                : await model.invoke(messages);
+
+            return { content: response.content as string, provider: p.provider };
+        } catch (err: any) {
+            lastError = err;
+            const isRateLimit = isRateLimitError(err);
+            console.warn(`[LLM] ${p.provider.toUpperCase()} failed: ${isRateLimit ? "RATE LIMIT" : err.message}`);
+            if (!isRateLimit) {
+                // Non-retryable error — do not try other providers
+                break;
+            }
+            // Rate-limit: try next provider
+            console.log(`[LLM] Falling back to next provider after ${p.provider} rate limit...`);
+        }
+    }
+
+    console.error(`[LLM] All providers failed. Last error: ${lastError?.message}`);
+    return null;
+}
+
+/**
+ * Simple promise timeout wrapper.
+ */
+async function withTimeout<T>(promise: Promise<T>, label: string, ms: number): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    });
+    return Promise.race([promise.finally(() => clearTimeout(timer!)), timeout]);
+}
+
+/**
  * Print available provider status to the console (useful for debugging).
  */
 export function printProviderStatus(): void {

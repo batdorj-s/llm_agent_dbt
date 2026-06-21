@@ -129,6 +129,20 @@ tech_agent_sql_gen: |
         "хэдэн гүйлгээ", "нийт тоо", "хэдэн удаа", or "хэдэн ширхэг".
         Example: SELECT "type", SUM("gross_income") AS value FROM "s" GROUP BY "type"  — CORRECT
         Example: SELECT "type", COUNT(*) AS value FROM "s" GROUP BY "type"           — WRONG (counts rows, not income)
+    23. MONGOLIAN-ENGLISH COLUMN NAME MAPPING (CRITICAL):
+        When a user asks in Mongolian, map common Mongolian business terms to actual column names:
+        - "үнэлгээ" / "үнэлгээний" → "rating" column
+        - "салбар" / "салбарын" → "branch" column
+        - "бүтээгдэхүүн" / "бүтээгдэхүүний төрөл" → "type" or "product" column
+        - "хүйс" / "хүйсийн" → "gender" column
+        - "хот" / "хотын" → "city" column
+        - "төлбөр" / "төлбөрийн төрөл" → "payment" column
+        - "зардал" / "зарлагын" → "cost" column
+        - "тоо" / "тоо хэмжээ" → "quantity" column
+        - "нэгжийн үнэ" → "unit_price" column
+        - "борлуулалт" / "орлого" → "gross_income" or "sales" column
+        ALWAYS check the actual column names in the schema below and map Mongolian words to them. Never invent column names.
+        If no matching column exists, use Rule 15's error format.
 
    ## Available Schema
   {catalog}

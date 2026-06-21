@@ -2,6 +2,7 @@ import { Sandbox } from "@e2b/code-interpreter";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import { execFile } from "child_process";
 
 dotenv.config();
 
@@ -10,6 +11,7 @@ let _sandboxInstance: any = null;
 const SANDBOX_TIMEOUT_MS = 20_000;
 const SANDBOX_CREATE_TIMEOUT_MS = 60_000;
 const SANDBOX_MAX_OUTPUT_CHARS = 10_000;
+const TEMP_DIR = "/var/folders/9z/_bgsb1152n9g37m6xn9h8thc0000gn/T/opencode";
 
 function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number): Promise<T> {
     let handle: ReturnType<typeof setTimeout>;
@@ -48,35 +50,109 @@ function preparePythonCode(code: string): string {
     return safeLines.join("\n") + "\n" + code;
 }
 
+/**
+ * Execute Python code locally via subprocess as fallback when E2B is not available.
+ */
+async function runPythonLocally(code: string, timeoutMs: number): Promise<string> {
+    const tmpFile = path.join(TEMP_DIR, `sandbox_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+    const outputFile = tmpFile.replace(".py", "_out.txt");
+    const chartFile = tmpFile.replace(".py", "_chart.png");
+
+    // Prepend chart-save logic: redirect matplotlib to a known path
+    const chartSaveCode = `
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+_orig_savefig = plt.savefig
+def _savefig_wrapper(fname, **kwargs):
+    _orig_savefig("${chartFile.replace(/\\/g, "\\\\")}", **kwargs)
+plt.savefig = _savefig_wrapper
+`;
+    const fullCode = chartSaveCode + "\n" + code + `\n
+# Save all output to file
+import sys
+with open("${outputFile.replace(/\\/g, "\\\\")}", "w") as _f:
+    _f.write(str(globals().get("result", "")))
+`;
+
+    try {
+        fs.mkdirSync(TEMP_DIR, { recursive: true });
+        fs.writeFileSync(tmpFile, fullCode, "utf8");
+
+        await new Promise<void>((resolve, reject) => {
+            const proc = execFile("python3", [tmpFile], {
+                timeout: timeoutMs,
+                maxBuffer: SANDBOX_MAX_OUTPUT_CHARS * 2,
+                env: { ...process.env, PYTHONUNBUFFERED: "1" },
+            }, (err, stdout, stderr) => {
+                if (err && !fs.existsSync(outputFile)) {
+                    reject(new Error(stderr.slice(0, SANDBOX_MAX_OUTPUT_CHARS) || err.message));
+                } else {
+                    resolve();
+                }
+            });
+        });
+
+        let output = "";
+        if (fs.existsSync(outputFile)) {
+            output = fs.readFileSync(outputFile, "utf8").slice(0, SANDBOX_MAX_OUTPUT_CHARS);
+            fs.unlinkSync(outputFile);
+        }
+
+        if (fs.existsSync(chartFile)) {
+            const base64 = fs.readFileSync(chartFile).toString("base64");
+            output += `\n##CHART_SAVED##\n##BASE64_IMAGE:${base64}\n`;
+            fs.unlinkSync(chartFile);
+        }
+
+        fs.unlinkSync(tmpFile);
+        return output || "Execution complete. No output.";
+    } catch (err: any) {
+        // Cleanup temp files on error
+        try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch {}
+        try { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); } catch {}
+        try { if (fs.existsSync(chartFile)) fs.unlinkSync(chartFile); } catch {}
+        throw err;
+    }
+}
+
 // Mock sandbox for development/PoC if no E2B API Key is provided
 export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TIMEOUT_MS, skipMemorySafe: boolean = false): Promise<string> {
     const hasKey = process.env.E2B_API_KEY && process.env.E2B_API_KEY !== 'your_e2b_api_key_here';
 
     if (!hasKey) {
-        console.warn("[WARN] No E2B_API_KEY found. Running Sandbox in Mock Mode.");
-        const mockChartPath = path.join(process.cwd(), "analysis_plot.png");
-        if (fs.existsSync(mockChartPath)) {
-            const base64 = fs.readFileSync(mockChartPath).toString("base64");
+        console.warn("[WARN] No E2B_API_KEY found. Attempting local Python fallback.");
+        try {
+            const safeCode = skipMemorySafe ? code : preparePythonCode(code);
+            return await runPythonLocally(safeCode, timeoutMs);
+        } catch (localErr: any) {
+            console.warn("[WARN] Local Python fallback failed:", localErr.message);
+            const mockChartPath = path.join(process.cwd(), "analysis_plot.png");
+            if (fs.existsSync(mockChartPath)) {
+                const base64 = fs.readFileSync(mockChartPath).toString("base64");
+                return [
+                    "##CHART_SAVED##",
+                    `##BASE64_IMAGE:${base64}`,
+                    "",
+                    "(Local Python Fallback — E2B_API_KEY not configured)",
+                    "----------------------------------------------",
+                    `Executed Python code snippet:`,
+                    code.length > 200 ? code.slice(0, 200) + "..." : code,
+                    "",
+                    "Result: In a real environment, this code would be executed in an E2B MicroVM.",
+                    `Local Python error: ${localErr.message}`
+                ].join("\n");
+            }
             return [
-                "##CHART_SAVED##",
-                `##BASE64_IMAGE:${base64}`,
-                "",
-                "(Mock Sandbox Output — E2B_API_KEY not configured)",
+                "(Local Python Fallback — E2B_API_KEY not configured)",
                 "----------------------------------------------",
                 `Executed Python code snippet:`,
                 code.length > 200 ? code.slice(0, 200) + "..." : code,
                 "",
-                "Result: In a real environment, this code would be executed in an E2B MicroVM."
+                "Result: In a real environment, this code would be executed in an E2B MicroVM.",
+                `Local Python error: ${localErr.message}`
             ].join("\n");
         }
-        return [
-            "(Mock Sandbox Output — E2B_API_KEY not configured)",
-            "----------------------------------------------",
-            `Executed Python code snippet:`,
-            code.length > 200 ? code.slice(0, 200) + "..." : code,
-            "",
-            "Result: In a real environment, this code would be executed in an E2B MicroVM."
-        ].join("\n");
     }
 
     try {

@@ -38,7 +38,12 @@ export interface AuthResult {
 // ─────────────────────────────────────────────────────────────
 import crypto from "crypto";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production-min-32-chars!!";
+const DEV_JWT_SECRET_FALLBACK = "dev-secret-change-in-production-min-32-chars!!";
+const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET_FALLBACK;
+
+export function isUsingDevJwtSecret(): boolean {
+    return JWT_SECRET === DEV_JWT_SECRET_FALLBACK;
+}
 const JWT_EXPIRES_IN_SECONDS = parseExpiry(process.env.JWT_EXPIRES_IN || "1h");
 
 function parseExpiry(expr: string): number {

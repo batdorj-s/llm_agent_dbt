@@ -1,4 +1,4 @@
-import { createLLM, createLLMWithOrder } from "../llm-provider.js";
+import { createLLM, invokeWithFallback } from "../llm-provider.js";
 import { getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
 import { handleExecuteSql } from "../tools/enterprise-tools.js";
 import { runPythonCode } from "../sandbox.js";
@@ -131,27 +131,22 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     try {
         if (onChunk) onChunk(`\n*Python код бэлдэж байна...*\n`);
 
-        const executeGen = async (model: any) => {
-            return await withTimeout(model.invoke([
+        const llmResult = await invokeWithFallback(
+            [
                 { role: "system", content: pythonSystemPrompt },
                 { role: "user", content: query }
-            ]), "DataScientist Python generation", PYTHON_GEN_TIMEOUT_MS);
-        };
-
-        let codeGenResponse: any;
-        try {
-            codeGenResponse = await executeGen(llm);
-        } catch (err: any) {
-            console.warn("[DataScientist] Primary LLM failed, attempting fallback:", err.message);
-            const fallbackLLM = await createLLMWithOrder({ temperature: 0, providerOrder: ["groq", "gemini", "openai"] });
-            if (fallbackLLM) {
-                codeGenResponse = await executeGen(fallbackLLM);
-            } else {
-                throw err;
+            ],
+            {
+                temperature: 0,
+                timeout: PYTHON_GEN_TIMEOUT_MS,
+                providerOrder: ["groq", "gemini", "openai"]
             }
+        );
+        if (!llmResult) {
+            throw new Error("All LLM providers failed for Python generation");
         }
 
-        let rawCode = codeGenResponse.content as string;
+        let rawCode = llmResult.content;
         let pythonCode = "";
         if (rawCode.includes("```python")) {
             pythonCode = rawCode.split("```python")[1].split("```")[0].trim();
@@ -317,7 +312,8 @@ function parseColumnTypes(schemaDef: string): Record<string, string> {
 function findNumericColumns(columns: string[]): string[] {
     const numericKeywords = [/age/i, /amount/i, /balance/i, /price/i, /cost/i, /revenue/i, /sales/i,
         /income/i, /profit/i, /spend/i, /value/i, /quantity/i, /count/i, /rate/i, /score/i,
-        /duration/i, /length/i, /size/i, /total/i, /sum/i, /avg/i, /num/i];
+        /duration/i, /length/i, /size/i, /total/i, /sum/i, /avg/i, /num/i,
+        /rating/i, /үнэлгээ/i, /зардал/i, /орлого/i];
     return columns.filter(col => numericKeywords.some(p => p.test(col)));
 }
 
@@ -325,7 +321,8 @@ function findCategoryColumns(columns: string[]): string[] {
     const categoryKeywords = [/category/i, /type/i, /status/i, /segment/i, /group/i, /class/i,
         /region/i, /city/i, /country/i, /state/i, /gender/i, /education/i, /job/i,
         /marital/i, /deposit/i, /loan/i, /default/i, /housing/i, /contact/i, /poutcome/i,
-        /channel/i, /campaign/i, /product/i, /item/i, /brand/i, /model/i];
+        /channel/i, /campaign/i, /product/i, /item/i, /brand/i, /model/i,
+        /branch/i, /салбар/i, /бүтээгдэхүүн/i, /хот/i, /хүйс/i];
     return columns.filter(col => categoryKeywords.some(p => p.test(col)));
 }
 

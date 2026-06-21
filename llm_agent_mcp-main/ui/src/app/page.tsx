@@ -17,6 +17,7 @@ import {
   TrendingUp,
   LayoutDashboard,
   Upload,
+  X,
 } from "lucide-react";
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend } from "recharts";
@@ -291,7 +292,7 @@ const CodeBlock = ({ code, language, defaultExpanded = false }: { code: string; 
     const parts: React.ReactNode[] = [];
     let lastIdx = 0;
     let m: RegExpExecArray | null;
-    const sqlRegex = /\b(SELECT|FROM|WHERE|AND|OR|NOT|IN|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|WITH|RECURSIVE|CASE|WHEN|THEN|ELSE|END|CAST|COALESCE|NULLIF|DISTINCT|ALL|UNION|INTERSECT|EXCEPT|EXISTS|BETWEEN|LIKE|ILIKE|IS|NULL|TRUE|FALSE|COUNT|SUM|AVG|MIN|MAX|STDDEV|PERCENTILE_CONT|ROW_NUMBER|RANK|DATE_TRUNC|EXTRACT|TO_DATE|TO_CHAR|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|INTERVAL|ASC|DESC)\b/gi;
+    const sqlRegex = /\b(SELECT|FROM|WHERE|AND|OR|NOT|IN|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|WITH|RECURSIVE|CASE|WHEN|THEN|ELSE|END|CAST|COALESCE|NULLIF|DISTINCT|ALL|UNION|INTERSECT|EXCEPT|EXISTS|BETWEEN|LIKE|ILIKE|IS\s+(NOT\s+)?NULL|TRUE|FALSE|COUNT|SUM|AVG|MIN|MAX|STDDEV|PERCENTILE_CONT|ROW_NUMBER|RANK|DATE_TRUNC|EXTRACT|TO_DATE|TO_CHAR|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|INTERVAL|ASC|DESC)\b/gi;
     while ((m = sqlRegex.exec(text)) !== null) {
       if (m.index > lastIdx) parts.push(text.slice(lastIdx, m.index));
       parts.push(<span key={m.index} className="text-blue-400 font-semibold">{m[0]}</span>);
@@ -319,7 +320,7 @@ const CodeBlock = ({ code, language, defaultExpanded = false }: { code: string; 
             onClick={() => setExpanded(!expanded)}
             className="text-[9px] px-1.5 py-0.5 text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 rounded transition-all cursor-pointer"
           >
-            {expanded ? "Collapse" : "Expand"}
+            {expanded ? "▲" : "▼"}
           </button>
         </div>
       </div>
@@ -380,7 +381,7 @@ const ActionCard = ({ action, status, sql, result, children }: {
             className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 transition-colors cursor-pointer"
           >
             <span>{showSql ? "SQL Query" : "SQL Query"} {showSql ? "▲" : "▼"}</span>
-            <span className="text-[8px] text-foreground/30">{showSql ? "Collapse" : "Expand"}</span>
+            
           </button>
           {showSql && (
             <div className="px-3 pb-2">
@@ -1973,7 +1974,7 @@ export default function Home() {
                     onClick={() => { setPreviewData(null); setPreviewDescription(null); setPreviewContent(null); setPreviewHasDownload(false); setPreviewFileId(null); }}
                     className="text-foreground/40 hover:text-foreground text-sm cursor-pointer leading-none p-1"
                     title="Close"
-                  >✕</button>
+                  ><X className="w-3.5 h-3.5" /></button>
                 </div>
                 {previewData.length > 0 ? (
                   <div className="flex-1 overflow-auto p-3 animate-scale-in">
