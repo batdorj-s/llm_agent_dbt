@@ -11,8 +11,8 @@ export function isRateLimitError(err: unknown): boolean {
     return /rate limit|429|tokens per day|TPD|quota exceeded|quota.*limit/i.test(message);
 }
 
-export async function buildActiveSchemaContext(query: string): Promise<string> {
-    const catalog = await getCatalog();
+export async function buildActiveSchemaContext(query: string, userId: string): Promise<string> {
+    const catalog = await getCatalog(userId);
     if (!catalog || catalog.length === 0) return "(catalog unavailable)";
 
     const mentioned = catalog.find((e: any) =>
@@ -20,13 +20,13 @@ export async function buildActiveSchemaContext(query: string): Promise<string> {
     );
     if (mentioned) return await buildSchemaDefinition(mentioned);
 
-    const active = await getActiveCatalogEntry();
+    const active = await getActiveCatalogEntry(userId);
     if (active) return await buildSchemaDefinition(active);
 
     return await buildSchemaDefinition(catalog as any);
 }
 
-export async function getActiveColumns(entry = getActiveCatalogEntry()): Promise<string[]> {
+export async function getActiveColumns(entry: Promise<DataLakeCatalogEntry | null>): Promise<string[]> {
     const resolved = await entry;
     if (!resolved) return [];
     try {
@@ -45,7 +45,7 @@ export function findColumn(columns: string[], patterns: RegExp[]): string | null
 }
 
 export async function buildDeterministicTechSql(query: string, entry?: DataLakeCatalogEntry | null): Promise<string | null> {
-    const resolvedEntry = entry ?? await getActiveCatalogEntry();
+    const resolvedEntry = entry ?? null;
     if (!resolvedEntry) return null;
 
     const lowerQuery = query.toLowerCase();

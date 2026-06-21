@@ -22,6 +22,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
 
     const lastMsg = state.messages[state.messages.length - 1];
     const query = lastMsg ? lastMsg.content : "";
+    const userId = state.userId || "system";
 
     const llm = await createLLM({ temperature: 0 });
     if (!llm) {
@@ -40,25 +41,25 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
 
     const lowerQuery = query.toLowerCase();
     if (lowerQuery.includes("dashboard") || lowerQuery.includes("ханалтын самбар") || lowerQuery.includes("хана") || lowerQuery.includes("widget") || lowerQuery.includes("вижет")) {
-        return await buildDashboard(llm, query, onChunk);
+        return await buildDashboard(llm, query, userId, onChunk);
     }
 
     const prefix = "(Tech Agent)\nМэдээллийн сангаас дата шүүж байна... (MCP execute_sql → Data Lake)\n\n";
     if (onChunk) onChunk(prefix);
 
     console.log(`[Tech Agent] Fetching Data Lake catalog schema...`);
-    const schemaContext = await buildActiveSchemaContext(query);
+    const schemaContext = await buildActiveSchemaContext(query, userId);
     try {
         console.log(`[Tech Agent] Active schema context:\n${schemaContext}`);
     } catch (err) {
         console.error("[Tech Agent] Schema lookup failed:", err);
     }
 
-    const activeEntry = await getActiveCatalogEntry();
+    const activeEntry = await getActiveCatalogEntry(userId);
     const deterministicSql = await buildDeterministicTechSql(query, activeEntry);
     if (deterministicSql && activeEntry) {
         try {
-            const sqlResult = await handleExecuteSql({ query: deterministicSql });
+            const sqlResult = await handleExecuteSql({ query: deterministicSql, userId });
             if (!sqlResult.ok) throw new Error(sqlResult.text);
             const results = sqlResult.results;
             const normalizedResults = Array.isArray(results) ? results : [results];
@@ -132,7 +133,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             }
             sqlCode = currentSql;
 
-            const sqlResult = await handleExecuteSql({ query: sqlCode });
+            const sqlResult = await handleExecuteSql({ query: sqlCode, userId });
             if (!sqlResult.ok) {
                 feedback = sqlResult.text;
                 const errorEntry = `\n### Оролдлого ${attempts}\n*Алдаа:* ${sqlResult.text}\n`;
@@ -186,7 +187,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
         const fallbackQuery = buildFallbackQuery(query, activeEntry);
         if (fallbackQuery && activeEntry) {
             try {
-                const fbResult = await handleExecuteSql({ query: fallbackQuery });
+                const fbResult = await handleExecuteSql({ query: fallbackQuery, userId });
                 if (fbResult.ok && fbResult.results) {
                     const fbData = Array.isArray(fbResult.results) ? fbResult.results : [fbResult.results];
                     if (fbData.length > 0) {

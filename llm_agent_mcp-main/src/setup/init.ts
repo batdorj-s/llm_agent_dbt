@@ -110,7 +110,7 @@ export async function ensureProjectReady() {
   }
 
   await initDataLake();
-  const catalog = await getCatalog();
+  const catalog = await getCatalog("system");
   console.log(`[Setup] Data Lake ready — ${catalog.length} table(s) in catalog`);
 
   runDbtIfAvailable();

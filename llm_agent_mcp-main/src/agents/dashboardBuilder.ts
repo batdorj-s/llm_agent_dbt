@@ -8,16 +8,17 @@ import { type AgentState, withTimeout } from "./agentState.js";
 export async function buildDashboard(
     llm: any,
     query: string,
+    userId: string,
     onChunk?: (chunk: string) => void
 ): Promise<Partial<AgentState>> {
     console.log("[Tech Agent] Dashboard request detected.");
     const dashPrefix = "(Tech Agent)\nDashboard зохиож байна...\n\n";
     if (onChunk) onChunk(dashPrefix);
 
-    const catalog = await getCatalog();
+    const catalog = await getCatalog(userId);
     const lowerQuery = query.toLowerCase();
     const mentioned = catalog?.find((e: any) => lowerQuery.includes(e.table_name.toLowerCase()));
-    const activeEntry = mentioned || await getActiveCatalogEntry();
+    const activeEntry = mentioned || await getActiveCatalogEntry(userId);
     if (!activeEntry) {
         const fallback = `${dashPrefix}[АНХААР] Идэвхтэй хүснэгт олдсонгүй. Эхлээд зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
         if (onChunk) onChunk(fallback);
@@ -54,7 +55,7 @@ export async function buildDashboard(
         for (const widget of widgets) {
             if (widget.sql) {
                 try {
-                    const sqlResult = await handleExecuteSql({ query: widget.sql });
+                    const sqlResult = await handleExecuteSql({ query: widget.sql, userId });
                     if (sqlResult.ok && sqlResult.results) {
                         if (widget.type === "kpi") {
                             widget.value = sqlResult.results[0]?.value ?? null;

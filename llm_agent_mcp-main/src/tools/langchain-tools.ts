@@ -7,7 +7,7 @@ import {
   handleExecuteSql,
 } from "./enterprise-tools.js";
 
-export function buildEnterpriseLangChainTools() {
+export function buildEnterpriseLangChainTools(userId: string) {
   const getKpiTool = tool(
     async ({ metric }) => {
       console.log(`[LangChain Tool] get_kpi metric="${metric}"`);
@@ -42,7 +42,7 @@ export function buildEnterpriseLangChainTools() {
   const executeSqlTool = tool(
     async ({ query }) => {
       console.log(`[LangChain Tool] execute_sql`);
-      const result = await handleExecuteSql({ query });
+      const result = await handleExecuteSql({ query, userId });
       return result.text;
     },
     {
@@ -57,7 +57,7 @@ export function buildEnterpriseLangChainTools() {
   const getCatalogTool = tool(
     async () => {
       console.log(`[LangChain Tool] get_data_lake_catalog`);
-      const result = await handleGetCatalog();
+      const result = await handleGetCatalog({ userId });
       return result.text;
     },
     {

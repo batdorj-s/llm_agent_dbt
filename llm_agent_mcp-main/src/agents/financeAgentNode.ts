@@ -12,6 +12,7 @@ export async function financeAgentNode(state: any, config?: any): Promise<Partia
 
     const lastMsg = state.messages[state.messages.length - 1];
     const query = lastMsg ? lastMsg.content : "sales targets";
+    const userId = state.userId || "system";
 
     const llm = await createLLM({ temperature: 0 });
 
@@ -57,7 +58,7 @@ export async function financeAgentNode(state: any, config?: any): Promise<Partia
         context = `${context}\n\n--- Live KPI Data (from database) ---\n${liveKpiContext}`;
     }
 
-    const catalog = await getCatalog();
+    const catalog = await getCatalog(userId);
     if (catalog && catalog.length > 0) {
         const tableList = catalog.map((e: any) => `- ${e.table_name} (${e.description || "N/A"})`).join("\n");
         context = `${context}\n\n--- Available Tables in Data Lake ---\n${tableList}`;

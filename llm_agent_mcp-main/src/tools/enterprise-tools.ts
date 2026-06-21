@@ -48,16 +48,16 @@ export async function handleGetSalesHistory({ limit = 3 }: { limit?: number }) {
   return { text: resultText, ok: true as const, records };
 }
 
-export async function handleGetCatalog() {
+export async function handleGetCatalog({ userId }: { userId: string }) {
   try {
-    const catalog = await getCatalog();
+    const catalog = await getCatalog(userId);
     if (!catalog || catalog.length === 0) {
       return { text: "Data Lake catalog is empty.", ok: false as const };
     }
 
     const lines = catalog.map(
       (row: { table_name: string; created_by: string | null; created_at: string; columns_info: string; description: string | null }) =>
-        `Table: ${row.table_name}\nCreated By: ${row.created_by}\nCreated At: ${row.created_at}\nColumns: ${row.columns_info}\nDescription: ${row.description}\n`
+        `Table: ${row.table_name}\nOwner: ${row.created_by}\nVisibility: ${(row as any).visibility}\nCreated At: ${row.created_at}\nColumns: ${row.columns_info}\nDescription: ${row.description}\n`
     );
 
     return { text: `Data Lake Catalog:\n\n${lines.join("\n---\n")}`, ok: true as const, catalog };
@@ -67,7 +67,7 @@ export async function handleGetCatalog() {
   }
 }
 
-export async function handleExecuteSql({ query }: { query: string }) {
+export async function handleExecuteSql({ query, userId }: { query: string; userId: string }) {
   const normalized = query.toUpperCase();
   if (DANGEROUS_SQL.test(normalized)) {
     return {
@@ -78,7 +78,7 @@ export async function handleExecuteSql({ query }: { query: string }) {
 
   try {
     console.log(`[Enterprise Tools] Executing SQL: ${query}`);
-    const results = await executeSql(query);
+    const results = await executeSql(query, true, userId);
     return { text: JSON.stringify(results, null, 2), ok: true as const, results };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

@@ -17,6 +17,8 @@ export type DataLakeCatalogEntry = {
     id: number;
     table_name: string;
     created_by: string | null;
+    owner_id: string | null;
+    visibility: "private" | "shared";
     created_at: string;
     columns_info: string;
     description: string | null;
@@ -78,6 +80,8 @@ export async function initDataLake(): Promise<void> {
                     id SERIAL PRIMARY KEY,
                     table_name TEXT UNIQUE NOT NULL,
                     created_by TEXT,
+                    owner_id TEXT,
+                    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'shared')),
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     columns_info TEXT,
                     description TEXT
@@ -90,15 +94,47 @@ export async function initDataLake(): Promise<void> {
                     filename TEXT NOT NULL,
                     type TEXT NOT NULL,
                     description TEXT,
+                    owner_id TEXT,
+                    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'shared')),
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 )
             `);
 
             try {
+                await pool.query(`ALTER TABLE data_lake_catalog ADD COLUMN IF NOT EXISTS owner_id TEXT`);
+                await pool.query(`ALTER TABLE data_lake_catalog ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'private'`);
                 await pool.query(`ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS semantic_groups JSONB DEFAULT NULL`);
                 await pool.query(`ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ DEFAULT NULL`);
+                await pool.query(`ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS owner_id TEXT`);
+                await pool.query(`ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'private'`);
+
+                // Legacy migration:
+                // 1. If owner_id is NULL and created_by is a real user ID, map owner_id = created_by and visibility = 'private'
+                await pool.query(`
+                    UPDATE data_lake_catalog
+                    SET owner_id = created_by,
+                        visibility = 'private'
+                    WHERE owner_id IS NULL 
+                      AND created_by IS NOT NULL 
+                      AND created_by NOT IN ('system', 'admin')
+                `);
+
+                // 2. If owner_id is NULL and created_by is NULL, 'system', or 'admin', set visibility = 'shared'
+                await pool.query(`
+                    UPDATE data_lake_catalog
+                    SET visibility = 'shared'
+                    WHERE owner_id IS NULL 
+                      AND (created_by IS NULL OR created_by IN ('system', 'admin'))
+                `);
+
+                // 3. For uploaded_files: if owner_id is NULL, set visibility = 'shared'
+                await pool.query(`
+                    UPDATE uploaded_files
+                    SET visibility = 'shared'
+                    WHERE owner_id IS NULL
+                `);
             } catch (alterErr) {
-                console.warn("[Data Lake] ALTER TABLE uploaded_files note:", (alterErr as Error).message);
+                console.warn("[Data Lake] ALTER TABLE or legacy migration note:", (alterErr as Error).message);
             }
 
             await pool.query(`
@@ -123,15 +159,21 @@ export async function initDataLake(): Promise<void> {
             const seeded = new Set(existingTables.rows.map((r: any) => r.table_name));
 
             if (!seeded.has("superstore_sales")) {
-                await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data", false);
+                await seedCsv("superstore_sales.csv", "superstore_sales", "system", "Historical sales data", false, "shared");
             } else {
                 console.log("[Data Lake] superstore_sales already seeded, skipping.");
             }
             if (!seeded.has("retail_sales")) {
-                await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing", false);
+                await seedCsv("retail_sales_dataset.csv", "retail_sales", "system", "Retail sales dataset for testing", false, "shared");
             } else {
                 console.log("[Data Lake] retail_sales already seeded, skipping.");
             }
+
+            await pool.query(`
+                UPDATE data_lake_catalog
+                SET visibility = 'shared', owner_id = NULL
+                WHERE table_name IN ('superstore_sales', 'retail_sales')
+            `);
 
             await ensureUploadedFilesSynced();
 
@@ -163,38 +205,51 @@ export async function ensureUploadedFilesSynced(): Promise<void> {
             FROM data_lake_catalog
             ON CONFLICT (id) DO NOTHING
         `);
+        await pool.query(`
+            UPDATE uploaded_files uf
+            SET owner_id = dlc.owner_id,
+                visibility = dlc.visibility
+            FROM data_lake_catalog dlc
+            WHERE uf.id = dlc.table_name AND uf.type = 'dataset'
+        `);
     } catch (err) {
         console.warn("[Data Lake] ensureUploadedFilesSynced failed:", (err as Error).message);
     }
 }
 
-export async function getActiveCatalogEntry(): Promise<DataLakeCatalogEntry | null> {
+export function canAccessCatalogEntry(entry: Pick<DataLakeCatalogEntry, "owner_id" | "visibility">, userId: string): boolean {
+    return entry.visibility === "shared" || entry.owner_id === userId;
+}
+
+export async function getActiveCatalogEntry(userId: string): Promise<DataLakeCatalogEntry | null> {
     if (!_pgAvailable) await initDataLake();
     if (!_pgAvailable || !pool) return null;
 
     try {
         const uploadedResult = await getPool().query(`
             SELECT id, filename FROM uploaded_files WHERE type = 'dataset'
+              AND (visibility = 'shared' OR owner_id = $1)
             ORDER BY created_at DESC LIMIT 1
-        `);
+        `, [userId]);
         const uploadedDataset = uploadedResult.rows[0] as { id?: string; filename?: string } | undefined;
 
         if (uploadedDataset?.id) {
             const tableName = uploadedDataset.id;
             const activeResult = await getPool().query(`
                 SELECT * FROM data_lake_catalog WHERE table_name = $1
+                  AND (visibility = 'shared' OR owner_id = $2)
                 ORDER BY created_at DESC, id DESC LIMIT 1
-            `, [tableName]);
+            `, [tableName, userId]);
             if (activeResult.rows[0]) return activeResult.rows[0] as DataLakeCatalogEntry;
 
-            const allEntries = await getCatalog();
+            const allEntries = await getCatalog(userId);
             const match = allEntries.find(r => r.table_name.toLowerCase() === tableName.toLowerCase());
             if (match) return match;
 
             console.warn(`[Data Lake] Uploaded table '${tableName}' not found in catalog.`);
         }
 
-        const catalog = await getCatalog();
+        const catalog = await getCatalog(userId);
         if (catalog.length === 0) return null;
 
         console.warn(`[Data Lake] uploaded_files has no dataset entries — returning catalog[0] '${catalog[0].table_name}' as fallback`);
@@ -348,7 +403,14 @@ function inferColumnType(values: string[]): string {
     return "INTEGER";
 }
 
-export async function seedCsv(csvPath: string, tableName: string, createdBy: string, description: string, overwrite: boolean = false) {
+export async function seedCsv(
+    csvPath: string,
+    tableName: string,
+    ownerId: string,
+    description: string,
+    overwrite: boolean = false,
+    visibility: "private" | "shared" = "private"
+) {
     await initDataLake();
     if (!_pgAvailable || !pool) return;
 
@@ -411,11 +473,15 @@ export async function seedCsv(csvPath: string, tableName: string, createdBy: str
 
         const columnsInfo = JSON.stringify(uniqueHeaders);
         await pool.query(`
-            INSERT INTO data_lake_catalog (table_name, created_by, columns_info, description)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO data_lake_catalog (table_name, created_by, owner_id, visibility, columns_info, description)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (table_name) DO UPDATE SET
-                columns_info=EXCLUDED.columns_info, description=EXCLUDED.description, created_at=NOW()
-        `, [tableName, createdBy, columnsInfo, description]);
+                owner_id=EXCLUDED.owner_id,
+                visibility=EXCLUDED.visibility,
+                columns_info=EXCLUDED.columns_info,
+                description=EXCLUDED.description,
+                created_at=NOW()
+        `, [tableName, ownerId, visibility === "shared" ? null : ownerId, visibility, columnsInfo, description]);
 
         console.log(`[Data Lake] Successfully seeded ${tableName}`);
     } catch (err: any) {
@@ -423,22 +489,30 @@ export async function seedCsv(csvPath: string, tableName: string, createdBy: str
     }
 }
 
-export async function getCatalog(): Promise<DataLakeCatalogEntry[]> {
+export async function getCatalog(userId: string): Promise<DataLakeCatalogEntry[]> {
     await initDataLake();
     if (!_pgAvailable || !pool) return [];
     try {
-        const result = await pool.query(`SELECT * FROM data_lake_catalog ORDER BY created_at DESC, id DESC`);
+        const result = await pool.query(
+            `SELECT * FROM data_lake_catalog
+             WHERE visibility = 'shared' OR owner_id = $1
+             ORDER BY created_at DESC, id DESC`,
+            [userId]
+        );
         return result.rows as DataLakeCatalogEntry[];
     } catch {
         return [];
     }
 }
 
-export async function validateSqlColumns(query: string) {
-    const cteNames = getCteNames(query);
-    const catalog = await getCatalog();
+export async function validateSqlColumns(query: string, userId: string) {
+    const catalog = await getCatalog(userId);
     if (!catalog || catalog.length === 0) throw new Error("Catalog is empty — no tables to validate against.");
+    validateSqlColumnsAgainstCatalog(query, catalog);
+}
 
+export function validateSqlColumnsAgainstCatalog(query: string, catalog: DataLakeCatalogEntry[]) {
+    const cteNames = getCteNames(query);
     const tableColumnsMap = new Map<string, { columns: string[]; description: string }>();
     const allColumnNames = new Set<string>();
     for (const entry of catalog) {
@@ -530,7 +604,7 @@ function splitSelectColumns(clause: string): string[] {
     return result;
 }
 
-export async function executeSql(query: string, readOnly: boolean = true): Promise<any> {
+export async function executeSql(query: string, readOnly: boolean, userId: string): Promise<any> {
     return traceToolCall("executeSql", async () => {
         await initDataLake();
         if (!_pgAvailable || !pool) throw new Error("Data Lake unavailable (PostgreSQL not connected).");
@@ -539,7 +613,7 @@ export async function executeSql(query: string, readOnly: boolean = true): Promi
             throw new Error("Only SELECT/WITH queries are permitted. Mutating operations are strictly prohibited.");
         }
 
-        await validateSqlColumns(query);
+        await validateSqlColumns(query, userId);
 
         const normalized = query.trim().toUpperCase();
         const isSelect = /^\s*SELECT\b/i.test(normalized) || (/^\s*WITH\b/i.test(normalized) && /SELECT\b/i.test(normalized.replace(/^\s*WITH[\s\S]*?SELECT\b/i, "")));
@@ -565,5 +639,5 @@ export async function executeSql(query: string, readOnly: boolean = true): Promi
                 .replace(/^ERROR:\s*/i, "");
             throw new Error(`SQL Execution Error: ${msg}`);
         }
-    }, { readOnly });
+    }, { readOnly, userId });
 }

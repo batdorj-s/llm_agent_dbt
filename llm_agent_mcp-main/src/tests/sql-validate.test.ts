@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { validateSqlColumnsAgainstCatalog, type DataLakeCatalogEntry } from "../db/data-lake.js";
 
 // Test the DANGEROUS_SQL regex and query validation patterns in isolation
 describe("SQL Query Validation", () => {
@@ -66,5 +67,38 @@ describe("SELECT query detection", () => {
 
     it("should detect SELECT with leading whitespace", () => {
         expect(isSelectQuery("  SELECT id FROM users")).toBe(true);
+    });
+});
+
+describe("SQL tenant isolation validation", () => {
+    function entry(tableName: string, ownerId: string): DataLakeCatalogEntry {
+        return {
+            id: 1,
+            table_name: tableName,
+            created_by: ownerId,
+            owner_id: ownerId,
+            visibility: "private",
+            created_at: "2026-01-01",
+            columns_info: JSON.stringify(["id", "secret"]),
+            description: "tenant test",
+        };
+    }
+
+    it("rejects SQL that references a table outside the caller-scoped catalog", () => {
+        const userACatalog = [entry("tenant_a_private", "tenant_a")];
+
+        expect(() => validateSqlColumnsAgainstCatalog(
+            `SELECT secret FROM "tenant_b_private"`,
+            userACatalog
+        )).toThrow(/Хүснэгт 'tenant_b_private' байхгүй/);
+    });
+
+    it("allows SQL that references a table inside the caller-scoped catalog", () => {
+        const userACatalog = [entry("tenant_a_private", "tenant_a")];
+
+        expect(() => validateSqlColumnsAgainstCatalog(
+            `SELECT secret FROM "tenant_a_private"`,
+            userACatalog
+        )).not.toThrow();
     });
 });

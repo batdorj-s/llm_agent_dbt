@@ -7,6 +7,8 @@ function makeEntry(tableName: string, columns: string[]) {
         id: 1,
         table_name: tableName,
         created_by: null,
+        owner_id: null,
+        visibility: "shared" as const,
         created_at: "2025-01-01",
         columns_info: JSON.stringify(columns),
         description: null,

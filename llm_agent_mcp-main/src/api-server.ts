@@ -347,9 +347,9 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 
   try {
     fs.writeFileSync(tempFilePath, csvContent, "utf8");
-    await seedCsv(tempFilePath, sanitizedTableName, userId || role, description, true);
+    await seedCsv(tempFilePath, sanitizedTableName, userId, description, true, "private");
 
-    const catalog = await getCatalog();
+    const catalog = await getCatalog(userId);
     const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
 
     let cols: string[] = [];
@@ -381,9 +381,9 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 
     const semanticGroups = buildSemanticGroups(cols);
     await getPool().query(
-      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at) VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at`,
-      [sanitizedTableName, sanitizedTableName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString()]
+      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
+       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
+      [sanitizedTableName, sanitizedTableName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString(), userId]
     );
 
     await clearConversationMemory();
@@ -496,9 +496,9 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
     const csvContent = csvLines.join("\n");
     csvTempPath = path.join("/tmp", `xls_${Date.now()}_${sanitizedTableName}.csv`);
     fs.writeFileSync(csvTempPath, csvContent, "utf8");
-    await seedCsv(csvTempPath, sanitizedTableName, userId || role, description, true);
+    await seedCsv(csvTempPath, sanitizedTableName, userId, description, true, "private");
 
-    const catalog = await getCatalog();
+    const catalog = await getCatalog(userId);
     const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
 
     let cols: string[] = [];
@@ -529,9 +529,9 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
 
     const semanticGroups = buildSemanticGroups(cols);
     await getPool().query(
-      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at) VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at`,
-      [sanitizedTableName, originalName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString()]
+      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
+       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
+      [sanitizedTableName, originalName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString(), userId]
     );
 
     await clearConversationMemory();
@@ -636,9 +636,9 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
 
     await initDataLake();
     await getPool().query(
-        `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at) VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, generated_at=EXCLUDED.generated_at`,
-        [docId, originalName, "document", description, null, new Date().toISOString()]
+        `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
+         ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
+        [docId, originalName, "document", description, null, new Date().toISOString(), auth.payload.userId]
     );
 
     res.json({ success: true, message: `Document '${originalName}' indexed.` });

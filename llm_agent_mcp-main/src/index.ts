@@ -37,12 +37,14 @@ server.tool(
   }
 );
 
+const MCP_USER_ID = process.env.MCP_USER_ID || "system";
+
 server.tool(
   "get_data_lake_catalog",
   "Fetches the Data Lake catalog, showing all available tables, who created them, when, and their columns.",
   {},
   async () => {
-    const result = await handleGetCatalog();
+    const result = await handleGetCatalog({ userId: MCP_USER_ID });
     return { content: [{ type: "text", text: result.text }] };
   }
 );
@@ -54,7 +56,7 @@ server.tool(
     query: z.string().describe("The SQL query to execute."),
   },
   async ({ query }) => {
-    const result = await handleExecuteSql({ query });
+    const result = await handleExecuteSql({ query, userId: MCP_USER_ID });
     return { content: [{ type: "text", text: result.text }] };
   }
 );

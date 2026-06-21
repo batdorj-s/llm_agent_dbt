@@ -13,11 +13,12 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     const onChunk = config?.configurable?.onChunk;
     const lastMsg = state.messages[state.messages.length - 1];
     const query = lastMsg ? lastMsg.content : "";
+    const userId = state.userId || "system";
 
     const prefix = "(Data Scientist Agent)\nӨгөгдөлд шинжилгээ хийж байна...\n\n";
     if (onChunk) onChunk(prefix);
 
-    const activeEntry = await getActiveCatalogEntry();
+    const activeEntry = await getActiveCatalogEntry(userId);
     if (!activeEntry) {
         const fallback = `${prefix}[АНХААР] Идэвхтэй хүснэгт олдсонгүй. Зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
         if (onChunk) onChunk(fallback);
@@ -101,7 +102,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
                 : `CAST("${dateCol}" AS DATE)`;
             const forecastSql = `SELECT ${dateCast} AS period, SUM(COALESCE("${aggCol}", 0)) AS value FROM "${tableName}" GROUP BY period ORDER BY period`;
             console.log(`[DataScientist] Forecast mode: ${dateCol} type=${dateColType}, casting as ${dateCast}`);
-            const aggResult = await handleExecuteSql({ query: forecastSql });
+            const aggResult = await handleExecuteSql({ query: forecastSql, userId });
             if (aggResult.ok && aggResult.results) {
                 sampleData = Array.isArray(aggResult.results) ? aggResult.results : [aggResult.results];
                 exportCsvSql = forecastSql;
@@ -111,7 +112,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
 
         if (sampleData.length === 0) {
             const samplingSql = buildSamplingSql(tableName, columnList);
-            const sampleResult = await handleExecuteSql({ query: samplingSql });
+            const sampleResult = await handleExecuteSql({ query: samplingSql, userId });
             if (sampleResult.ok && sampleResult.results) {
                 sampleData = Array.isArray(sampleResult.results) ? sampleResult.results : [sampleResult.results];
             }

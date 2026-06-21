@@ -13,10 +13,10 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-export async function runAgentWithMCP(query: string) {
+export async function runAgentWithMCP(query: string, userId: string = "system") {
   console.log("\n--- Agent with MCP Tools Starting ---");
 
-  const mcpTools = buildEnterpriseLangChainTools();
+  const mcpTools = buildEnterpriseLangChainTools(userId);
   const llm = await createLLM({ temperature: 0 });
 
   if (!llm) {

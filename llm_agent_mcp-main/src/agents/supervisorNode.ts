@@ -23,13 +23,14 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
     if (!lastMsg) return { nextAgent: "END" };
 
     const lastMessage = lastMsg.content;
+    const userId = state.userId || "system";
     console.log(`[Supervisor] Analyzing query: "${lastMessage}"`);
 
     const systemPrompt = prompts.supervisor;
     const onChunk = config?.configurable?.onChunk;
 
     const lowerMessage = lastMessage.toLowerCase();
-    const catalog = await getCatalog();
+    const catalog = await getCatalog(userId);
     const mentionsKnownTable = catalog.some((row: any) => lowerMessage.includes(row.table_name.toLowerCase()));
 
     const techSignals = [
@@ -112,7 +113,7 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
             console.log(`[Supervisor] LLM routed to -> ${result.route} (${result.reason})`);
 
             if (result.route === "END") {
-                const activeEntry = await getActiveCatalogEntry();
+                const activeEntry = await getActiveCatalogEntry(userId);
                 if (activeEntry) {
                     console.log(`[Supervisor] LLM routed to END but active dataset '${activeEntry.table_name}' found. Overriding to TechAgent.`);
                     return { nextAgent: "TechAgent" };
@@ -163,7 +164,7 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
     console.log(`[Supervisor] Keyword routed to -> ${route}`);
 
     if (route === "END") {
-        const activeEntry = await getActiveCatalogEntry();
+        const activeEntry = await getActiveCatalogEntry(userId);
         if (activeEntry) {
             console.log(`[Supervisor] No keyword match but active dataset '${activeEntry.table_name}' found. Routing to TechAgent.`);
             route = "TechAgent";
