@@ -5,7 +5,7 @@ import { searchKnowledgeBase } from "./rag.js";
 import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "./rag.js";
 import { buildFinanceKpiContext, handleExecuteSql, isPythonQuery } from "./tools/enterprise-tools.js";
 import { dataScientistNode } from "./agents/data-scientist.js";
-import { safeJsonParse } from "./utils.js";
+import { safeJsonParse, buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { runPythonCode } from "./sandbox.js";
 import { verifyToken } from "./auth.js";
 import fs from "fs";
@@ -81,6 +81,41 @@ function buildContextSummary(messages: Message[]): string {
     return parts.length > 0
         ? `\n\n## Context Summary (from previous assistant responses)\n${parts.join("\n---\n")}`
         : "";
+}
+
+function computeResultStats(sandboxResult: string): string {
+    try {
+        const rows = JSON.parse(sandboxResult);
+        if (!Array.isArray(rows) || rows.length === 0) return "";
+        const numericCols = Object.keys(rows[0]).filter(key => {
+            const vals = rows.map((r: any) => Number(r[key])).filter((v: number) => !isNaN(v));
+            return vals.length > rows.length * 0.5;
+        });
+        if (numericCols.length === 0) return "";
+
+        const lines: string[] = [`## Data Statistics (from ${rows.length} rows)`];
+        for (const col of numericCols) {
+            const vals = rows.map((r: any) => Number(r[col])).filter((v: number) => !isNaN(v));
+            if (vals.length === 0) continue;
+            const n = vals.length;
+            const sum = vals.reduce((a: number, b: number) => a + b, 0);
+            const mean = sum / n;
+            const min = Math.min(...vals);
+            const max = Math.max(...vals);
+            const variance = vals.reduce((sq: number, v: number) => sq + (v - mean) ** 2, 0) / n;
+            const std = Math.sqrt(variance);
+            lines.push(`- ${col}: avg=${mean.toFixed(1)}, min=${min.toFixed(1)}, max=${max.toFixed(1)}, std=${std.toFixed(1)}, count=${n}`);
+
+            const outliers = vals.filter((v: number) => Math.abs(v - mean) > 3 * std);
+            if (outliers.length > 0) {
+                const outlierVals = [...new Set(outliers.map((v: number) => v.toFixed(1)))].slice(0, 3).join(", ");
+                lines.push(`  ⚠ Anomaly in "${col}": ${outlierVals} (exceeds ±3σ from mean ${mean.toFixed(1)})`);
+            }
+        }
+        return lines.length > 1 ? lines.join("\n") : "";
+    } catch {
+        return "";
+    }
 }
 
 export async function clearConversationMemory() {
@@ -677,7 +712,13 @@ Task: ${query}`;
         }
 
         const schema = await buildSchemaDefinition(activeEntry);
-        const dashboardPrompt = (prompts.dashboard_designer as string).replace("{schema}", schema);
+        let columnList: string[] = [];
+        try { columnList = JSON.parse(activeEntry.columns_info) as string[]; } catch {}
+        const semanticGroups = buildSemanticGroups(columnList);
+        const semanticGroupsText = formatSemanticGroups(semanticGroups);
+        const dashboardPrompt = (prompts.dashboard_designer as string)
+            .replace("{semantic_groups}", semanticGroupsText)
+            .replace("{schema}", schema);
 
         try {
             const dashResponse = await withTimeout(llm.invoke([
@@ -874,12 +915,13 @@ Task: ${query}`;
         };
     }
 
+    const dataStats = computeResultStats(sandboxResult);
     const qualityChecklist = prompts.data_quality_checklist || "";
     const contextSummary = buildContextSummary(state.messages);
     const explainSystemPrompt = (prompts.tech_agent_explain as string)
       .replace("{visual_instruction}", "DO NOT generate any <visual> tags. Visualizations will be added automatically after your response.")
       .replace("{{ data_quality_checklist }}", qualityChecklist);
-    const explainPrompt = `${explainSystemPrompt}${contextSummary}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}`;
+    const explainPrompt = `${explainSystemPrompt}${contextSummary}\n\n${dataStats}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}`;
 
     const explainMessages = trimMessages([
         { role: "system", content: explainPrompt },

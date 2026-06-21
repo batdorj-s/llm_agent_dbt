@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import fs from "fs";
 import dotenv from "dotenv";
+import { buildSemanticGroups, formatSemanticGroups } from "../utils.js";
 
 dotenv.config();
 
@@ -91,6 +92,13 @@ export async function initDataLake(): Promise<void> {
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 )
             `);
+
+            try {
+                await pool.query(`ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS semantic_groups JSONB DEFAULT NULL`);
+                await pool.query(`ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ DEFAULT NULL`);
+            } catch (alterErr) {
+                console.warn("[Data Lake] ALTER TABLE uploaded_files note:", (alterErr as Error).message);
+            }
 
             await pool.query(`
                 CREATE TABLE IF NOT EXISTS kpi_targets (
@@ -253,6 +261,11 @@ export async function buildSchemaDefinition(entries: DataLakeCatalogEntry | Data
             if (vals && vals.length > 0) {
                 lines.push(`  Sample values: ${vals.join(", ")}`);
             }
+        }
+        const semanticGroups = buildSemanticGroups(columns);
+        const semanticGroupsText = formatSemanticGroups(semanticGroups);
+        if (semanticGroupsText !== "No semantic groups detected.") {
+            lines.push(`\nSemantic Groups:\n${semanticGroupsText}`);
         }
         parts.push(lines.join("\n"));
     }

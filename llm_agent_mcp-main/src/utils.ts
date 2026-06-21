@@ -39,3 +39,58 @@ export function safeJsonParse<T>(raw: string, fallback: T): { data: T; cleaned: 
         return { data: fallback, cleaned };
     }
 }
+
+export function buildSemanticGroups(cols: string[]): Record<string, string[]> {
+    const groups: Record<string, string[]> = {};
+
+    const prefixDefs: [RegExp, string][] = [
+        [/^Mnt/i, "Spending (MNT)"],
+        [/^Num/i, "Count/Web"],
+        [/^Kidhome|^Teenhome/i, "Family Composition"],
+        [/^Z_CostContact|^Z_Revenue/i, "Metadata"],
+        [/^Accepted/i, "Campaign Acceptance"],
+        [/^Complain/i, "Complaint"],
+        [/^Response/i, "Response"],
+        [/^Year/i, "Year"],
+        [/^Income/i, "Income"],
+        [/^Recency/i, "Recency"],
+    ];
+
+    for (const col of cols) {
+        let assigned = false;
+        for (const [pattern, groupName] of prefixDefs) {
+            if (pattern.test(col)) {
+                if (!groups[groupName]) groups[groupName] = [];
+                groups[groupName].push(col);
+                assigned = true;
+                break;
+            }
+        }
+        if (!assigned) {
+            const catKeywords = /category|type|status|segment|group|class|region|city|country|gender|education|marital|deposit|loan|default|housing|contact|channel|product|brand|model/i;
+            const dateKeywords = /date|time|timestamp|month|year|day|order_date|invoice/i;
+            const idKeywords = /_id$|^id$|order_id|transaction|invoice_num/i;
+            if (catKeywords.test(col)) {
+                if (!groups["Categorical"]) groups["Categorical"] = [];
+                groups["Categorical"].push(col);
+            } else if (dateKeywords.test(col)) {
+                if (!groups["Date/Time"]) groups["Date/Time"] = [];
+                groups["Date/Time"].push(col);
+            } else if (idKeywords.test(col)) {
+                if (!groups["ID"]) groups["ID"] = [];
+                groups["ID"].push(col);
+            } else {
+                if (!groups["Other"]) groups["Other"] = [];
+                groups["Other"].push(col);
+            }
+        }
+    }
+
+    return groups;
+}
+
+export function formatSemanticGroups(groups: Record<string, string[]>): string {
+    const entries = Object.entries(groups).filter(([_, cols]) => cols.length > 0);
+    if (entries.length === 0) return "No semantic groups detected.";
+    return entries.map(([group, cols]) => `- ${group}: ${cols.join(", ")}`).join("\n");
+}

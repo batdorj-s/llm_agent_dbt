@@ -116,10 +116,11 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
         console.warn("[DataScientist] Data fetch failed:", (err as Error).message);
     }
 
+    const statsSummary = buildStatisticsSummary(sampleData, columnList);
     const pythonSystemPrompt = buildPythonPrompt(
         analysisType, tableName, columnList,
         dateCol, numericCols, categoryCols,
-        schemaDef, sampleData, ragContext
+        schemaDef, sampleData, ragContext, statsSummary
     );
 
     try {
@@ -224,6 +225,47 @@ CRITICAL:
     }
 }
 
+function buildStatisticsSummary(sampleData: any[], columns: string[]): string {
+    if (sampleData.length === 0) return "No data available for statistics.";
+
+    const numericCols = columns.filter(col => {
+        const vals = sampleData.map(r => Number(r[col])).filter(v => !isNaN(v));
+        return vals.length > 0.5 * sampleData.length;
+    });
+
+    if (numericCols.length === 0) return `${sampleData.length} rows loaded. No numeric columns detected for statistical summary.`;
+
+    const lines: string[] = [];
+    const outlierLines: string[] = [];
+
+    for (const col of numericCols) {
+        const vals = sampleData.map(r => Number(r[col])).filter(v => !isNaN(v));
+        if (vals.length === 0) continue;
+        const n = vals.length;
+        const sum = vals.reduce((a, b) => a + b, 0);
+        const mean = sum / n;
+        const min = Math.min(...vals);
+        const max = Math.max(...vals);
+        const variance = vals.reduce((sq, v) => sq + (v - mean) ** 2, 0) / n;
+        const std = Math.sqrt(variance);
+
+        lines.push(`- ${col}: count=${n}, mean=${mean.toFixed(2)}, std=${std.toFixed(2)}, min=${min.toFixed(2)}, max=${max.toFixed(2)}`);
+
+        const threshold = mean + 3 * std;
+        const outliers = vals.filter(v => Math.abs(v - mean) > 3 * std);
+        if (outliers.length > 0) {
+            const outlierVals = [...new Set(outliers.map(v => v.toFixed(2)))].slice(0, 5).join(", ");
+            outlierLines.push(`  ⚠ Outliers in "${col}": ${outlierVals} (threshold: ±${(3 * std).toFixed(2)} from mean ${mean.toFixed(2)})`);
+        }
+    }
+
+    let output = "## Data Statistics (Pre-computed)\n" + lines.join("\n");
+    if (outlierLines.length > 0) {
+        output += "\n\n### Detected Outliers (>3σ from mean)\n" + outlierLines.join("\n");
+    }
+    return output;
+}
+
 function buildSamplingSql(tableName: string, columns: string[]): string {
     const safeCols = columns.map(c => `"${c}"`).join(", ");
     return `SELECT ${safeCols} FROM "${tableName}" LIMIT 500;`;
@@ -263,7 +305,7 @@ function buildPythonPrompt(
     analysisType: string, tableName: string, columns: string[],
     dateCol: string | null, numericCols: string[], categoryCols: string[],
     schemaDef: string, sampleData: any[],
-    ragContext: string = ""
+    ragContext: string = "", statsSummary: string = ""
 ): string {
     const totalRows = sampleData.length;
     const sampleJson = JSON.stringify(sampleData.slice(0, 5), null, 2);
@@ -327,6 +369,8 @@ ${ragContext}
 ## Sample Data (first 5 rows of ${totalRows} total)
 ${sampleJson}
 
+${statsSummary}
+
 ## Analysis Type: ${analysisType.toUpperCase()}
 ${analysisHints[analysisType] || analysisHints.general}
 
@@ -335,13 +379,45 @@ You MUST generate a chart/plot and save it as a PNG file. Charts are the primary
 
 ### Chart Type for This Analysis: ${chartInfo.chart.toUpperCase()} — ${chartInfo.reason}
 
+### Styling Template (MANDATORY — add at the top)
+You MUST set these matplotlib/seaborn style defaults BEFORE any plotting code:
+\`\`\`python
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+plt.style.use('seaborn-v0_8-whitegrid')
+sns.set_palette("husl")
+plt.rcParams['figure.facecolor'] = 'white'
+plt.rcParams['axes.facecolor'] = 'white'
+plt.rcParams['font.size'] = 11
+plt.rcParams['axes.titlesize'] = 14
+plt.rcParams['axes.labelsize'] = 11
+plt.rcParams['xtick.labelsize'] = 9
+plt.rcParams['ytick.labelsize'] = 9
+plt.rcParams['legend.fontsize'] = 10
+plt.rcParams['figure.dpi'] = 150
+\`\`\`
+Use this EXACT block at the start of your plotting code. Do NOT change or omit these settings.
+
 ### Required Plotting Template
 Use this EXACT template for every chart:
 \`\`\`python
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-plt.style.use('seaborn-v0_8-darkgrid')
+# Styling block — do NOT modify or remove
+plt.style.use('seaborn-v0_8-whitegrid')
+sns.set_palette("husl")
+plt.rcParams['figure.facecolor'] = 'white'
+plt.rcParams['axes.facecolor'] = 'white'
+plt.rcParams['font.size'] = 11
+plt.rcParams['axes.titlesize'] = 14
+plt.rcParams['axes.labelsize'] = 11
+plt.rcParams['xtick.labelsize'] = 9
+plt.rcParams['ytick.labelsize'] = 9
+plt.rcParams['legend.fontsize'] = 10
+plt.rcParams['figure.dpi'] = 150
+
 fig, ax = plt.subplots(figsize=(10, 6))
 
 # [YOUR PLOTTING CODE HERE]
@@ -349,7 +425,7 @@ fig, ax = plt.subplots(figsize=(10, 6))
 ax.set_title('Title in Mongolian or English', fontsize=14, fontweight='bold')
 ax.set_xlabel('X-axis label', fontsize=11)
 ax.set_ylabel('Y-axis label', fontsize=11)
-ax.grid(True, alpha=0.3)
+ax.grid(True, alpha=0.3, color='#cccccc')
 plt.tight_layout()
 plt.savefig('analysis_plot.png', dpi=150, bbox_inches='tight')
 plt.close()
@@ -362,14 +438,13 @@ plt.close()
 - **regression**: Scatter plot of predicted vs actual. Include R² in title. Add residual plot as second subplot.
 - **general**: Bar chart for categorical counts or histogram for numeric distributions.
 
-### Styling Rules
-- Use seaborn-v0_8-darkgrid style
+### Styling Rules (OVERRIDES)
+- ALL charts MUST use the Styling Template block above (whitegrid, husl palette, white facecolor)
 - Figure size: (10, 6)
-- Color palette: sns.color_palette("viridis", 8) or sns.color_palette("husl", 8)
 - DPI: 150
-- Label font size: 11, title font size: 14 bold
-- Add grid with alpha=0.3
+- Add subtle grid via plt.grid(True, alpha=0.3, color='#cccccc')
 - Rotate x-axis labels 45 degrees if they overlap
+- Do NOT use seaborn-v0_8-darkgrid or any other style — whitegrid is required for clean dashboards
 
 ## Rules
 1. Import all libraries inside the code. Do NOT assume pre-installed packages beyond: pandas, numpy, scikit-learn, statsmodels, scipy, matplotlib, seaborn

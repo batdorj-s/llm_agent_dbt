@@ -16,6 +16,7 @@ import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./m
 import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile } from "./db/data-lake.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
+import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -376,10 +377,11 @@ app.post("/api/admin/upload-csv", async (req, res) => {
       }, [sanitizedTableName]);
     }
 
+    const semanticGroups = buildSemanticGroups(cols);
     await getPool().query(
-      `INSERT INTO uploaded_files (id, filename, type, description) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description`,
-      [sanitizedTableName, sanitizedTableName, "dataset", description]
+      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at) VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at`,
+      [sanitizedTableName, sanitizedTableName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString()]
     );
 
     await clearConversationMemory();
@@ -490,9 +492,9 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
 
     await initDataLake();
     await getPool().query(
-        `INSERT INTO uploaded_files (id, filename, type, description) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description`,
-        [docId, originalName, "document", description]
+        `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at) VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, generated_at=EXCLUDED.generated_at`,
+        [docId, originalName, "document", description, null, new Date().toISOString()]
     );
 
     res.json({ success: true, message: `Document '${originalName}' indexed.` });

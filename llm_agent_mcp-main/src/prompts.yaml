@@ -137,10 +137,17 @@ tech_agent_explain: |
 
   {{ data_quality_checklist }}
 
+   ## Statistical Grounding — CRITICAL
+    Your explanation MUST be grounded in the actual data values. Before writing:
+    - Identify the MIN, MAX, AVG, and COUNT from the execution log results
+    - If the data has a time dimension, identify the trend direction (increase/decrease/stable) with percentage change
+    - If any value deviates significantly (>30% from average or group mean), flag it as an anomaly
+    - Include raw numbers in your explanation (e.g., "дундаж 590₮", "хамгийн их 1,200₮", "нийт 10,000 мөр")
+
    ## Response Format
-   1. One sentence stating what the query found.
-   2. Key findings (bullet points).
-   3. **Дүгнэлт (Conclusion)**: 2-3 өгүүлбэртэй, бизнесийн удирдлагуудад зориулсан тодорхой, утга учиртай дүгнэлт. Энэ хэсэгт "Алдаа: ... → Засвар: ..." гэж БҮҮ бичээрэй — доорх тусдаа дүрмийг дагана уу.
+    1. One sentence stating what the query found.
+    2. Key findings (bullet points) — each MUST reference actual numbers from the results.
+    3. **Дүгнэлт (Conclusion)**: 2-3 өгүүлбэртэй, бизнесийн удирдлагуудад зориулсан тодорхой, утга учиртай дүгнэлт. Энэ хэсэгт "Алдаа: ... → Засвар: ..." гэж БҮҮ бичээрэй — доорх тусдаа дүрмийг дагана уу.
    4. If a technical error actually occurred AND was auto-fixed: "Алдаа: [юу буруу байсан] → Засвар: [хэрхэн засав]".    Зөвхөн SQL execution алдаа гарсан тохиолдолд л бичнэ үү. Хэрэв алдаагүй бол энэ хэсгийг БҮҮ оруулна уу.
     5. **Тооцооны аргачлал (Methodology)**: 1 өгүүлбэрээр тоонуудыг хэрхэн гаргаснаа тайлбарлана уу. Жишээ: "2026-06 сарын нийт борлуулалт 500,000₮ байсан бол 2026-05 сард 450,000₮ байсан — 11%-иар өссөн"
 
@@ -208,6 +215,19 @@ dashboard_designer: |
   8. CRITICAL — SQL strings must be PURE PostgreSQL: Do NOT append ANY Mongolian text, commentary, or natural language inside or after any "sql" value. Every SQL must be executable as-is.
   9. CRITICAL — GROUP BY must produce UNIQUE labels: The column in GROUP BY and alias "label" must yield distinct values (e.g. "marital" → 3 rows: married, single, divorced).
   10. CRITICAL — NEVER invent metric names: Every column referenced in SQL must exist in the schema. Do NOT use invented metrics — only actual column names.
+
+  ## SMART DASHBOARD LAYOUT RULES
+  11. The FIRST 1-2 widgets MUST be KPI cards showing top-level metrics (total sales/revenue, avg order value, total customers, etc.).
+      Users need the big picture first before drilling into details.
+  12. MAXIMUM 1 pie chart per dashboard. Pie charts are hard to read when there are more than 6 slices.
+  13. If multiple columns share a semantic prefix group (see ## Semantic Groups below), group them into a single bar chart.
+      For example: MntWines + MntMeatProducts + MntFruits = one bar chart titled "Бүтээгдэхүүний ангилалаар зарлага".
+  14. ALWAYS include at least one time-series line chart if a date column exists in the schema.
+  15. MAX 6 widgets total. Prefer "bar" over "pie" for categorical comparisons.
+
+  ## Semantic Groups
+  The schema below includes column groupings. Use these to create meaningful multi-column charts:
+  {semantic_groups}
 
   ## Table Schema
   {schema}
