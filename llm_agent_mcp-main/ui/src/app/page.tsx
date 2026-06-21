@@ -384,6 +384,13 @@ export default function Home() {
   const [isUploadingCsv, setIsUploadingCsv] = useState<boolean>(false);
   const [csvUploadMessage, setCsvUploadMessage] = useState<string | null>(null);
 
+  // Excel upload states
+  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [excelTableNameInput, setExcelTableNameInput] = useState<string>("");
+  const [excelDescInput, setExcelDescInput] = useState<string>("");
+  const [isUploadingExcel, setIsUploadingExcel] = useState<boolean>(false);
+  const [excelUploadMessage, setExcelUploadMessage] = useState<string | null>(null);
+
   // Graphic Mode
   const [isGraphicModeEnabled, setIsGraphicModeEnabled] = useState<boolean>(false);
 
@@ -973,6 +980,50 @@ export default function Home() {
     reader.readAsText(csvFile);
   };
 
+  const handleUploadExcel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!excelFile || !excelTableNameInput.trim() || !excelDescInput.trim() || isUploadingExcel || !token) return;
+
+    setIsUploadingExcel(true);
+    setExcelUploadMessage(null);
+
+    const formData = new FormData();
+    formData.append("file", excelFile);
+    formData.append("tableName", excelTableNameInput);
+    formData.append("description", excelDescInput);
+
+    try {
+      const res = await fetch("/api/admin/upload-excel", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+
+      setExcelUploadMessage(`Success: Table '${excelTableNameInput}' imported!`);
+      if (data.preview) {
+        setPreviewData(data.preview);
+        setPreviewColumns(data.columns || []);
+        setPreviewTableName(excelTableNameInput);
+        setPreviewDescription(null);
+        setPreviewContent(null);
+        setPreviewHasDownload(false);
+        setPreviewFileId(null);
+      }
+      setExcelFile(null);
+      setExcelTableNameInput("");
+      setExcelDescInput("");
+      fetchDashboardData();
+      fetchUploadedFiles();
+    } catch (err: unknown) {
+      setExcelUploadMessage(`Error: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setIsUploadingExcel(false);
+    }
+  };
+
   const handleUploadDoc = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!docFile || !docDescInput.trim() || isUploadingDoc || !token) return;
@@ -1316,6 +1367,51 @@ export default function Home() {
                   </form>
                   {csvUploadMessage && (
                     <p className="text-[9px] text-foreground/60 mt-1 max-w-full break-words">{csvUploadMessage}</p>
+                  )}
+                </div>
+
+                {/* EXCEL UPLOADER (XLSX/XLS) */}
+                <div className="border-t border-border pt-4 space-y-2">
+                  <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Upload Excel (XLSX/XLS)</span>
+                  <form onSubmit={handleUploadExcel} className="space-y-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Table name..."
+                      value={excelTableNameInput}
+                      onChange={(e) => setExcelTableNameInput(e.target.value)}
+                      className="w-full bg-background border border-border rounded p-1.5 text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors"
+                    />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Description..."
+                      value={excelDescInput}
+                      onChange={(e) => setExcelDescInput(e.target.value)}
+                      className="w-full bg-background border border-border rounded p-1.5 text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors"
+                    />
+                    <div className="relative border border-dashed border-border hover:border-foreground/30 rounded p-3 text-center transition-colors cursor-pointer bg-background/50 text-foreground">
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        required
+                        onChange={(e) => setExcelFile(e.target.files?.[0] || null)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <span className="text-[10px] text-foreground/60 block truncate">
+                        {excelFile ? excelFile.name : "Select Excel file"}
+                      </span>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isUploadingExcel || !excelFile || !excelTableNameInput.trim() || !excelDescInput.trim()}
+                      className="w-full py-1.5 bg-background border border-border hover:bg-foreground/5 text-foreground rounded text-[10px] font-bold cursor-pointer transition-colors disabled:opacity-50 duration-150"
+                    >
+                      {isUploadingExcel ? "Uploading..." : "Upload & Index"}
+                    </button>
+                  </form>
+                  {excelUploadMessage && (
+                    <p className="text-[9px] text-foreground/60 mt-1 max-w-full break-words">{excelUploadMessage}</p>
                   )}
                 </div>
 

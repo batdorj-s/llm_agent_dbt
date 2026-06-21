@@ -437,6 +437,146 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// Admin: Upload Excel (XLSX/XLS)
+// ─────────────────────────────────────────────────────────────
+app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { userId, role } = auth.payload;
+  const { tableName, description } = req.body;
+
+  if (!req.file || !tableName || !description) {
+    return res.status(400).json({ error: "file, tableName, and description are required" });
+  }
+
+  const sanitizedTableName = tableName.trim().replace(/[^a-zA-Z0-9_]/g, "");
+  const tempPath = req.file.path;
+  const originalName = req.file.originalname;
+  const extension = path.extname(originalName).toLowerCase();
+
+  if (extension !== ".xlsx" && extension !== ".xls") {
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    return res.status(400).json({ error: "Only .xlsx and .xls files are supported." });
+  }
+
+  let csvTempPath = "";
+  try {
+    const XLSX = require("xlsx");
+    const workbook = XLSX.readFile(tempPath);
+    const firstSheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[firstSheetName];
+    const jsonData = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+    if (jsonData.length === 0) {
+      throw new Error("Excel file is empty or has no data rows.");
+    }
+
+    const headers = Object.keys(jsonData[0] as Record<string, unknown>);
+
+    const csvLines: string[] = [];
+    const escapeCsv = (val: unknown): string => {
+      const str = String(val ?? "");
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+    csvLines.push(headers.map(h => escapeCsv(h)).join(","));
+    for (const row of jsonData) {
+      csvLines.push(headers.map(h => escapeCsv((row as Record<string, unknown>)[h])).join(","));
+    }
+
+    const csvContent = csvLines.join("\n");
+    csvTempPath = path.join("/tmp", `xls_${Date.now()}_${sanitizedTableName}.csv`);
+    fs.writeFileSync(csvTempPath, csvContent, "utf8");
+    await seedCsv(csvTempPath, sanitizedTableName, userId || role, description, true);
+
+    const catalog = await getCatalog();
+    const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
+
+    let cols: string[] = [];
+    if (tableInfo) {
+      cols = JSON.parse(tableInfo.columns_info) as string[];
+
+      await removeDocumentsByPrefix(`uploaded_${sanitizedTableName}_`);
+
+      const [samples, profile] = await Promise.all([
+        getColumnSamples(sanitizedTableName, cols, 5),
+        getColumnProfile(sanitizedTableName, cols),
+      ]);
+      const sampleText = cols.map(c => {
+        const p = profile[c];
+        const typeLabel = p?.type ? (p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type) : "TEXT";
+        const rangeInfo = p?.min !== undefined && p?.max !== undefined ? ` [${p.min}..${p.max}]` : "";
+        const vals = samples[c];
+        return vals && vals.length > 0 ? `"${c}" (${typeLabel}${rangeInfo}, e.g. ${vals.join(", ")})` : `"${c}" (${typeLabel}${rangeInfo})`;
+      }).join(", ");
+      const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}.`;
+      await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, {
+        category: "data_catalog",
+        department: "analytics",
+        author: userId || "unknown",
+        source_name: `Upload: ${sanitizedTableName}`,
+      }, [sanitizedTableName]);
+    }
+
+    const semanticGroups = buildSemanticGroups(cols);
+    await getPool().query(
+      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at) VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at`,
+      [sanitizedTableName, originalName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString()]
+    );
+
+    await clearConversationMemory();
+
+    if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
+        && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
+      const mapping = buildColumnMapping(cols);
+      try {
+        runDbtForTable(sanitizedTableName, cols, mapping);
+        await generateSchemaYml(sanitizedTableName, cols);
+        const testOutput = runDbtTest(JSON.stringify({ input_table: sanitizedTableName, ...mapping }));
+        const hasFailures = /FAILED|ERROR/i.test(testOutput);
+        if (hasFailures) {
+          const warningText = `[АНХААР] DATA QUALITY WARNING for table '${sanitizedTableName}': dbt tests detected issues. Agents should verify data before reporting.`;
+          await addDocumentToCatalog(`dbt_warning_${sanitizedTableName}`, warningText, {
+            category: "data_catalog", department: "analytics", author: "system", source_name: "Data Quality Gate",
+          }, [sanitizedTableName, "dbt_warning", "data_quality"]);
+        } else {
+          console.log(`[Upload] dbt tests PASSED for '${sanitizedTableName}' [OK]`);
+        }
+      } catch (err) {
+        console.warn(`[Upload] dbt pipeline error:`, (err as Error).message);
+      }
+    }
+
+    let preview: Record<string, unknown>[] = [];
+    try {
+      const previewResult = await getPool().query(`SELECT * FROM "${sanitizedTableName}" LIMIT 20`);
+      preview = previewResult.rows;
+    } catch (previewErr) {
+      console.warn("[Upload] Preview fetch failed:", (previewErr as Error).message);
+    }
+
+    res.json({
+      success: true,
+      message: `Table '${sanitizedTableName}' successfully imported from Excel.`,
+      preview,
+      columns: cols.length > 0 ? cols : (preview.length > 0 ? Object.keys(preview[0]) : []),
+    });
+  } catch (err: any) {
+    console.error("[API] Excel Upload Error:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    if (csvTempPath && fs.existsSync(csvTempPath)) fs.unlinkSync(csvTempPath);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 // Admin: Upload Document (PDF/DOCX)
 // ─────────────────────────────────────────────────────────────
 const DOCUMENTS_DIR = "uploads/documents/";

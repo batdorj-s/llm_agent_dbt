@@ -39,7 +39,6 @@
     "@supabase/supabase-js": "^2.108.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "pg": "^8.13.0",
     "chromadb": "^3.4.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -49,15 +48,17 @@
     "mammoth": "^1.12.0",
     "multer": "^2.1.1",
     "pdf-parse": "^2.4.5",
+    "pg": "^8.13.0",
     "uuid": "^14.0.0",
+    "xlsx": "^0.18.5",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.0",
     "@types/multer": "^2.1.0",
     "@types/node": "^25.9.1",
     "@types/pdf-parse": "^1.1.5",
+    "@types/pg": "^8.11.0",
     "concurrently": "^10.0.3",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
