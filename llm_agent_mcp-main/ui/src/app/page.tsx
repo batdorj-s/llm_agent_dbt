@@ -1352,8 +1352,8 @@ export default function Home() {
                     {uploadedFiles.length === 0 ? (
                       <p className="text-[9px] text-foreground/45 italic">No assets uploaded yet.</p>
                     ) : (
-                      uploadedFiles.map((f) => (
-                        <div key={f.id} onClick={() => handleViewFile(f)} className="group flex items-center justify-between bg-background border border-border/80 hover:border-foreground/20 rounded px-2 py-1.5 transition-colors cursor-pointer">
+                      uploadedFiles.map((f, fi) => (
+                        <div key={f.id} onClick={() => handleViewFile(f)} className="group flex items-center justify-between bg-background border border-border/80 hover:border-foreground/20 rounded px-2 py-1.5 transition-colors cursor-pointer animate-fade-in-up" style={{ animationDelay: `${fi * 40}ms` }}>
                           <div className="flex items-center gap-2 overflow-hidden">
                             {f.type === "dataset" ? <Activity className="w-3 h-3 text-foreground/60 shrink-0" /> : <FileText className="w-3 h-3 text-foreground/60 shrink-0" />}
                             <span className="text-[10px] text-foreground/70 truncate" title={f.description || f.filename}>
@@ -1408,7 +1408,8 @@ export default function Home() {
                       <button
                         key={i}
                         onClick={() => handleSendMessage(undefined, s.query)}
-                        className="px-3 py-1.5 text-xs bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/70 transition-all cursor-pointer"
+                        className="px-3 py-1.5 text-xs bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/70 transition-all cursor-pointer animate-fade-in-up"
+                        style={{ animationDelay: `${i * 50}ms` }}
                       >
                         {s.label}
                       </button>
@@ -1419,7 +1420,7 @@ export default function Home() {
                 messages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+                      className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} animate-fade-in-up`}
                   >
                     <div className="max-w-2xl w-full flex flex-col">
                       {msg.sender === "user" ? (
@@ -1487,7 +1488,8 @@ export default function Home() {
                     <button
                       key={i}
                       onClick={() => handleSendMessage(undefined, s.query)}
-                      className="px-2.5 py-1 text-[10px] bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/50 transition-all cursor-pointer"
+                      className="px-2.5 py-1 text-[10px] bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/50 transition-all cursor-pointer animate-fade-in-up"
+                      style={{ animationDelay: `${i * 50}ms` }}
                     >
                       {s.label}
                     </button>
@@ -1559,7 +1561,7 @@ export default function Home() {
 
             {/* DATA PREVIEW DRAWER */}
             {previewData !== null && (
-              <div className="absolute right-0 top-0 bottom-0 w-[480px] border-l border-border bg-sidebar z-50 flex flex-col shadow-xl animate-in slide-in-from-right">
+              <div className="absolute right-0 top-0 bottom-0 w-[480px] border-l border-border bg-sidebar z-50 flex flex-col shadow-xl animate-slide-in-right">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider shrink-0">Preview</span>
@@ -1572,7 +1574,7 @@ export default function Home() {
                   >✕</button>
                 </div>
                 {previewData.length > 0 ? (
-                  <div className="flex-1 overflow-auto p-3">
+                  <div className="flex-1 overflow-auto p-3 animate-scale-in">
                     <table className="w-full text-[10px] border-collapse">
                       <thead>
                         <tr className="bg-background/50 sticky top-0">
@@ -1595,7 +1597,7 @@ export default function Home() {
                     </table>
                   </div>
                 ) : previewContent ? (
-                  <div className="flex-1 overflow-auto p-4 space-y-3">
+                  <div className="flex-1 overflow-auto p-4 space-y-3 animate-fade-in-up">
                     <div className="flex items-center justify-between">
                       <div className="flex gap-2 items-start">
                         <FileText className="w-4 h-4 text-foreground/40 shrink-0 mt-0.5" />
