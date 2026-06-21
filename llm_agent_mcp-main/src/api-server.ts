@@ -251,11 +251,12 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
     if (!file) return res.status(404).json({ error: "File not found" });
 
     if (file.type === "dataset") {
-      const previewResult = await getPool().query(`SELECT * FROM "${file.filename}" LIMIT 20`);
+      const tableName = file.id || file.filename;
+      const previewResult = await getPool().query(`SELECT * FROM "${tableName}" LIMIT 20`);
       let columns: string[] = [];
       try {
         const catalogResult = await getPool().query(
-          `SELECT columns_info FROM data_lake_catalog WHERE table_name = $1`, [file.filename]
+          `SELECT columns_info FROM data_lake_catalog WHERE table_name = $1`, [tableName]
         );
         if (catalogResult.rows.length > 0) {
           columns = JSON.parse(catalogResult.rows[0].columns_info as string);
@@ -264,7 +265,7 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
       if (columns.length === 0 && previewResult.rows.length > 0) {
         columns = Object.keys(previewResult.rows[0]);
       }
-      return res.json({ type: "dataset", preview: previewResult.rows, columns, tableName: file.filename });
+      return res.json({ type: "dataset", preview: previewResult.rows, columns, tableName });
     }
 
     // Document: read extracted text file
