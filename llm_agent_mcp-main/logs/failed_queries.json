@@ -25,5 +25,14 @@
     "rating": "positive",
     "threadId": "thread_1782030697750",
     "timestamp": "2026-06-21T08:37:25.522Z"
+  },
+  {
+    "id": "feedback_1782037480250",
+    "userId": "bataabat905@gmail.com",
+    "message": "Өгөгдлийг сараар ангилж, орлогын трендийг харуулсан Line chart зур. Дараагийн сард орлого ямар байхыг богино хугацааны таамаглал дэвшүүл.",
+    "response": "*Хүсэлтийг цуцаллаа.*",
+    "rating": "negative",
+    "threadId": "thread_1782037138946",
+    "timestamp": "2026-06-21T10:24:40.250Z"
   }
 ]

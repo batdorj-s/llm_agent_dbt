@@ -464,11 +464,13 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
 
   let csvTempPath = "";
   try {
-    const XLSX = require("xlsx");
-    const workbook = XLSX.readFile(tempPath);
+    const XLSX = await import("xlsx");
+    // @ts-ignore - xlsx is a CJS module, accessed via default or named
+    const xlsxMod = XLSX.default || XLSX;
+    const workbook = xlsxMod.readFile(tempPath);
     const firstSheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[firstSheetName];
-    const jsonData = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    const jsonData = xlsxMod.utils.sheet_to_json(sheet, { defval: "" });
 
     if (jsonData.length === 0) {
       throw new Error("Excel file is empty or has no data rows.");
