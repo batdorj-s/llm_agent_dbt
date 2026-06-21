@@ -2,6 +2,7 @@ import { Pool } from "pg";
 import fs from "fs";
 import dotenv from "dotenv";
 import { buildSemanticGroups, formatSemanticGroups } from "../utils.js";
+import { traceToolCall } from "../observability/tracer.js";
 
 dotenv.config();
 
@@ -511,37 +512,39 @@ function splitSelectColumns(clause: string): string[] {
 }
 
 export async function executeSql(query: string, readOnly: boolean = true): Promise<any> {
-    await initDataLake();
-    if (!_pgAvailable || !pool) throw new Error("Data Lake unavailable (PostgreSQL not connected).");
+    return traceToolCall("executeSql", async () => {
+        await initDataLake();
+        if (!_pgAvailable || !pool) throw new Error("Data Lake unavailable (PostgreSQL not connected).");
 
-    if (DANGEROUS_SQL.test(query)) {
-        throw new Error("Only SELECT/WITH queries are permitted. Mutating operations are strictly prohibited.");
-    }
-
-    await validateSqlColumns(query);
-
-    const normalized = query.trim().toUpperCase();
-    const isSelect = /^\s*SELECT\b/i.test(normalized) || (/^\s*WITH\b/i.test(normalized) && /SELECT\b/i.test(normalized.replace(/^\s*WITH[\s\S]*?SELECT\b/i, "")));
-
-    if (readOnly && !isSelect) {
-        throw new Error("Only SELECT/WITH queries allowed in read-only mode.");
-    }
-
-    try {
-        if (isSelect) {
-            await pool.query(`EXPLAIN ${query}`);
-            await pool.query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE");
-            const result = await pool.query(query);
-            await pool.query("ROLLBACK");
-            return result.rows;
+        if (DANGEROUS_SQL.test(query)) {
+            throw new Error("Only SELECT/WITH queries are permitted. Mutating operations are strictly prohibited.");
         }
-        if (readOnly) throw new Error("Only SELECT/WITH queries allowed in read-only mode.");
-        const result = await pool.query(query);
-        return { message: "Query executed", changes: result.rowCount };
-    } catch (err: any) {
-        const msg = err.message
-            .replace(/^syntax error at or near/, "SQL syntax error near")
-            .replace(/^ERROR:\s*/i, "");
-        throw new Error(`SQL Execution Error: ${msg}`);
-    }
+
+        await validateSqlColumns(query);
+
+        const normalized = query.trim().toUpperCase();
+        const isSelect = /^\s*SELECT\b/i.test(normalized) || (/^\s*WITH\b/i.test(normalized) && /SELECT\b/i.test(normalized.replace(/^\s*WITH[\s\S]*?SELECT\b/i, "")));
+
+        if (readOnly && !isSelect) {
+            throw new Error("Only SELECT/WITH queries allowed in read-only mode.");
+        }
+
+        try {
+            if (isSelect) {
+                await pool.query(`EXPLAIN ${query}`);
+                await pool.query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE");
+                const result = await pool.query(query);
+                await pool.query("ROLLBACK");
+                return result.rows;
+            }
+            if (readOnly) throw new Error("Only SELECT/WITH queries allowed in read-only mode.");
+            const result = await pool.query(query);
+            return { message: "Query executed", changes: result.rowCount };
+        } catch (err: any) {
+            const msg = err.message
+                .replace(/^syntax error at or near/, "SQL syntax error near")
+                .replace(/^ERROR:\s*/i, "");
+            throw new Error(`SQL Execution Error: ${msg}`);
+        }
+    }, { readOnly });
 }

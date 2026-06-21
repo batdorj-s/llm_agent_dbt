@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
+import { traceToolCall } from "./observability/tracer.js";
+
 
 dotenv.config();
 
@@ -118,6 +120,7 @@ with open("${outputFile.replace(/\\/g, "\\\\")}", "w") as _f:
 
 // Mock sandbox for development/PoC if no E2B API Key is provided
 export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TIMEOUT_MS, skipMemorySafe: boolean = false): Promise<string> {
+    return traceToolCall("runPythonCode", async () => {
     const hasKey = process.env.E2B_API_KEY && process.env.E2B_API_KEY !== 'your_e2b_api_key_here';
 
     if (!hasKey) {
@@ -214,4 +217,5 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
         console.error("E2B Sandbox execution error:", error);
         return `E2B Execution Error: ${error.message}`;
     }
+});
 }
