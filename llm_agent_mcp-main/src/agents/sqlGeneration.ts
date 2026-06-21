@@ -1,6 +1,7 @@
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
 import { safeJsonParse } from "../utils.js";
 import type { DataLakeCatalogEntry } from "../db/data-lake.js";
+import { findConceptColumn } from "./columnSynonyms.js";
 
 export const MAX_SQL_RETRIES = 2;
 export const SQL_GEN_TIMEOUT_MS = 55000;
@@ -51,18 +52,8 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
     const columns = await getActiveColumns(Promise.resolve(resolvedEntry));
     const tableName = resolvedEntry.table_name;
 
-    const itemColumn = findColumn(columns, [
-        /item_purchased/i,
-        /product/i,
-        /item/i,
-    ]);
-    const salesColumn = findColumn(columns, [
-        /purchase_amount/i,
-        /total_amount/i,
-        /sales/i,
-        /revenue/i,
-        /amount/i,
-    ]);
+    const itemColumn = findConceptColumn(columns, "product", tableName);
+    const salesColumn = findConceptColumn(columns, "sales", tableName);
 
     if (itemColumn && salesColumn && (lowerQuery.includes("top 5") || lowerQuery.includes("top five") || lowerQuery.includes("first 5") || lowerQuery.includes("эхний 5") || lowerQuery.includes("хамгийн их"))) {
         return `

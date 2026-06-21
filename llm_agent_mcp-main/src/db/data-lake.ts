@@ -133,6 +133,8 @@ export async function initDataLake(): Promise<void> {
                 console.log("[Data Lake] retail_sales already seeded, skipping.");
             }
 
+            await ensureUploadedFilesSynced();
+
             const oldTables = ["datasetdescription", "test_mixed_data", "test_int_dec", "upload_test"];
             for (const tbl of oldTables) {
                 try {
@@ -152,12 +154,26 @@ export async function initDataLake(): Promise<void> {
     return _initPromise;
 }
 
+export async function ensureUploadedFilesSynced(): Promise<void> {
+    if (!_pgAvailable || !pool) return;
+    try {
+        await pool.query(`
+            INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at)
+            SELECT table_name, table_name, 'dataset', description, '{}'::jsonb, created_at
+            FROM data_lake_catalog
+            ON CONFLICT (id) DO NOTHING
+        `);
+    } catch (err) {
+        console.warn("[Data Lake] ensureUploadedFilesSynced failed:", (err as Error).message);
+    }
+}
+
 export async function getActiveCatalogEntry(): Promise<DataLakeCatalogEntry | null> {
     if (!_pgAvailable) await initDataLake();
     if (!_pgAvailable || !pool) return null;
 
     try {
-        const uploadedResult = await pool.query(`
+        const uploadedResult = await getPool().query(`
             SELECT id, filename FROM uploaded_files WHERE type = 'dataset'
             ORDER BY created_at DESC LIMIT 1
         `);
@@ -165,7 +181,7 @@ export async function getActiveCatalogEntry(): Promise<DataLakeCatalogEntry | nu
 
         if (uploadedDataset?.id) {
             const tableName = uploadedDataset.id;
-            const activeResult = await pool.query(`
+            const activeResult = await getPool().query(`
                 SELECT * FROM data_lake_catalog WHERE table_name = $1
                 ORDER BY created_at DESC, id DESC LIMIT 1
             `, [tableName]);
@@ -179,7 +195,10 @@ export async function getActiveCatalogEntry(): Promise<DataLakeCatalogEntry | nu
         }
 
         const catalog = await getCatalog();
-        return catalog[0] ?? null;
+        if (catalog.length === 0) return null;
+
+        console.warn(`[Data Lake] uploaded_files has no dataset entries — returning catalog[0] '${catalog[0].table_name}' as fallback`);
+        return catalog[0];
     } catch {
         return null;
     }
