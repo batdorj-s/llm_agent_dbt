@@ -52,16 +52,24 @@ const financeSignals = [
     "борлуулалтын төлөвлөгөө", "орлогын төлөвлөгөө", "ашгийн төлөвлөгөө",
 ];
 
-// Replicate the exact routing logic from supervisorNode
+// Replicate the exact routing logic from supervisorNode (including word-boundary fix)
+function hasSignal(text: string, signal: string): boolean {
+    if (/^[a-zA-Z0-9_.\-+]+$/.test(signal)) {
+        const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+    }
+    return text.includes(signal);
+}
+
 function routeByKeywords(
     query: string,
     hasActiveDataset: boolean
 ): NextAgent {
     const lower = query.toLowerCase();
 
-    const hasTech = techSignals.some((word) => lower.includes(word));
-    const hasDataScience = dataScienceSignals.some((word) => lower.includes(word));
-    const hasFinance = financeSignals.some((word) => lower.includes(word));
+    const hasTech = techSignals.some((word) => hasSignal(lower, word));
+    const hasDataScience = dataScienceSignals.some((word) => hasSignal(lower, word));
+    const hasFinance = financeSignals.some((word) => hasSignal(lower, word));
 
     if (hasDataScience) return "DataScientistAgent";
     if (hasTech && hasFinance) return "TechAgent";
@@ -189,23 +197,19 @@ describe("Supervisor keyword-based routing", () => {
                 .toBe("FinanceAgent");
         });
 
+        it("routes sales target query to FinanceAgent (word boundary fix)", () => {
+            expect(routeByKeywords("sales target", false))
+                .toBe("FinanceAgent");
+        });
+
+        it("routes revenue target query to FinanceAgent (word boundary fix)", () => {
+            expect(routeByKeywords("revenue target", false))
+                .toBe("FinanceAgent");
+        });
+
         it("routes hybrid (kpi + show) to TechAgent (not Finance)", () => {
             // "харуул" is a tech signal → hybrid → TechAgent
             expect(routeByKeywords("kpi үзүүлэлтүүдийг харуул", false))
-                .toBe("TechAgent");
-        });
-
-        // KNOWN ISSUE: "target" contains "get" (a tech signal), so all
-        // English "X target" queries become hybrid and route to TechAgent.
-        // This is a false-positive limitation of simple substring matching.
-        it("routes 'sales target' to TechAgent due to 'get' in 'target' (known false positive)", () => {
-            // "get" ∈ techSignals, "target".includes("get") → true
-            expect(routeByKeywords("sales target", false))
-                .toBe("TechAgent");
-        });
-
-        it("routes 'revenue target' to TechAgent due to 'get' in 'target' (known false positive)", () => {
-            expect(routeByKeywords("revenue target", false))
                 .toBe("TechAgent");
         });
     });
