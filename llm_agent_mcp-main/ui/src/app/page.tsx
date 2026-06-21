@@ -306,6 +306,15 @@ export default function Home() {
   const [streamEnabled, setStreamEnabled] = useState(true);
   const [lastAgentType, setLastAgentType] = useState<string | null>(null);
 
+  // Data Preview states
+  const [previewData, setPreviewData] = useState<Record<string, unknown>[] | null>(null);
+  const [previewColumns, setPreviewColumns] = useState<string[]>([]);
+  const [previewTableName, setPreviewTableName] = useState("");
+  const [previewDescription, setPreviewDescription] = useState<string | null>(null);
+  const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [previewHasDownload, setPreviewHasDownload] = useState(false);
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+
   const SUGGESTIONS_INITIAL = [
     { label: "📊 Борлуулалтын тайлан", query: "Борлуулалтын тайлан гаргаж өгнө үү" },
     { label: "📈 KPI үзүүлэлт", query: "Гол KPI үзүүлэлтүүдийг харуул" },
@@ -538,6 +547,26 @@ export default function Home() {
       }
     } catch (e) {
       console.error("Failed to delete file", e);
+    }
+  };
+
+  const handleViewFile = async (file: UploadedFile) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/admin/files/${file.id}/preview`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch preview");
+      const data = await res.json();
+      setPreviewData(data.preview || null);
+      setPreviewColumns(data.columns || []);
+      setPreviewTableName(data.tableName || file.filename);
+      setPreviewDescription(data.description || null);
+      setPreviewContent(data.content || null);
+      setPreviewHasDownload(data.hasDownload === true);
+      setPreviewFileId(file.id);
+    } catch (e) {
+      console.error("Failed to view file", e);
     }
   };
 
@@ -904,6 +933,15 @@ export default function Home() {
         }
 
         setCsvUploadMessage(`Success: Table '${tableNameInput}' uploaded!`);
+        if (data.preview) {
+          setPreviewData(data.preview);
+          setPreviewColumns(data.columns || []);
+          setPreviewTableName(tableNameInput);
+          setPreviewDescription(null);
+          setPreviewContent(null);
+          setPreviewHasDownload(false);
+          setPreviewFileId(null);
+        }
         setCsvFile(null);
         setTableNameInput("");
         setTableDescInput("");
@@ -1315,7 +1353,7 @@ export default function Home() {
                       <p className="text-[9px] text-foreground/45 italic">No assets uploaded yet.</p>
                     ) : (
                       uploadedFiles.map((f) => (
-                        <div key={f.id} className="group flex items-center justify-between bg-background border border-border/80 hover:border-foreground/20 rounded px-2 py-1.5 transition-colors">
+                        <div key={f.id} onClick={() => handleViewFile(f)} className="group flex items-center justify-between bg-background border border-border/80 hover:border-foreground/20 rounded px-2 py-1.5 transition-colors cursor-pointer">
                           <div className="flex items-center gap-2 overflow-hidden">
                             {f.type === "dataset" ? <Activity className="w-3 h-3 text-foreground/60 shrink-0" /> : <FileText className="w-3 h-3 text-foreground/60 shrink-0" />}
                             <span className="text-[10px] text-foreground/70 truncate" title={f.description || f.filename}>
@@ -1340,7 +1378,7 @@ export default function Home() {
             </section>
 
           {/* RIGHT PANELS: VISUALIZER & CHAT */}
-          <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
+          <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background relative">
             
             {/* MINIMALIST ROUTING INDICATOR */}
             <div className="border-b border-border py-2.5 px-6 flex items-center justify-between bg-sidebar/50 transition-colors duration-200">
@@ -1519,6 +1557,85 @@ export default function Home() {
               </div>
             </form>
 
+            {/* DATA PREVIEW DRAWER */}
+            {previewData !== null && (
+              <div className="absolute right-0 top-0 bottom-0 w-[480px] border-l border-border bg-sidebar z-50 flex flex-col shadow-xl animate-in slide-in-from-right">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider shrink-0">Preview</span>
+                    <h3 className="text-xs font-bold text-foreground/80 truncate">{previewTableName}</h3>
+                  </div>
+                  <button
+                    onClick={() => { setPreviewData(null); setPreviewDescription(null); setPreviewContent(null); setPreviewHasDownload(false); setPreviewFileId(null); }}
+                    className="text-foreground/40 hover:text-foreground text-sm cursor-pointer leading-none p-1"
+                    title="Close"
+                  >✕</button>
+                </div>
+                {previewData.length > 0 ? (
+                  <div className="flex-1 overflow-auto p-3">
+                    <table className="w-full text-[10px] border-collapse">
+                      <thead>
+                        <tr className="bg-background/50 sticky top-0">
+                          {previewColumns.map(c => (
+                            <th key={c} className="text-left px-2 py-1.5 font-bold text-foreground/60 border-b border-border whitespace-nowrap text-[9px] uppercase tracking-wider">{c}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewData.map((row, i) => (
+                          <tr key={i} className="hover:bg-background/40 transition-colors">
+                            {previewColumns.map(c => (
+                              <td key={c} className="px-2 py-1 border-b border-border/30 text-foreground/70 truncate max-w-[160px]">
+                                {String(row[c] ?? '')}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : previewContent ? (
+                  <div className="flex-1 overflow-auto p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-2 items-start">
+                        <FileText className="w-4 h-4 text-foreground/40 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-1">Document</p>
+                          <p className="text-xs text-foreground/80">{previewTableName}</p>
+                        </div>
+                      </div>
+                      {previewHasDownload && previewFileId && (
+                        <a
+                          href={`/api/admin/files/${previewFileId}/download`}
+                          className="text-[10px] px-2 py-1 bg-foreground/10 hover:bg-foreground/20 text-foreground/70 rounded transition-colors cursor-pointer no-underline inline-flex items-center gap-1"
+                        >
+                          <FileText className="w-3 h-3" /> Download
+                        </a>
+                      )}
+                    </div>
+                    {previewDescription && (
+                      <div className="border-t border-border pt-2">
+                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-1">Description</p>
+                        <p className="text-xs text-foreground/70 whitespace-pre-wrap">{previewDescription}</p>
+                      </div>
+                    )}
+                    <div className="border-t border-border pt-2">
+                      <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-1">Content</p>
+                      <div className="text-xs text-foreground/70 whitespace-pre-wrap font-mono bg-background/50 rounded p-3 max-h-[60vh] overflow-auto">
+                        {previewContent.length > 5000
+                          ? previewContent.substring(0, 5000) + "\n\n... (тасарсан, бүрэн эхээр нь татаж авах)"
+                          : previewContent}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                {previewData.length > 0 && (
+                  <div className="px-4 py-2 border-t border-border text-[9px] text-foreground/40 shrink-0 flex items-center justify-between">
+                    <span>{previewData.length} rows shown (first 20)</span>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         </main>
       )}

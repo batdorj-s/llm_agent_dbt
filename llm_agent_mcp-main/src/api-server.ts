@@ -237,6 +237,79 @@ app.delete("/api/admin/files/:id", async (req, res) => {
   }
 });
 
+app.get("/api/admin/files/:id/preview", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+
+  const { id } = req.params;
+  await initDataLake();
+
+  try {
+    const fileResult = await getPool().query(`SELECT * FROM uploaded_files WHERE id = $1`, [id]);
+    const file = fileResult.rows[0] as any;
+    if (!file) return res.status(404).json({ error: "File not found" });
+
+    if (file.type === "dataset") {
+      const previewResult = await getPool().query(`SELECT * FROM "${file.filename}" LIMIT 20`);
+      let columns: string[] = [];
+      try {
+        const catalogResult = await getPool().query(
+          `SELECT columns_info FROM data_lake_catalog WHERE table_name = $1`, [file.filename]
+        );
+        if (catalogResult.rows.length > 0) {
+          columns = JSON.parse(catalogResult.rows[0].columns_info as string);
+        }
+      } catch {}
+      if (columns.length === 0 && previewResult.rows.length > 0) {
+        columns = Object.keys(previewResult.rows[0]);
+      }
+      return res.json({ type: "dataset", preview: previewResult.rows, columns, tableName: file.filename });
+    }
+
+    // Document: read extracted text file
+    const textPath = path.join(DOCUMENTS_DIR, `${id}.txt`);
+    let content = "";
+    if (fs.existsSync(textPath)) {
+      content = fs.readFileSync(textPath, "utf8");
+    }
+
+    return res.json({
+      type: "document",
+      preview: [],
+      columns: [],
+      tableName: file.filename,
+      description: file.description || "No description",
+      content: content.substring(0, 10000), // cap at 10K chars
+      hasDownload: fs.existsSync(path.join(DOCUMENTS_DIR, `${id}_${file.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`)),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/files/:id/download", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+
+  const { id } = req.params;
+  await initDataLake();
+
+  try {
+    const fileResult = await getPool().query(`SELECT * FROM uploaded_files WHERE id = $1`, [id]);
+    const file = fileResult.rows[0] as any;
+    if (!file) return res.status(404).json({ error: "File not found" });
+    if (file.type !== "document") return res.status(400).json({ error: "Only documents can be downloaded" });
+
+    const safeFilename = `${id}_${file.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const filePath = path.join(DOCUMENTS_DIR, safeFilename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File not available" });
+
+    res.download(filePath, file.filename);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 function buildColumnMapping(cols: string[]): Record<string, string | null> {
   const colLower = cols.map(c => c.toLowerCase());
   return {
@@ -339,7 +412,20 @@ app.post("/api/admin/upload-csv", async (req, res) => {
         }
     }
 
-    res.json({ success: true, message: `Table '${sanitizedTableName}' successfully imported.` });
+    let preview: Record<string, unknown>[] = [];
+    try {
+      const previewResult = await getPool().query(`SELECT * FROM "${sanitizedTableName}" LIMIT 20`);
+      preview = previewResult.rows;
+    } catch (previewErr) {
+      console.warn("[Upload] Preview fetch failed:", (previewErr as Error).message);
+    }
+
+    res.json({
+      success: true,
+      message: `Table '${sanitizedTableName}' successfully imported.`,
+      preview,
+      columns: cols.length > 0 ? cols : (preview.length > 0 ? Object.keys(preview[0]) : []),
+    });
   } catch (err: any) {
     console.error("[API] CSV Upload Error:", err);
     res.status(500).json({ error: err.message });
@@ -351,6 +437,11 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // Admin: Upload Document (PDF/DOCX)
 // ─────────────────────────────────────────────────────────────
+const DOCUMENTS_DIR = "uploads/documents/";
+if (!fs.existsSync(DOCUMENTS_DIR)) {
+  fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
+}
+
 app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
   const auth = verifyBearerHeader(req.headers.authorization);
   if (!auth.success || !auth.payload) {
@@ -361,28 +452,37 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   const { description, category, department } = req.body;
-  const filePath = req.file.path;
+  const tempPath = req.file.path;
   const originalName = req.file.originalname;
+
+  const docId = `doc_${Date.now()}`;
+  const safeFilename = `${docId}_${originalName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const savedPath = path.join(DOCUMENTS_DIR, safeFilename);
+  const textPath = path.join(DOCUMENTS_DIR, `${docId}.txt`);
 
   try {
     let extractedText = "";
     const extension = path.extname(originalName).toLowerCase();
 
     if (extension === ".pdf") {
-      const dataBuffer = fs.readFileSync(filePath);
+      const dataBuffer = fs.readFileSync(tempPath);
       const parser = new PDFParse({ data: dataBuffer });
       const result = await parser.getText();
       extractedText = result.text;
     } else if (extension === ".docx") {
-      const result = await mammoth.extractRawText({ path: filePath });
+      const result = await mammoth.extractRawText({ path: tempPath });
       extractedText = result.value;
     } else {
       throw new Error("Unsupported file format.");
     }
 
-    const docId = `doc_${Date.now()}`;
+    // Save original file permanently
+    fs.renameSync(tempPath, savedPath);
+    // Save extracted text
+    fs.writeFileSync(textPath, extractedText, "utf8");
+
     await addDocumentToCatalog(
-        docId, 
+        docId,
         `Document: ${originalName}\nDescription: ${description}\n\nContent:\n${extractedText}`,
         { category: (category === "manual" ? "business_policy" : "data_catalog") as "business_policy" | "data_catalog", department: department || "general", author: auth.payload.userId },
         [originalName.toLowerCase(), "document"]
@@ -398,9 +498,8 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     res.json({ success: true, message: `Document '${originalName}' indexed.` });
   } catch (err: any) {
     console.error("[API] Doc Upload Error:", err);
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
     res.status(500).json({ error: err.message });
-  } finally {
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
 });
 

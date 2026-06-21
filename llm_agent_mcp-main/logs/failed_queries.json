@@ -1,0 +1,29 @@
+[
+  {
+    "id": "feedback_1782030175713",
+    "userId": "admin@admin.com",
+    "message": "test query",
+    "response": "bad answer",
+    "rating": "negative",
+    "threadId": "test_123",
+    "timestamp": "2026-06-21T08:22:55.713Z"
+  },
+  {
+    "id": "feedback_1782030716026",
+    "userId": "admin@admin.com",
+    "message": "test",
+    "response": "bad",
+    "rating": "negative",
+    "threadId": "test_1",
+    "timestamp": "2026-06-21T08:31:56.026Z"
+  },
+  {
+    "id": "feedback_1782031045521",
+    "userId": "bataabat905@gmail.com",
+    "message": "bank data-aag ashiglan nadad dashboard beldej ug ",
+    "response": "(Tech Agent)\nDashboard зохиож байна...\n\n(Tech Agent)\nDashboard зохиож байна...\n\n<dashboard>[{\"type\":\"kpi\",\"title\":\"Нийт баланс\",\"unit\":\"₮\",\"value\":\"17061547\"},{\"type\":\"bar\",\"title\":\"Хэрэглээний ангилал\",\"unit\":\"хүн\",\"data\":[{\"label\":\"management\",\"value\":\"2566\"},{\"label\":\"blue-collar\",\"value\":\"1944\"},{\"label\":\"technician\",\"value\":\"1823\"},{\"label\":\"admin.\",\"value\":\"1334\"},{\"label\":\"services\",\"value\":\"923\"},{\"label\":\"retired\",\"value\":\"778\"},{\"label\":\"self-employed\",\"value\":\"405\"},{\"label\":\"student\",\"value\":\"360\"},{\"label\":\"unemployed\",\"value\":\"357\"},{\"label\":\"entrepreneur\",\"value\":\"328\"}]},{\"type\":\"line\",\"title\":\"Сарын хэрэглээ\",\"unit\":\"₮\",\"data\":[{\"label\":\"apr\",\"value\":\"1600726\"},{\"label\":\"aug\",\"value\":\"2401346\"},{\"label\":\"dec\",\"value\":\"300873\"},{\"label\":\"feb\",\"value\":\"1216897\"},{\"label\":\"jan\",\"value\":\"395976\"},{\"label\":\"jul\",\"value\":\"1606539\"},{\"label\":\"jun\",\"value\":\"1956674\"},{\"label\":\"mar\",\"value\":\"584735\"},{\"label\":\"may\",\"value\":\"3367218\"},{\"label\":\"nov\",\"value\":\"2215965\"},{\"label\":\"oct\",\"value\":\"798732\"},{\"label\":\"sep\",\"value\":\"615866\"}]},{\"type\":\"pie\",\"title\":\"Гэр эзэмшиж буй\",\"unit\":\"хүн\",\"data\":[{\"label\":\"no\",\"value\":\"5881\"},{\"label\":\"yes\",\"value\":\"5281\"}]},{\"type\":\"bar\",\"title\":\"Санхүүгийн байдал\",\"unit\":\"хүн\",\"data\":[{\"label\":\"married\",\"value\":\"6351\"},{\"label\":\"single\",\"value\":\"3518\"},{\"label\":\"divorced\",\"value\":\"1293\"}]},{\"type\":\"line\",\"title\":\"Сарын зээлийн хэрэглээ\",\"unit\":\"₮\",\"data\":[{\"label\":\"apr\",\"value\":\"368020\"},{\"label\":\"aug\",\"value\":\"534798\"},{\"label\":\"dec\",\"value\":\"43676\"},{\"label\":\"feb\",\"value\":\"266265\"},{\"label\":\"jan\",\"value\":\"120222\"},{\"label\":\"jul\",\"value\":\"634165\"},{\"label\":\"jun\",\"value\":\"445715\"},{\"label\":\"mar\",\"value\":\"80418\"},{\"label\":\"may\",\"value\":\"1068499\"},{\"label\":\"nov\",\"value\":\"342512\"},{\"label\":\"oct\",\"value\":\"135946\"},{\"label\":\"sep\",\"value\":\"111959\"}]}]</dashboard>",
+    "rating": "positive",
+    "threadId": "thread_1782030697750",
+    "timestamp": "2026-06-21T08:37:25.522Z"
+  }
+]
