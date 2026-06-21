@@ -65,7 +65,7 @@ export async function initDataLake(): Promise<void> {
         } catch (err: any) {
             const errMsg = (err as Error).message;
             console.warn(`[Data Lake] PostgreSQL unavailable: ${errMsg}`);
-            await pool.end().catch(() => {});
+            await pool.end().catch(() => { });
             pool = null;
             _pgAvailable = false;
             _initPromise = null;
