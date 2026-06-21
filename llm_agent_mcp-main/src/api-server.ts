@@ -5,7 +5,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { createToken, isUsingDevJwtSecret, verifyBearerHeader, verifyToken } from "./auth.js";
+import { createToken, requireJwtSecret, verifyBearerHeader, verifyToken } from "./auth.js";
 import { agentLimiter } from "./rate-limiter.js";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
@@ -741,10 +741,7 @@ async function start() {
   }
   await setupKnowledgeBase();
 
-  if (isUsingDevJwtSecret()) {
-    console.warn("\n⚠️  WARNING: Using development JWT_SECRET. Set JWT_SECRET environment variable in production (min 32 chars).");
-    console.warn("   See .env.example or set: export JWT_SECRET=your-strong-random-secret-here\n");
-  }
+  requireJwtSecret();
 
   app.listen(PORT, () => {
     console.log(`\nAPI Server running at http://localhost:${PORT}`);

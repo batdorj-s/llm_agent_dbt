@@ -44,6 +44,17 @@ const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET_FALLBACK;
 export function isUsingDevJwtSecret(): boolean {
     return JWT_SECRET === DEV_JWT_SECRET_FALLBACK;
 }
+
+export function requireJwtSecret(): void {
+    if (isUsingDevJwtSecret()) {
+        if (process.env.NODE_ENV === "production") {
+            console.error("\n❌ FATAL: JWT_SECRET not set in production. Set JWT_SECRET environment variable (min 32 chars).");
+            console.error("   Add to .env: JWT_SECRET=your-strong-random-secret-here\n");
+            process.exit(1);
+        }
+        console.warn("\n⚠️  WARNING: Using development JWT_SECRET. Set JWT_SECRET environment variable (min 32 chars).");
+    }
+}
 const JWT_EXPIRES_IN_SECONDS = parseExpiry(process.env.JWT_EXPIRES_IN || "1h");
 
 function parseExpiry(expr: string): number {

@@ -1,4 +1,4 @@
-import { StateGraph, MessagesAnnotation, MemorySaver, Annotation } from "@langchain/langgraph";
+import { StateGraph, Annotation, MemorySaver } from "@langchain/langgraph";
 import { createLLM, createLLMWithOrder, printProviderStatus } from "./llm-provider.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "./db/data-lake.js";
 import { searchKnowledgeBase } from "./rag.js";
@@ -8,6 +8,7 @@ import { dataScientistNode } from "./agents/data-scientist.js";
 import { safeJsonParse, buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { runPythonCode } from "./sandbox.js";
 import { verifyToken } from "./auth.js";
+import { initTracing } from "./observability/tracer.js";
 import fs from "fs";
 import yaml from "yaml";
 import { z } from "zod";
@@ -1117,7 +1118,9 @@ const workflow = new StateGraph(AgentStateAnnotation)
 export const multiAgentApp = workflow.compile({ checkpointer });
 
 export async function runMultiAgent(query: string, userRole: UserRole, threadId: string, visualRequest: boolean = false): Promise<string> {
-    const config = { configurable: { thread_id: threadId } };
+    const tracing = initTracing();
+    const config: Record<string, any> = { configurable: { thread_id: threadId } };
+    if (tracing.handler) config.callbacks = [tracing.handler];
     const result = await multiAgentApp.invoke(
         { messages: [{ role: "user", content: query }], userRole, visualRequest },
         config
@@ -1134,7 +1137,9 @@ export async function runMultiAgentStream(
     onChunk: (chunk: string) => void,
     visualRequest: boolean = false
 ): Promise<void> {
-    const config = { configurable: { thread_id: threadId, onChunk } };
+    const tracing = initTracing();
+    const config: Record<string, any> = { configurable: { thread_id: threadId, onChunk } };
+    if (tracing.handler) config.callbacks = [tracing.handler];
     await multiAgentApp.invoke(
         { messages: [{ role: "user", content: query }], userRole, visualRequest },
         config

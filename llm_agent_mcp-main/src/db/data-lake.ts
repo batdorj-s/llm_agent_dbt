@@ -530,9 +530,14 @@ export async function executeSql(query: string, readOnly: boolean = true): Promi
     try {
         if (isSelect) {
             await pool.query(`EXPLAIN ${query}`);
+            await pool.query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE");
+            const result = await pool.query(query);
+            await pool.query("ROLLBACK");
+            return result.rows;
         }
+        if (readOnly) throw new Error("Only SELECT/WITH queries allowed in read-only mode.");
         const result = await pool.query(query);
-        return isSelect ? result.rows : { message: "Query executed", changes: result.rowCount };
+        return { message: "Query executed", changes: result.rowCount };
     } catch (err: any) {
         const msg = err.message
             .replace(/^syntax error at or near/, "SQL syntax error near")
