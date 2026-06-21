@@ -15,11 +15,11 @@ async function runTest() {
   );
 
   await client.connect(transport);
-  console.log("✅ Connected to MCP Server");
+  console.log("[OK] Connected to MCP Server");
 
   // Test Tool List
   const tools = await client.listTools();
-  console.log("✅ Available Tools:", tools.tools.map(t => t.name));
+  console.log("[OK] Available Tools:", tools.tools.map(t => t.name));
 
   // Test get_kpi tool
   console.log("Testing get_kpi tool with metric 'sales'...");
@@ -27,7 +27,7 @@ async function runTest() {
     name: "get_kpi",
     arguments: { metric: "sales" }
   });
-  console.log("✅ get_kpi Result:\n", JSON.stringify(kpiResult.content, null, 2));
+  console.log("[OK] get_kpi Result:\n", JSON.stringify(kpiResult.content, null, 2));
 
   // Test get_sales_history tool
   console.log("Testing get_sales_history tool...");
@@ -35,13 +35,13 @@ async function runTest() {
     name: "get_sales_history",
     arguments: { limit: 2 }
   });
-  console.log("✅ get_sales_history Result:\n", JSON.stringify(salesResult.content, null, 2));
+  console.log("[OK] get_sales_history Result:\n", JSON.stringify(salesResult.content, null, 2));
 
-  console.log("🎉 Phase 1 MCP Server tests passed successfully.");
+  console.log("[DONE] Phase 1 MCP Server tests passed successfully.");
   process.exit(0);
 }
 
 runTest().catch((err) => {
-  console.error("❌ Test failed:", err);
+  console.error("[FAIL] Test failed:", err);
   process.exit(1);
 });

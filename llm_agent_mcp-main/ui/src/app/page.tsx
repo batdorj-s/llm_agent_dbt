@@ -10,7 +10,13 @@ import {
   FileText,
   Sun,
   Moon,
-  Square
+  Square,
+  ThumbsUp,
+  ThumbsDown,
+  PieChart as PieChartIcon,
+  TrendingUp,
+  LayoutDashboard,
+  Upload,
 } from "lucide-react";
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend } from "recharts";
@@ -320,13 +326,13 @@ export default function Home() {
   const [previewHasDownload, setPreviewHasDownload] = useState(false);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
 
-  const SUGGESTIONS_INITIAL = [
-    { label: "📊 Борлуулалтын тайлан", query: "Борлуулалтын тайлан гаргаж өгнө үү" },
-    { label: "📈 KPI үзүүлэлт", query: "Гол KPI үзүүлэлтүүдийг харуул" },
-    { label: "🔍 Сегментчлэл", query: "Хэрэглэгчдийн сегментчлэлийн шинжилгээ хий" },
-    { label: "🔮 Таамаглал", query: "Дараагийн саруудын борлуулалтын таамаглал гарга" },
-    { label: "📋 Dashboard", query: "Dashboard харуул" },
-    { label: "📤 Upload", query: "Өгөгдөл Upload хэрхэн хийх вэ" },
+  const SUGGESTIONS_INITIAL: { label: string; query: string; icon: React.ReactNode }[] = [
+    { label: "Борлуулалтын тайлан", query: "Борлуулалтын тайлан гаргаж өгнө үү", icon: <BarChart2 className="w-3 h-3" /> },
+    { label: "KPI үзүүлэлт", query: "Гол KPI үзүүлэлтүүдийг харуул", icon: <Activity className="w-3 h-3" /> },
+    { label: "Сегментчлэл", query: "Хэрэглэгчдийн сегментчлэлийн шинжилгээ хий", icon: <PieChartIcon className="w-3 h-3" /> },
+    { label: "Таамаглал", query: "Дараагийн саруудын борлуулалтын таамаглал гарга", icon: <TrendingUp className="w-3 h-3" /> },
+    { label: "Dashboard", query: "Dashboard харуул", icon: <LayoutDashboard className="w-3 h-3" /> },
+    { label: "Upload", query: "Өгөгдөл Upload хэрхэн хийх вэ", icon: <Upload className="w-3 h-3" /> },
   ];
 
   const FOLLOW_UP_SUGGESTIONS: Record<string, { label: string; query: string }[]> = {
@@ -610,9 +616,9 @@ export default function Home() {
         {
           id: "welcome",
           sender: "agent",
-          text: `Тавтай морилно уу! Би бол **Байгууллагын AI зохицуулагч** байна. Надаас санхүүгийн асуултууд асуух эсвэл код ажиллуулах даалгавар өгөх боломжтой.`,
+          text: `Сайн уу? Би **Шинжээч.ai** — таны өгөгдлийн шинжилгээний туслах. Надаас дата шинжилгээ, forecast, dashboard, эсвэл ерөнхий асуулт асууж болно.`,
           timestamp: new Date(),
-          agentName: "Supervisor Router",
+          agentName: "Шинжээч.ai",
         },
       ]);
     } catch (e: unknown) {
@@ -652,7 +658,7 @@ export default function Home() {
       sender: "agent",
       text: "",
       timestamp: new Date(),
-      agentName: "Supervisor Router",
+      agentName: "Шинжээч.ai",
     };
     setMessages((prev) => [...prev, initialAgentMessage]);
 
@@ -699,7 +705,7 @@ export default function Home() {
                 if (data.type === "delta") {
                   fullResponse += data.chunk;
 
-                  let detectedAgent = "Supervisor Router";
+                  let detectedAgent = "Шинжээч.ai";
                   let nodeState: typeof activeRoutingState = "routing";
 
                   if (fullResponse.includes("(Finance Agent)")) {
@@ -708,7 +714,7 @@ export default function Home() {
                   } else if (fullResponse.includes("(Tech Agent)")) {
                     detectedAgent = "Tech Agent";
                     nodeState = "tech";
-                  } else if (fullResponse.includes("🛑 Security Alert")) {
+                  } else if (fullResponse.includes("Security Alert")) {
                     detectedAgent = "Security Manager";
                     nodeState = "idle";
                   }
@@ -837,7 +843,7 @@ export default function Home() {
       if (!res.ok) {
         setFeedbackState(prev => ({ ...prev, [msgId]: null }));
       }
-      const icon = rating === 'positive' ? '😊' : '💡';
+      const icon = rating === 'positive' ? '✓' : '✗';
       setFeedbackSentMsgs(prev => ({ ...prev, [msgId]: icon }));
       setTimeout(() => setFeedbackSentMsgs(prev => {
         const next = { ...prev };
@@ -1081,8 +1087,8 @@ export default function Home() {
       {/* HEADER */}
       <header className="border-b border-border bg-background px-6 py-3 flex items-center justify-between transition-colors duration-200">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-foreground text-sm tracking-tight">Enterprise Orchestrator</span>
-          <span className="text-[10px] text-foreground/50 font-mono">v1.2</span>
+          <span className="font-bold text-foreground text-sm tracking-tight">Шинжээч.ai</span>
+          <span className="text-[10px] text-foreground/50 font-mono">v1.3</span>
         </div>
 
         <div className="flex items-center gap-4">
@@ -1389,7 +1395,7 @@ export default function Home() {
             <div className="border-b border-border py-2.5 px-6 flex items-center justify-between bg-sidebar/50 transition-colors duration-200">
               <div className="flex items-center gap-1.5 text-foreground/50 text-[10px] uppercase font-bold tracking-wider">
                 <span className={`w-1.5 h-1.5 rounded-full ${activeRoutingState !== "idle" && activeRoutingState !== "done" ? "bg-foreground animate-pulse" : "bg-foreground/30"}`} />
-                Orchestrator Path
+                Шинжилгээний замнал
               </div>
               <div className="flex gap-4 items-center font-mono text-[9px]">
                 <span className={`${activeRoutingState === "routing" ? "text-foreground font-bold" : "text-foreground/40"}`}>Router</span>
@@ -1405,7 +1411,7 @@ export default function Home() {
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center my-auto gap-6">
                   <div className="text-center text-foreground/40">
-                    <p className="font-semibold">Orchestration thread active.</p>
+                    <p className="font-semibold">Шинжилгээний хэлхээ идэвхтэй.</p>
                     <p className="text-[10px] mt-1">Доорх саналуудаас сонгох эсвэл өөрөө асуултаа бичнэ үү.</p>
                   </div>
                   <div className="flex flex-wrap gap-2 justify-center max-w-lg">
@@ -1413,10 +1419,11 @@ export default function Home() {
                       <button
                         key={i}
                         onClick={() => handleSendMessage(undefined, s.query)}
-                        className="px-3 py-1.5 text-xs bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/70 transition-all cursor-pointer animate-fade-in-up"
+                        className="px-3 py-1.5 text-xs bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/70 transition-all cursor-pointer animate-fade-in-up inline-flex items-center gap-1.5"
                         style={{ animationDelay: `${i * 50}ms` }}
                       >
-                        {s.label}
+                        {s.icon}
+                        <span>{s.label}</span>
                       </button>
                     ))}
                   </div>
@@ -1461,21 +1468,21 @@ export default function Home() {
                                 }`}
                                 title="Сайн хариуллаа"
                                 disabled={!!feedbackState[msg.id]}
-                              >
-                                👍
-                              </button>
-                              <button
-                                onClick={() => handleFeedback(msg.id, 'negative')}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${
-                                  feedbackState[msg.id] === 'negative'
-                                    ? 'text-red-500 bg-red-500/10 border border-red-500/30'
-                                    : 'text-foreground/40 hover:text-red-500 hover:bg-red-500/5 border border-transparent'
-                                }`}
-                                title="Буруу хариуллаа"
-                                disabled={!!feedbackState[msg.id]}
-                              >
-                                👎
-                              </button>
+                               >
+                                 <ThumbsUp className="w-3 h-3" />
+                               </button>
+                               <button
+                                 onClick={() => handleFeedback(msg.id, 'negative')}
+                                 className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                                   feedbackState[msg.id] === 'negative'
+                                     ? 'text-red-500 bg-red-500/10 border border-red-500/30'
+                                     : 'text-foreground/40 hover:text-red-500 hover:bg-red-500/5 border border-transparent'
+                                 }`}
+                                 title="Буруу хариуллаа"
+                                 disabled={!!feedbackState[msg.id]}
+                               >
+                                 <ThumbsDown className="w-3 h-3" />
+                               </button>
                               {feedbackSentMsgs[msg.id] && feedbackState[msg.id] && (
                                 <span className="text-[9px] text-foreground/50 ml-1">{feedbackSentMsgs[msg.id]}</span>
                               )}
@@ -1536,7 +1543,7 @@ export default function Home() {
                 </button>
                 <input
                   type="text"
-                  placeholder="Message orchestrator..."
+                  placeholder="Шинжээч-ээс асуух..."
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={isChatLoading}

@@ -20,7 +20,7 @@ export async function runAgentWithMCP(query: string) {
   const llm = await createLLM({ temperature: 0 });
 
   if (!llm) {
-    console.warn("⚠️  No LLM API key configured. Add GOOGLE_API_KEY or GROQ_API_KEY to .env");
+    console.warn("[WARN]  No LLM API key configured. Add GOOGLE_API_KEY or GROQ_API_KEY to .env");
     return;
   }
 

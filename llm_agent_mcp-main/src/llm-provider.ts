@@ -5,13 +5,13 @@
  * Priority order: Google Gemini Flash → Groq → Anthropic → OpenAI
  *
  * Free API Keys:
- *  🥇 Google AI Studio (Gemini 2.0 Flash) — https://aistudio.google.com/app/apikey
+ *  1 Google AI Studio (Gemini 2.0 Flash) — https://aistudio.google.com/app/apikey
  *     → 1,500 requests/day FREE, no credit card
  *
- *  🥈 Groq (Llama 3.3 70B)               — https://console.groq.com/keys
+ *  2 Groq (Llama 3.3 70B)               — https://console.groq.com/keys
  *     → 14,400 requests/day FREE, blazing fast (~500 tok/s), no credit card
  *
- *  🥉 Mistral (Mistral Small)             — https://console.mistral.ai/api-keys/
+ *  3 Mistral (Mistral Small)             — https://console.mistral.ai/api-keys/
  *     → ~1B tokens/month FREE, no credit card
  *
  * Add your chosen key(s) to .env:
@@ -165,7 +165,7 @@ export async function createLLMWithOrder(options?: {
     }
   }
 
-  console.warn("[LLM] ⚠️  No LLM API key found or all providers failed.");
+  console.warn("[LLM] [WARN]  No LLM API key found or all providers failed.");
   return null;
 }
 
@@ -178,8 +178,8 @@ export function printProviderStatus(): void {
   console.log("╠══════════════════════════════════════════════════════╣");
   for (const p of PROVIDERS) {
     const active = isKeySet(p.envKey);
-    const badge  = p.isFree ? "🆓" : "💳";
-    const status = active ? "✅ ACTIVE" : "⬜ not set";
+    const badge  = p.isFree ? "[FREE]" : "[PAID]";
+    const status = active ? "[OK] ACTIVE" : "[NOT_SET] not set";
     console.log(`║ ${badge} ${p.provider.padEnd(10)} ${p.model.padEnd(28)} ${status} ║`);
   }
   console.log("╚══════════════════════════════════════════════════════╝\n");

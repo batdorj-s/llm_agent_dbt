@@ -23,7 +23,7 @@ function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number): 
 
 function preparePythonCode(code: string): string {
     const safeLines = [
-        "# ⚠️ Memory safety: sampling first rows to prevent OOM",
+        "# [WARN] Memory safety: sampling first rows to prevent OOM",
         "import pandas as pd",
         "_orig_read_csv = pd.read_csv",
         "_orig_read_excel = pd.read_excel",
@@ -53,7 +53,7 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
     const hasKey = process.env.E2B_API_KEY && process.env.E2B_API_KEY !== 'your_e2b_api_key_here';
 
     if (!hasKey) {
-        console.warn("⚠️ No E2B_API_KEY found. Running Sandbox in Mock Mode.");
+        console.warn("[WARN] No E2B_API_KEY found. Running Sandbox in Mock Mode.");
         const mockChartPath = path.join(process.cwd(), "analysis_plot.png");
         if (fs.existsSync(mockChartPath)) {
             const base64 = fs.readFileSync(mockChartPath).toString("base64");
@@ -80,16 +80,16 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
     }
 
     try {
-        console.log("🔒 Accessing E2B MicroVM Sandbox...");
+        console.log(" Accessing E2B MicroVM Sandbox...");
         if (!_sandboxInstance) {
-            console.log("🔒 Initializing new E2B Sandbox MicroVM (takes ~2s)...");
+            console.log(" Initializing new E2B Sandbox MicroVM (takes ~2s)...");
             _sandboxInstance = await withTimeout(
                 Sandbox.create({ apiKey: process.env.E2B_API_KEY }),
                 "Sandbox creation",
                 SANDBOX_CREATE_TIMEOUT_MS
             );
         } else {
-            console.log("🔒 Reusing cached E2B Sandbox MicroVM (instant)...");
+            console.log(" Reusing cached E2B Sandbox MicroVM (instant)...");
         }
 
         // Dynamically write/seed datasets if they exist in local workspace
@@ -98,12 +98,12 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
             if (fs.existsSync(file)) {
                 const csvData = fs.readFileSync(file, "utf8");
                 await _sandboxInstance.files.write(file, csvData);
-                console.log(`🔒 Seeded ${file} into E2B Sandbox.`);
+                console.log(` Seeded ${file} into E2B Sandbox.`);
             }
         }
 
         const safeCode = skipMemorySafe ? code : preparePythonCode(code);
-        console.log(`🐍 Executing Python Code${skipMemorySafe ? " (full data mode)" : " (memory safe)"}...`);
+        console.log(`Python Executing Python Code${skipMemorySafe ? " (full data mode)" : " (memory safe)"}...`);
         const execution: any = await withTimeout(
             _sandboxInstance.runCode(safeCode, { timeout: timeoutMs }),
             "Python execution",
@@ -128,7 +128,7 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
                 output += `\n##CHART_SAVED##\n##BASE64_IMAGE:${base64}\n`;
             }
         } catch {
-            console.log("🔒 No chart file found in sandbox output.");
+            console.log(" No chart file found in sandbox output.");
         }
 
         return output || "Execution complete. No output.";

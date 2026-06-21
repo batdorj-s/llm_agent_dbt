@@ -100,5 +100,5 @@ export async function generateSchemaYml(tableName: string, columns: string[]): P
   const yaml = await import("yaml");
   const content = yaml.stringify(schema, { indent: 2, lineWidth: -1 });
   fs.writeFileSync(SCHEMA_PATH, content, "utf8");
-  console.log(`[dbt] schema.yml regenerated for '${tableName}' ✅`);
+  console.log(`[dbt] schema.yml regenerated for '${tableName}' [OK]`);
 }

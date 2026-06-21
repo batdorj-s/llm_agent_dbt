@@ -109,7 +109,7 @@ function computeResultStats(sandboxResult: string): string {
             const outliers = vals.filter((v: number) => Math.abs(v - mean) > 3 * std);
             if (outliers.length > 0) {
                 const outlierVals = [...new Set(outliers.map((v: number) => v.toFixed(1)))].slice(0, 3).join(", ");
-                lines.push(`  ⚠ Anomaly in "${col}": ${outlierVals} (exceeds ±3σ from mean ${mean.toFixed(1)})`);
+                lines.push(`  Anomaly in "${col}": ${outlierVals} (exceeds ±3σ from mean ${mean.toFixed(1)})`);
             }
         }
         return lines.length > 1 ? lines.join("\n") : "";
@@ -456,7 +456,7 @@ async function supervisorNode(state: any, config?: any): Promise<Partial<AgentSt
     }
 
     if (route === "END") {
-        const text = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Би танд санхүүгийн асуултууд, борлуулалтын KPI болон код ажиллуулах даалгавар өгөхөд тусалж чадна.\n\nТа дараах зүйлсийг асууж болно:\n- 📊 **Борлуулалтын тайлан** — KPI үзүүлэлт, орлого, зорилт\n- 📈 **Өгөгдлийн шинжилгээ** — SQL query, тооцоолол, график\n- 🔮 **Таамаглал** — Forecast, сегментчлэл, корреляци\n\nЭсвэл дээрх файл оруулах хэсгээр CSV өгөгдлөө upload хийгээрэй.";
+        const text = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Би танд санхүүгийн асуултууд, борлуулалтын KPI болон код ажиллуулах даалгавар өгөхөд тусалж чадна.\n\nТа дараах зүйлсийг асууж болно:\n- **Борлуулалтын тайлан** — KPI үзүүлэлт, орлого, зорилт\n- **Өгөгдлийн шинжилгээ** — SQL query, тооцоолол, график\n- **Таамаглал** — Forecast, сегментчлэл, корреляци\n\nЭсвэл дээрх файл оруулах хэсгээр CSV өгөгдлөө upload хийгээрэй.";
         if (onChunk) onChunk(text);
         return {
             nextAgent: "END",
@@ -578,7 +578,7 @@ async function financeAgentNode(state: any, config?: any): Promise<Partial<Agent
             messages: [{ role: "assistant", content: fullText }]
         };
     } catch (streamErr) {
-        const fallback = `${prefix}⚠️ Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.`;
+        const fallback = `${prefix}[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.`;
         console.warn("[Finance Agent] Response failed:", (streamErr as Error).message);
         if (onChunk) onChunk(fallback);
         return {
@@ -629,7 +629,7 @@ async function techAgentNode(state: any, config?: any): Promise<Partial<AgentSta
 
     const llm = await createLLM({ temperature: 0 });
     if (!llm) {
-        const fallback = `(Tech Agent)\n⚠️ No LLM API key configured to generate dynamic SQL code.`;
+        const fallback = `(Tech Agent)\n[АНХААР] No LLM API key configured to generate dynamic SQL code.`;
         if (onChunk) onChunk(fallback);
         return {
             messages: [{ role: "assistant", content: fallback }]
@@ -687,7 +687,7 @@ Task: ${query}`;
 
             return { messages: [{ role: "assistant", content: accumulatedText }] };
         } catch (err) {
-            const fallback = `${prefix}⚠️ Python ажиллуулахад алдаа гарлаа: ${(err as Error).message}`;
+            const fallback = `${prefix}[АНХААР] Python ажиллуулахад алдаа гарлаа: ${(err as Error).message}`;
             if (onChunk) onChunk(fallback);
             return { messages: [{ role: "assistant", content: fallback }] };
         }
@@ -706,7 +706,7 @@ Task: ${query}`;
         const mentioned = catalog?.find((e: any) => lowerQuery.includes(e.table_name.toLowerCase()));
         const activeEntry = mentioned || await getActiveCatalogEntry();
         if (!activeEntry) {
-            const fallback = `${dashPrefix}⚠️ Идэвхтэй хүснэгт олдсонгүй. Эхлээд зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
+            const fallback = `${dashPrefix}[АНХААР] Идэвхтэй хүснэгт олдсонгүй. Эхлээд зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
             if (onChunk) onChunk(fallback);
             return { messages: [{ role: "assistant", content: fallback }] };
         }
@@ -733,7 +733,7 @@ Task: ${query}`;
                 if (!Array.isArray(data) || data.length === 0) throw new Error("No valid JSON array found");
                 widgets = data;
             } catch (parseErr) {
-                const fallback = `${dashPrefix}⚠️ Dashboard өгөгдлийг боловсруулахад алдаа гарлаа. Анхны хариу:\n\`\`\`json\n${raw}\n\`\`\``;
+                const fallback = `${dashPrefix}[АНХААР] Dashboard өгөгдлийг боловсруулахад алдаа гарлаа. Анхны хариу:\n\`\`\`json\n${raw}\n\`\`\``;
                 if (onChunk) onChunk(fallback);
                 return { messages: [{ role: "assistant", content: fallback }] };
             }
@@ -763,7 +763,7 @@ Task: ${query}`;
             if (onChunk) onChunk(fullText);
             return { messages: [{ role: "assistant", content: fullText }] };
         } catch (dashErr) {
-            const fallback = `${dashPrefix}⚠️ Dashboard үүсгэхэд алдаа гарлаа: ${(dashErr as Error).message}`;
+            const fallback = `${dashPrefix}[АНХААР] Dashboard үүсгэхэд алдаа гарлаа: ${(dashErr as Error).message}`;
             if (onChunk) onChunk(fallback);
             return { messages: [{ role: "assistant", content: fallback }] };
         }
@@ -809,7 +809,7 @@ Task: ${query}`;
         console.log(`[Tech Agent] SQL generation attempt ${attempts}/${MAX_SQL_RETRIES}...`);
 
         if (onChunk && attempts > 1) {
-            const warning = `\n*⚠️ Системд алдаа гарлаа. Алдааг автоматаар засварлан дахин ажиллуулж байна (Оролдлого ${attempts}/${MAX_SQL_RETRIES})...*\n`;
+            const warning = `\n*[АНХААР] Системд алдаа гарлаа. Алдааг автоматаар засварлан дахин ажиллуулж байна (Оролдлого ${attempts}/${MAX_SQL_RETRIES})...*\n`;
             onChunk(warning);
             accumulatedText += warning;
         }
@@ -867,7 +867,7 @@ Task: ${query}`;
                 const schemaError = /багана байхгүй|хүснэгт.*байхгүй|Хүснэгт '/i.test(sqlResult.text);
                 if (schemaError) {
                     console.log("[Tech Agent] Schema validation error detected — stopping retries.");
-                    accumulatedText += `\n💡 Дээрх алдааны шалтгаан: SQL query-д schema-д байхгүй багана/хүснэгт ашигласан.\n`;
+                    accumulatedText += `\n[ЗӨВЛӨМЖ] Дээрх алдааны шалтгаан: SQL query-д schema-д байхгүй багана/хүснэгт ашигласан.\n`;
                     break;
                 }
                 continue;
@@ -908,8 +908,8 @@ Task: ${query}`;
     }
 
     if (!isSuccess) {
-        const fallback = `${accumulatedText}\n\n⚠️ Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Хэрэв та баганын нэр эсвэл хүснэгтийн нэр зааж өгвөл би илүү нарийвчлалтай хариулж чадна.`;
-        if (onChunk) onChunk("\n\n⚠️ Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.");
+        const fallback = `${accumulatedText}\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Хэрэв та баганын нэр эсвэл хүснэгтийн нэр зааж өгвөл би илүү нарийвчлалтай хариулж чадна.`;
+        if (onChunk) onChunk("\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.");
         return {
             messages: [{ role: "assistant", content: fallback }]
         };
@@ -957,7 +957,7 @@ Task: ${query}`;
             if (onChunk) onChunk(text);
         }
     } catch (explainErr) {
-        const fallback = `\n\n⚠️ Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Санал болгох: өгөгдлийн сангийн хүснэгт/баганын нэрээ шалгана уу.`;
+        const fallback = `\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Санал болгох: өгөгдлийн сангийн хүснэгт/баганын нэрээ шалгана уу.`;
         console.warn("[Tech Agent] Explanation failed:", (explainErr as Error).message);
         if (onChunk) onChunk(fallback);
         accumulatedText += fallback;
@@ -1028,7 +1028,7 @@ export async function runMultiAgentSecure(
     threadId: string
 ): Promise<string> {
     const auth = verifyToken(authToken);
-    if (!auth.success || !auth.payload) throw new Error(`🛑 Authentication failed: ${auth.error}`);
+    if (!auth.success || !auth.payload) throw new Error(`Authentication failed: ${auth.error}`);
     const { userId, role } = auth.payload;
     const result = await multiAgentApp.invoke(
         { messages: [{ role: "user", content: query }], userRole: role },

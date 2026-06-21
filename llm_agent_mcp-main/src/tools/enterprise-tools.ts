@@ -12,7 +12,7 @@ export async function handleGetKpi({ metric }: { metric: KpiMetricName }) {
   }
 
   const pct = ((data.current / data.target) * 100).toFixed(1);
-  const status = data.current >= data.target ? "✅ On target" : "⚠️ Below target";
+  const status = data.current >= data.target ? "[OK] On target" : "[WARN] Below target";
 
   const resultText = [
     `KPI Metric: ${metric.toUpperCase()}`,

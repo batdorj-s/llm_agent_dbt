@@ -28,7 +28,7 @@ async function agentNode(state: typeof MessagesAnnotation.State) {
   const llm = await createLLM({ temperature: 0 });
 
   if (!llm) {
-      console.warn("⚠️ No LLM API Key found. Add GOOGLE_API_KEY or GROQ_API_KEY to .env (both free!)");
+      console.warn("[WARN] No LLM API Key found. Add GOOGLE_API_KEY or GROQ_API_KEY to .env (both free!)");
       return {
           messages: [{
               role: "assistant",

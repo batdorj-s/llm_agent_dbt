@@ -8,28 +8,28 @@ async function main() {
   // ── JWT Auth Tests ────────────────────────────────────────
   console.log("─── JWT Authentication ───");
   const token = createToken("user-001", "admin");
-  console.log("1. Token created ✅");
+  console.log("1. Token created [OK]");
 
   const result = verifyToken(token);
   console.log("2. Verify:", result.success
-    ? `✅ role=${result.payload?.role}, userId=${result.payload?.userId}`
-    : `❌ ${result.error}`);
+    ? `[OK] role=${result.payload?.role}, userId=${result.payload?.userId}`
+    : `[FAIL] ${result.error}`);
 
   const bad = verifyToken("bad.token.here");
-  console.log("3. Invalid token:", bad.success ? "❌ should fail" : `✅ Rejected: ${bad.error}`);
+  console.log("3. Invalid token:", bad.success ? "[FAIL] should fail" : `[OK] Rejected: ${bad.error}`);
 
   try {
     requireRole(token, "admin");
-    console.log("4. requireRole(admin): ✅ Success");
+    console.log("4. requireRole(admin): [OK] Success");
   } catch (e: any) {
-    console.log("4. requireRole(admin): ❌ Failed:", e.message);
+    console.log("4. requireRole(admin): [FAIL] Failed:", e.message);
   }
 
   const demos = generateDemoTokens();
   console.log("\nDemo tokens:");
   for (const [role, tok] of Object.entries(demos)) {
     const v = verifyToken(tok);
-    console.log(`  ${role}: ${v.success ? "✅" : "❌"} userId=${v.payload?.userId}`);
+    console.log(`  ${role}: ${v.success ? "[OK]" : "[FAIL]"} userId=${v.payload?.userId}`);
   }
 
   // ── Rate Limiter Tests ────────────────────────────────────
@@ -37,7 +37,7 @@ async function main() {
   const limiter = new RateLimiter({ maxRequests: 3, windowMs: 5000 });
   for (let i = 1; i <= 5; i++) {
     const res = limiter.check("test-user");
-    console.log(`  Request ${i}: ${res.allowed ? `✅ allowed (remaining: ${res.remaining})` : `❌ blocked — ${res.message}`}`);
+    console.log(`  Request ${i}: ${res.allowed ? `[OK] allowed (remaining: ${res.remaining})` : `[FAIL] blocked — ${res.message}`}`);
   }
 
   // ── Repository Tests ──────────────────────────────────────
@@ -46,18 +46,18 @@ async function main() {
 
   const sales = await repo.getKpi("sales");
   console.log("  sales KPI:", sales
-    ? `✅ current=${sales.current} target=${sales.target} unit=${sales.unit}`
-    : "❌ not found");
+    ? `[OK] current=${sales.current} target=${sales.target} unit=${sales.unit}`
+    : "[FAIL] not found");
 
   const history = await repo.getSalesHistory(3);
-  console.log("  sales history (3 months):", history.length === 3 ? "✅" : "❌", history.map(h => h.month).join(", "));
+  console.log("  sales history (3 months):", history.length === 3 ? "[OK]" : "[FAIL]", history.map(h => h.month).join(", "));
 
   const missing = await repo.getKpi("sales"); // Should work
   console.log("  churn_rate:", (await repo.getKpi("churn_rate"))
-    ? `✅ ${(await repo.getKpi("churn_rate"))!.current}%`
-    : "❌");
+    ? `[OK] ${(await repo.getKpi("churn_rate"))!.current}%`
+    : "[FAIL]");
 
-  console.log("\n✅ All Phase C tests passed!\n");
+  console.log("\n[OK] All Phase C tests passed!\n");
 }
 
 main().catch(console.error);

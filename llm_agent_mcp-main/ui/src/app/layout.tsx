@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Enterprise AI Orchestrator | RAG & Sandbox Portal",
-  description: "A secure multi-agent portal with intelligent routing, ChromaDB semantic retrieval, and isolated sandboxed code execution.",
+  title: "Шинжээч.ai — Автомат Дата Шинжилгээ",
+  description: "Шинжээч.ai — AI-д суурилсан өгөгдлийн шинжилгээний платформ. Forecast, dashboard, SQL шинжилгээ, машин сургалт.",
 };
 
 export default function RootLayout({

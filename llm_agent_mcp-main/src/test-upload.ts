@@ -13,12 +13,12 @@ async function runTest() {
   try {
     // 1. Write file
     fs.writeFileSync(testCsvPath, testCsvContent, "utf8");
-    console.log("1. Created test CSV file ✅");
+    console.log("1. Created test CSV file [OK]");
 
     // 2. Initialize DB & Seed
     await initDataLake();
     await seedCsv(testCsvPath, testTableName, "TestAdmin", "Dynamic test dataset");
-    console.log("2. Seeded CSV to SQLite ✅");
+    console.log("2. Seeded CSV to SQLite [OK]");
 
     // 3. Verify Catalog
     const catalog = await getCatalog();
@@ -26,7 +26,7 @@ async function runTest() {
     if (!tableInfo) {
       throw new Error("Table not found in Data Lake Catalog!");
     }
-    console.log("3. Verified Catalog Entry ✅");
+    console.log("3. Verified Catalog Entry [OK]");
     console.log("   Columns:", tableInfo.columns_info);
 
     // 4. Index in RAG
@@ -40,17 +40,17 @@ async function runTest() {
       { category: "data_catalog", department: "analytics", author: "TestAdmin" },
       [testTableName, "catalog", "sqlite"]
     );
-    console.log("4. Indexed in RAG ✅");
+    console.log("4. Indexed in RAG [OK]");
 
     // 5. Verify RAG In-Memory Store
     const found = mockDocuments.some((doc: { text: string }) => doc.text.includes(testTableName));
     if (!found) {
       throw new Error("Document not found in mockDocuments!");
     }
-    console.log("5. Verified Document in RAG memory ✅");
+    console.log("5. Verified Document in RAG memory [OK]");
     console.log("=== All Upload Tests Passed successfully! ===");
   } catch (err: any) {
-    console.error("❌ Test Failed:", err.message);
+    console.error("[FAIL] Test Failed:", err.message);
   } finally {
     if (fs.existsSync(testCsvPath)) {
       fs.unlinkSync(testCsvPath);

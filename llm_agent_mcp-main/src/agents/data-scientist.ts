@@ -19,7 +19,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
 
     const activeEntry = await getActiveCatalogEntry();
     if (!activeEntry) {
-        const fallback = `${prefix}⚠️ Идэвхтэй хүснэгт олдсонгүй. Зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
+        const fallback = `${prefix}[АНХААР] Идэвхтэй хүснэгт олдсонгүй. Зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
         if (onChunk) onChunk(fallback);
         return { messages: [{ role: "assistant", content: fallback }] };
     }
@@ -65,7 +65,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     }
 
     if (!llm) {
-        const fallback = `${prefix}⚠️ LLM API key тохируулаагүй байна.`;
+        const fallback = `${prefix}[АНХААР] LLM API key тохируулаагүй байна.`;
         if (onChunk) onChunk(fallback);
         return { messages: [{ role: "assistant", content: fallback }] };
     }
@@ -162,7 +162,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
         const limiterKey = config?.configurable?.threadId || "data-scientist-global";
         const limiterResult = sandboxLimiter.check(limiterKey);
         if (!limiterResult.allowed) {
-            const waitMsg = `\n⚠️ Шинжилгээний хязгаарт хүрлээ. ${Math.ceil(limiterResult.resetInMs / 1000)} секунд хүлээнэ үү.\n`;
+            const waitMsg = `\n[АНХААР] Шинжилгээний хязгаарт хүрлээ. ${Math.ceil(limiterResult.resetInMs / 1000)} секунд хүлээнэ үү.\n`;
             if (onChunk) onChunk(waitMsg);
             const fallback = `${prefix}\`\`\`python\n${pythonCode}\n\`\`\`\n\n${waitMsg}`;
             return { messages: [{ role: "assistant", content: fallback }] };
@@ -219,7 +219,7 @@ CRITICAL:
 
         return { messages: [{ role: "assistant", content: accumulatedText }] };
     } catch (err) {
-        const fallback = `${prefix}⚠️ Шинжилгээ хийхэд алдаа гарлаа: ${(err as Error).message}`;
+        const fallback = `${prefix}[АНХААР] Шинжилгээ хийхэд алдаа гарлаа: ${(err as Error).message}`;
         if (onChunk) onChunk(fallback);
         return { messages: [{ role: "assistant", content: fallback }] };
     }
@@ -255,7 +255,7 @@ function buildStatisticsSummary(sampleData: any[], columns: string[]): string {
         const outliers = vals.filter(v => Math.abs(v - mean) > 3 * std);
         if (outliers.length > 0) {
             const outlierVals = [...new Set(outliers.map(v => v.toFixed(2)))].slice(0, 5).join(", ");
-            outlierLines.push(`  ⚠ Outliers in "${col}": ${outlierVals} (threshold: ±${(3 * std).toFixed(2)} from mean ${mean.toFixed(2)})`);
+            outlierLines.push(`  Outliers in "${col}": ${outlierVals} (threshold: ±${(3 * std).toFixed(2)} from mean ${mean.toFixed(2)})`);
         }
     }
 

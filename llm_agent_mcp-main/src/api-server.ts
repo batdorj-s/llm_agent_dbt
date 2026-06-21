@@ -398,7 +398,7 @@ app.post("/api/admin/upload-csv", async (req, res) => {
             const testOutput = runDbtTest(JSON.stringify({ input_table: sanitizedTableName, ...mapping }));
             const hasFailures = /FAILED|ERROR/i.test(testOutput);
             if (hasFailures) {
-                const warningText = `⚠️ DATA QUALITY WARNING for table '${sanitizedTableName}': dbt tests detected issues. Agents should verify data before reporting.`;
+                const warningText = `[АНХААР] DATA QUALITY WARNING for table '${sanitizedTableName}': dbt tests detected issues. Agents should verify data before reporting.`;
                 await addDocumentToCatalog(`dbt_warning_${sanitizedTableName}`, warningText, {
                     category: "data_catalog",
                     department: "analytics",
@@ -407,7 +407,7 @@ app.post("/api/admin/upload-csv", async (req, res) => {
                 }, [sanitizedTableName, "dbt_warning", "data_quality"]);
                 console.warn(`[Upload] dbt tests FAILED for '${sanitizedTableName}' — RAG warning added`);
             } else {
-                console.log(`[Upload] dbt tests PASSED for '${sanitizedTableName}' ✅`);
+                console.log(`[Upload] dbt tests PASSED for '${sanitizedTableName}' [OK]`);
             }
         } catch (err) {
             console.warn(`[Upload] dbt pipeline error for '${sanitizedTableName}':`, (err as Error).message);
@@ -506,7 +506,7 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Feedback Loop: User rating (👍 / 👎)
+// Feedback Loop: User rating (positive / negative)
 // ─────────────────────────────────────────────────────────────
 const FAILED_QUERIES_PATH = path.join(process.cwd(), "logs", "failed_queries.json");
 
@@ -597,7 +597,7 @@ async function start() {
   }
   await setupKnowledgeBase();
   app.listen(PORT, () => {
-    console.log(`\n🚀 API Server running at http://localhost:${PORT}`);
+    console.log(`\nAPI Server running at http://localhost:${PORT}`);
   });
 }
 start().catch((err) => {

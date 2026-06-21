@@ -53,7 +53,7 @@ export async function getRepository(): Promise<IKpiRepository> {
       
       // Optional: Add a quick health check or validation here
       _instance = new SupabaseKpiRepository(client);
-      console.log("[DB] Using Supabase repository ✅");
+      console.log("[DB] Using Supabase repository [OK]");
     } catch (err) {
       console.warn("[DB] Supabase init failed, falling back to SQLite:", (err as Error).message);
       _instance = new SQLiteKpiRepository();

@@ -116,7 +116,7 @@ export async function initDataLake(): Promise<void> {
             }
 
             _pgAvailable = true;
-            console.log("[Data Lake] Connected to PostgreSQL ✅");
+            console.log("[Data Lake] Connected to PostgreSQL");
             await seedCsv("superstore_sales.csv", "superstore_sales", "Admin", "Historical sales data", false);
             await seedCsv("retail_sales_dataset.csv", "retail_sales", "Admin", "Retail sales dataset for testing", false);
 

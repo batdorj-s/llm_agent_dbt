@@ -23,15 +23,15 @@ async function main() {
 
   const provider = detectProvider();
   if (provider.provider === "none") {
-    console.error("❌ API key олдсонгүй!");
+    console.error("[FAIL] API key олдсонгүй!");
     console.error("   .env файлд GOOGLE_API_KEY тавина уу:");
     console.error("   GOOGLE_API_KEY=AIzaSy...\n");
     console.error("   Key авах: https://aistudio.google.com/app/apikey\n");
     process.exit(1);
   }
 
-  console.log(`✅ Provider: ${provider.provider.toUpperCase()} — ${provider.model}`);
-  console.log(`   Хязгаар: ${provider.rateLimit} | Үнэгүй: ${provider.isFree ? "тийм 🆓" : "үгүй 💳"}\n`);
+  console.log(`[OK] Provider: ${provider.provider.toUpperCase()} — ${provider.model}`);
+  console.log(`   Хязгаар: ${provider.rateLimit} | Үнэгүй: ${provider.isFree ? "тийм [FREE]" : "үгүй [PAID]"}\n`);
 
   // Knowledge Base тохируулах
   await setupKnowledgeBase();
@@ -66,10 +66,10 @@ async function main() {
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   await runMultiAgent("superstore_sales хүснэгтээс 2015 оны сар сарын борлуулалтын өөрчлөлтийн тайлан гаргаж өгнө үү.", "admin", "gemini-test-4");
 
-  console.log("\n✅ Бүх тест дууслаа!\n");
+  console.log("\n[OK] Бүх тест дууслаа!\n");
 }
 
 main().catch((err) => {
-  console.error("❌ Алдаа:", err.message);
+  console.error("[FAIL] Алдаа:", err.message);
   process.exit(1);
 });

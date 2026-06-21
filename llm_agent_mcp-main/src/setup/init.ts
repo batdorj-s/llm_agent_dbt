@@ -55,7 +55,7 @@ function runDbtIfAvailable() {
     runDbt("deps --profiles-dir .");
     console.log("[Setup] Running dbt to create KPI views...");
     runDbt("run --profiles-dir .");
-    console.log("[Setup] dbt run complete ✅");
+    console.log("[Setup] dbt run complete [OK]");
   } catch (err) {
     console.warn("[Setup] dbt run failed — KPI repository will use raw-table fallback:", (err as Error).message);
   }
@@ -80,7 +80,7 @@ export function runDbtForTable(inputTable: string, columns?: string[], mapping?:
       region_col: mapping?.region_col || null,
     });
     runDbt(`run --vars '${vars}' --profiles-dir .`);
-    console.log(`[dbt] Pipeline complete for '${inputTable}' ✅`);
+    console.log(`[dbt] Pipeline complete for '${inputTable}' [OK]`);
   } catch (err) {
     console.warn(`[dbt] Pipeline failed for '${inputTable}':`, (err as Error).message);
   }

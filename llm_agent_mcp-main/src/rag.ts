@@ -160,7 +160,7 @@ async function getChromaCollection() {
       metadata: { "hnsw:space": "cosine" },
     });
 
-    console.log("[VectorDB] ChromaDB collection ready ✅");
+    console.log("[VectorDB] ChromaDB collection ready [OK]");
     return collection;
   } catch (err) {
     console.warn("[VectorDB] ChromaDB unavailable, using in-memory fallback:", (err as Error).message);
@@ -383,7 +383,7 @@ export async function addDocumentToCatalog(
         documents: [text],
         metadatas: [{ ...doc.metadata, category: doc.metadata.category }],
       });
-      console.log(`[RAG] Successfully added ${id} to ChromaDB ✅`);
+      console.log(`[RAG] Successfully added ${id} to ChromaDB [OK]`);
     } catch (err: any) {
       console.error(`[RAG] Failed to add ${id} to ChromaDB:`, err.message);
     }
