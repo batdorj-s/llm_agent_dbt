@@ -269,6 +269,175 @@ const DashboardMessage = ({ dashboardJson }: { dashboardJson: string }) => {
   );
 };
 
+const SQL_KEYWORDS = /\b(SELECT|FROM|WHERE|AND|OR|NOT|IN|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|DROP|ALTER|ADD|COLUMN|INDEX|VIEW|WITH|RECURSIVE|CASE|WHEN|THEN|ELSE|END|CAST|COALESCE|NULLIF|DISTINCT|ALL|UNION|INTERSECT|EXCEPT|EXISTS|BETWEEN|LIKE|ILIKE|IS|NULL|TRUE|FALSE|COUNT|SUM|AVG|MIN|MAX|STDDEV|VARIANCE|PERCENTILE_CONT|ROW_NUMBER|RANK|DENSE_RANK|LAG|LEAD|FIRST_VALUE|LAST_VALUE|NTH_VALUE|OVER|PARTITION|DATE_TRUNC|EXTRACT|DATE_PART|TO_DATE|TO_CHAR|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|INTERVAL|TIMESTAMP|DATE|ASC|DESC|NULLS\s+(FIRST|LAST))\b/gi;
+
+const CodeBlock = ({ code, language, defaultExpanded = false }: { code: string; language?: string; defaultExpanded?: boolean }) => {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
+
+  const lang = (language || "").toLowerCase();
+  const isSql = lang === "sql";
+  const rows = code.split("\n").length;
+
+  const highlightSql = (text: string) => {
+    const parts: React.ReactNode[] = [];
+    let lastIdx = 0;
+    let m: RegExpExecArray | null;
+    const sqlRegex = /\b(SELECT|FROM|WHERE|AND|OR|NOT|IN|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|WITH|RECURSIVE|CASE|WHEN|THEN|ELSE|END|CAST|COALESCE|NULLIF|DISTINCT|ALL|UNION|INTERSECT|EXCEPT|EXISTS|BETWEEN|LIKE|ILIKE|IS|NULL|TRUE|FALSE|COUNT|SUM|AVG|MIN|MAX|STDDEV|PERCENTILE_CONT|ROW_NUMBER|RANK|DATE_TRUNC|EXTRACT|TO_DATE|TO_CHAR|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|INTERVAL|ASC|DESC)\b/gi;
+    while ((m = sqlRegex.exec(text)) !== null) {
+      if (m.index > lastIdx) parts.push(text.slice(lastIdx, m.index));
+      parts.push(<span key={m.index} className="text-blue-400 font-semibold">{m[0]}</span>);
+      lastIdx = sqlRegex.lastIndex;
+    }
+    if (lastIdx < text.length) parts.push(text.slice(lastIdx));
+    return parts.length > 0 ? parts : text;
+  };
+
+  return (
+    <div className="bg-sidebar border border-border/80 rounded-lg mt-2 mb-3 transition-colors overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-background/30 border-b border-border/50">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-foreground/50">{language || "Code"}</span>
+          <span className="text-[8px] text-foreground/30 font-mono">{rows} lines</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleCopy}
+            className="text-[9px] px-1.5 py-0.5 text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 rounded transition-all cursor-pointer"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-[9px] px-1.5 py-0.5 text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 rounded transition-all cursor-pointer"
+          >
+            {expanded ? "Collapse" : "Expand"}
+          </button>
+        </div>
+      </div>
+      <div className={`transition-all duration-200 ${expanded ? "max-h-[600px]" : "max-h-24"} overflow-auto`}>
+        <pre className="text-[10px] font-mono leading-relaxed p-3 overflow-x-auto whitespace-pre-wrap break-all">
+          {isSql
+            ? code.split("\n").map((line, i) => (
+                <div key={i} className="flex">
+                  <span className="text-foreground/20 w-6 shrink-0 text-right mr-2 select-none">{i + 1}</span>
+                  <span className="flex-1">{highlightSql(line) || <br />}</span>
+                </div>
+              ))
+            : code}
+        </pre>
+      </div>
+      {!expanded && rows > 4 && (
+        <div className="px-3 py-1.5 border-t border-border/30 text-center">
+          <button
+            onClick={() => setExpanded(true)}
+            className="text-[9px] text-blue-400/70 hover:text-blue-400 transition-colors cursor-pointer"
+          >
+            Show all {rows} lines
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ActionCard = ({ action, status, sql, result, children }: {
+  action: string;
+  status?: string[];
+  sql?: string;
+  result?: string;
+  children?: React.ReactNode;
+}) => {
+  const [showSql, setShowSql] = useState(false);
+
+  return (
+    <div className="bg-gradient-to-br from-sidebar to-background border border-border/80 rounded-xl mt-2 mb-3 shadow-sm overflow-hidden">
+      <div className="px-3 py-2.5 flex items-center justify-between border-b border-border/40">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
+          <span className="text-[10px] font-bold text-foreground/60 uppercase tracking-wider truncate">{action}</span>
+        </div>
+        {status && status.length > 0 && (
+          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+            {status.map((s, i) => (
+              <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">{s}</span>
+            ))}
+          </div>
+        )}
+      </div>
+      {sql && (
+        <div className="border-b border-border/30">
+          <button
+            onClick={() => setShowSql(!showSql)}
+            className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 transition-colors cursor-pointer"
+          >
+            <span>{showSql ? "SQL Query" : "SQL Query"} {showSql ? "▲" : "▼"}</span>
+            <span className="text-[8px] text-foreground/30">{showSql ? "Collapse" : "Expand"}</span>
+          </button>
+          {showSql && (
+            <div className="px-3 pb-2">
+              <CodeBlock code={sql} language="sql" defaultExpanded />
+            </div>
+          )}
+        </div>
+      )}
+      {result && (
+        <div className="px-3 py-2">
+          <ResultPreview jsonStr={result} />
+        </div>
+      )}
+      {children && <div className="px-3 py-2">{children}</div>}
+    </div>
+  );
+};
+
+const ResultPreview = ({ jsonStr }: { jsonStr: string }) => {
+  let data: any[];
+  try {
+    data = JSON.parse(jsonStr);
+    if (!Array.isArray(data)) throw new Error("Not array");
+  } catch {
+    return <pre className="text-[10px] font-mono text-foreground/60 p-2 bg-background/30 rounded max-h-32 overflow-auto">{jsonStr}</pre>;
+  }
+  if (data.length === 0) return <div className="text-[10px] text-foreground/40 italic">Empty result</div>;
+  const keys = Object.keys(data[0]);
+  return (
+    <div className="overflow-auto max-h-48 rounded border border-border/50">
+      <table className="w-full text-[9px] border-collapse">
+        <thead>
+          <tr className="bg-background/50 sticky top-0">
+            {keys.map(k => (
+              <th key={k} className="text-left px-2 py-1 font-bold text-foreground/50 border-b border-border uppercase tracking-wider">{k}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.slice(0, 10).map((row, i) => (
+            <tr key={i} className="hover:bg-background/30 transition-colors">
+              {keys.map(k => (
+                <td key={k} className="px-2 py-1 border-b border-border/20 text-foreground/70 truncate max-w-[120px]">{String(row[k] ?? "")}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {data.length > 10 && (
+        <div className="px-2 py-1 text-[8px] text-foreground/30 text-center border-t border-border/30">
+          {data.length - 10} more rows...
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface KpiData {
   name: string;
   current: number;
@@ -1081,56 +1250,181 @@ export default function Home() {
         return <DashboardMessage key={idx} dashboardJson={jsonContent} />;
       }
 
-      const lines = part.split("\n");
-      return lines.map((line, lineIdx) => {
-        // Strip out routing prefixes from output rendering to keep it clean
-        if (line.startsWith("(Finance Agent)") || line.startsWith("(Tech Agent)")) {
-          return null;
+      const segments = parseCodeBlocks(part);
+      if (segments.length === 1 && segments[0].type === "text") {
+        return renderTextBlock(segments[0].content, idx);
+      }
+
+      // Group adjacent sql+json segments into ActionCards, skip connection markers
+      const grouped: { type: "action" | "text" | "json" | "code"; content?: string; language?: string; sql?: string; json?: string; text?: string }[] = [];
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (seg.type === "sql") {
+          let jsonSeg: (typeof segments)[0] | null = null;
+          let skipIdx = i + 1;
+          while (skipIdx < segments.length) {
+            const next = segments[skipIdx];
+            if (next.type === "json") { jsonSeg = next; break; }
+            if (next.type === "text" && /^\s*(\*?Үр\s*дүн|Result|Output)\*?\s*[:：]?\s*$/.test(next.content.trim())) {
+              skipIdx++;
+              continue;
+            }
+            break;
+          }
+          if (jsonSeg) {
+            grouped.push({ type: "action", sql: seg.content, json: jsonSeg.content });
+            i = skipIdx;
+          } else {
+            grouped.push({ type: "action", sql: seg.content });
+          }
+        } else {
+          grouped.push({ type: seg.type, text: seg.content, language: seg.language });
         }
+      }
 
-        let content: React.ReactNode = line;
-        const isBullet = line.startsWith("- ") || line.startsWith("* ");
-        const cleanLine = isBullet ? line.substring(2) : line;
-
-        const boldRegex = new RegExp("\\*\\*(.*?)\\*\\*", "g");
-        const boldParts = [];
-        let lastIndex = 0;
-        let match;
-        
-        while ((match = boldRegex.exec(cleanLine)) !== null) {
-          const textBefore = cleanLine.substring(lastIndex, match.index);
-          const boldText = match[1];
-          
-          if (textBefore) boldParts.push(textBefore);
-          boldParts.push(<strong key={match.index} className="font-semibold text-foreground">{boldText}</strong>);
-          lastIndex = boldRegex.lastIndex;
+      return grouped.map((seg, segIdx) => {
+        if (seg.type === "text") {
+          return renderTextBlock(seg.text || "", `${idx}-${segIdx}`);
         }
-        
-        const textAfter = cleanLine.substring(lastIndex);
-        if (textAfter) boldParts.push(textAfter);
+        if (seg.type === "action") {
+          // Try to extract action description from surrounding text
+          const actionMatch = part.match(/(?:Ажиллагаа|Үйлдэл|Шинжилгээ|Тооцоолол)[：:]\s*([^\n]+)/i);
+          const actionDesc = actionMatch ? actionMatch[1].trim() : "Өгөгдлийн шинжилгээ";
 
-        content = boldParts.length > 0 ? boldParts : cleanLine;
-
-        if (isBullet) {
           return (
-            <li key={`${idx}-${lineIdx}`} className="ml-4 list-disc text-foreground/80 my-1">
-              {content}
-            </li>
+            <ActionCard
+              key={`${idx}-action-${segIdx}`}
+              action={actionDesc}
+              status={["SQL Query Executed", "Data Aggregated"]}
+              sql={seg.sql}
+              result={seg.json}
+            />
           );
         }
-
-        if (line.trim() === "") {
-          return <div key={`${idx}-${lineIdx}`} className="h-2" />;
+        if (seg.type === "json") {
+          return (
+            <div key={`${idx}-code-${segIdx}`} className="mt-2 mb-3">
+              <CodeBlock code={seg.text || ""} language="json" />
+            </div>
+          );
         }
-
-        return (
-          <p key={`${idx}-${lineIdx}`} className="text-foreground/80 leading-relaxed my-0.5">
-            {content}
-          </p>
-        );
+        if (seg.type === "code") {
+          return (
+            <div key={`${idx}-code-${segIdx}`} className="mt-2 mb-3">
+              <CodeBlock code={seg.text || ""} language={seg.language || "code"} />
+            </div>
+          );
+        }
+        return null;
       });
     });
   };
+
+  function parseCodeBlocks(text: string): { type: "text" | "sql" | "json" | "code"; content: string; language?: string }[] {
+    const results: { type: "text" | "sql" | "json" | "code"; content: string; language?: string }[] = [];
+    const regex = /```(\w*)\n?([\s\S]*?)```/g;
+    let lastIdx = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIdx) {
+        results.push({ type: "text", content: text.slice(lastIdx, match.index) });
+      }
+      const lang = match[1].toLowerCase();
+      const code = match[2].trim();
+      if (lang === "sql") {
+        results.push({ type: "sql", content: code, language: "sql" });
+      } else if (lang === "json") {
+        results.push({ type: "json", content: code, language: "json" });
+      } else {
+        results.push({ type: "code", content: code, language: match[1] || "code" });
+      }
+      lastIdx = regex.lastIndex;
+    }
+    if (lastIdx < text.length) {
+      results.push({ type: "text", content: text.slice(lastIdx) });
+    }
+    return results;
+  }
+
+  function renderTextBlock(text: string, key: string | number) {
+    const lines = text.split("\n");
+    const elements: React.ReactNode[] = [];
+
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const line = lines[lineIdx];
+
+      // Strip routing prefixes
+      if (line.startsWith("(Finance Agent)") || line.startsWith("(Tech Agent)") || line.startsWith("(Data Scientist Agent)")) {
+        continue;
+      }
+
+      // Skip execution log markers and result headers
+      if (/^### (Оролдлого|Гүйцэтгэлийн үр дүн)/.test(line.trim())) {
+        continue;
+      }
+      if (/^\*?\s*(Үр\s*дүн|Result|Output)\s*[:：]?\s*\*?$/.test(line.trim())) {
+        continue;
+      }
+
+      // Detect markdown table: | col | col |
+      const isTableRow = line.trim().startsWith("|") && line.trim().endsWith("|") && line.includes("|", 2);
+      if (isTableRow) {
+        if (line.includes("---")) continue; // skip separator row
+        const cells = line.split("|").filter(c => c.trim()).map(c => c.trim());
+        if (cells.length > 0) {
+          elements.push(
+            <div key={`${key}-t${lineIdx}`} className="flex gap-2 text-[10px] text-foreground/80 font-mono border-b border-border/20 py-0.5">
+              {cells.map((c, ci) => (
+                <span key={ci} className="flex-1 truncate">{c}</span>
+              ))}
+            </div>
+          );
+          continue;
+        }
+      }
+
+      let content: React.ReactNode = line;
+      const isBullet = line.startsWith("- ") || line.startsWith("* ");
+      const cleanLine = isBullet ? line.substring(2) : line;
+      const headerMatch = cleanLine.match(/^###\s+(.+)/);
+      const isHeader = !!headerMatch;
+
+      const boldRegex = new RegExp("\\*\\*(.*?)\\*\\*", "g");
+      const boldParts: React.ReactNode[] = [];
+      let lastIdx = 0;
+      let match;
+
+      while ((match = boldRegex.exec(cleanLine)) !== null) {
+        const textBefore = cleanLine.substring(lastIdx, match.index);
+        const boldText = match[1];
+        if (textBefore) boldParts.push(textBefore);
+        boldParts.push(<strong key={match.index} className="font-semibold text-foreground">{boldText}</strong>);
+        lastIdx = boldRegex.lastIndex;
+      }
+
+      const textAfter = cleanLine.substring(lastIdx);
+      if (textAfter) boldParts.push(textAfter);
+      content = boldParts.length > 0 ? boldParts : cleanLine;
+
+      if (isBullet) {
+        elements.push(
+          <li key={`${key}-${lineIdx}`} className="ml-4 list-disc text-foreground/80 my-1 text-xs">{content}</li>
+        );
+      } else if (isHeader && headerMatch) {
+        elements.push(
+          <h4 key={`${key}-${lineIdx}`} className="text-[11px] font-bold text-foreground/70 mt-3 mb-1">{headerMatch[1]}</h4>
+        );
+      } else if (line.trim() === "") {
+        elements.push(<div key={`${key}-${lineIdx}`} className="h-2" />);
+      } else {
+        elements.push(
+          <p key={`${key}-${lineIdx}`} className="text-foreground/80 leading-relaxed my-0.5 text-xs">{content}</p>
+        );
+      }
+    }
+    return elements;
+  }
 
   return (
     <div className="h-screen overflow-hidden bg-background text-foreground/80 font-sans antialiased text-xs flex flex-col transition-colors duration-200">
