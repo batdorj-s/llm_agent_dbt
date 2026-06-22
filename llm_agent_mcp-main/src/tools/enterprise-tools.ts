@@ -1,5 +1,5 @@
 import { getRepository } from "../db/kpi-repository.js";
-import { getCatalog, executeSql, DANGEROUS_SQL } from "../db/data-lake.js";
+import { getCatalog, executeSql } from "../db/data-lake.js";
 
 export type KpiMetricName = "sales" | "users" | "churn_rate";
 
@@ -68,14 +68,6 @@ export async function handleGetCatalog({ userId }: { userId: string }) {
 }
 
 export async function handleExecuteSql({ query, userId }: { query: string; userId: string }) {
-  const normalized = query.toUpperCase();
-  if (DANGEROUS_SQL.test(normalized)) {
-    return {
-      text: "Error: Only SELECT queries are permitted. Mutating operations (DROP, DELETE, UPDATE, INSERT, etc.) are strictly prohibited.",
-      ok: false as const,
-    };
-  }
-
   try {
     console.log(`[Enterprise Tools] Executing SQL: ${query}`);
     const results = await executeSql(query, true, userId);

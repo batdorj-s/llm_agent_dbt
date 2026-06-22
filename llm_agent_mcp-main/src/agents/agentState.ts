@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 
-export type UserRole = "admin";
+export type UserRole = "viewer" | "analyst" | "admin";
 export type NextAgent = "FinanceAgent" | "TechAgent" | "DataScientistAgent" | "END";
 
 export interface Message {
@@ -23,7 +23,7 @@ export const AgentStateAnnotation = Annotation.Root({
     }),
     userRole: Annotation<UserRole>({
         reducer: (x, y) => y ?? x,
-        default: () => "admin",
+        default: () => "viewer",
     }),
     userId: Annotation<string | undefined>({
         reducer: (x, y) => y ?? x,

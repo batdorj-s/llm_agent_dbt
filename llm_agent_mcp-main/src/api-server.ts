@@ -5,7 +5,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { createToken, requireJwtSecret, verifyBearerHeader, verifyToken } from "./auth.js";
+import { createToken, requireJwtSecret, verifyBearerHeader, verifyToken, requireRole, roleAtLeast } from "./auth.js";
 import { agentLimiter } from "./rate-limiter.js";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
@@ -14,7 +14,7 @@ import { ensureProjectReady, runDbtForTable, runDbtTest } from "./setup/init.js"
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, authenticateUser, createUser } from "./db/data-lake.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import fs from "fs";
@@ -54,9 +54,9 @@ app.get("/api/status", (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Auth — Login (Simplified: everyone is admin)
+// Auth — Login (credential verification)
 // ─────────────────────────────────────────────────────────────
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password required" });
@@ -68,13 +68,54 @@ app.post("/api/auth/login", (req, res) => {
     return res.status(400).json({ error: "Invalid email format" });
   }
 
-  const role: UserRole = "admin";
-  const token = createToken(email, role);
-  res.json({
-    token,
-    user: { email, role },
-    message: `Logged in as ${email}`,
-  });
+  try {
+    const user = await authenticateUser(email, password);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const token = createToken(user.id, user.role);
+    res.json({
+      token,
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      message: `Logged in as ${user.name}`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Auth — Register (admin only)
+// ─────────────────────────────────────────────────────────────
+app.post("/api/auth/register", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+  if (auth.payload.role !== "admin") {
+    return res.status(403).json({ error: "Only admins can create new users" });
+  }
+
+  const { email, password, name, role } = req.body;
+  if (!email || !password || !name) {
+    return res.status(400).json({ error: "email, password, and name are required" });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters" });
+  }
+
+  const userRole: UserRole = role === "analyst" ? "analyst" : role === "admin" ? "admin" : "viewer";
+
+  try {
+    const userId = await createUser(email, password, name, userRole);
+    if (!userId) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+    res.status(201).json({ success: true, userId, role: userRole });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -189,6 +230,9 @@ app.post("/api/admin/run-code", async (req, res) => {
   if (!auth.success || !auth.payload) {
     return res.status(401).json({ error: auth.error });
   }
+  if (!roleAtLeast(auth.payload.role, "admin")) {
+    return res.status(403).json({ error: "Access denied. Admins only." });
+  }
 
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: "code required" });
@@ -208,6 +252,7 @@ app.post("/api/admin/run-code", async (req, res) => {
 app.get("/api/admin/files", async (req, res) => {
   const auth = verifyBearerHeader(req.headers.authorization);
   if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (!roleAtLeast(auth.payload.role, "analyst")) return res.status(403).json({ error: "Access denied. Analyst role required." });
 
   await initDataLake();
   const result = await getPool().query(`SELECT * FROM uploaded_files ORDER BY created_at DESC`);
@@ -217,6 +262,7 @@ app.get("/api/admin/files", async (req, res) => {
 app.delete("/api/admin/files/:id", async (req, res) => {
   const auth = verifyBearerHeader(req.headers.authorization);
   if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (!roleAtLeast(auth.payload.role, "analyst")) return res.status(403).json({ error: "Access denied. Analyst role required." });
 
   const { id } = req.params;
   await initDataLake();
@@ -293,6 +339,7 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
 app.get("/api/admin/files/:id/download", async (req, res) => {
   const auth = verifyBearerHeader(req.headers.authorization);
   if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (!roleAtLeast(auth.payload.role, "analyst")) return res.status(403).json({ error: "Access denied. Analyst role required." });
 
   const { id } = req.params;
   await initDataLake();

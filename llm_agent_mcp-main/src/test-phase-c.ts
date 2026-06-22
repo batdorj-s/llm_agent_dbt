@@ -1,4 +1,4 @@
-import { createToken, verifyToken, generateDemoTokens, requireRole } from "./auth.js";
+import { createToken, verifyToken, requireRole } from "./auth.js";
 import { RateLimiter, agentLimiter } from "./rate-limiter.js";
 import { getRepository } from "./db/kpi-repository.js";
 
@@ -25,12 +25,9 @@ async function main() {
     console.log("4. requireRole(admin): [FAIL] Failed:", e.message);
   }
 
-  const demos = generateDemoTokens();
-  console.log("\nDemo tokens:");
-  for (const [role, tok] of Object.entries(demos)) {
-    const v = verifyToken(tok);
-    console.log(`  ${role}: ${v.success ? "[OK]" : "[FAIL]"} userId=${v.payload?.userId}`);
-  }
+  const adminTok = createToken("user-admin-001", "admin");
+  const v = verifyToken(adminTok);
+  console.log(`  admin: ${v.success ? "[OK]" : "[FAIL]"} userId=${v.payload?.userId}`);
 
   // ── Rate Limiter Tests ────────────────────────────────────
   console.log("\n─── Rate Limiter ───");

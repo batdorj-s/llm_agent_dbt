@@ -1,24 +1,9 @@
-/**
- * auth.ts — JWT-based authentication & role verification
- *
- * Provides:
- *  - createToken(userId, role)  — sign a JWT (for testing/login endpoint)
- *  - verifyToken(token)         — decode & validate a JWT, return role
- *  - generateDemoTokens()       — create demo tokens for each role (dev only)
- *
- * Environment variables required:
- *   JWT_SECRET=your-strong-random-secret-here   (min 32 chars recommended)
- *   JWT_EXPIRES_IN=1h                            (optional, default: 1h)
- */
-
 import dotenv from "dotenv";
 dotenv.config();
 
+import crypto from "crypto";
 import type { UserRole } from "./multi-agent.js";
 
-// ─────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────
 export interface TokenPayload {
   userId: string;
   role: UserRole;
@@ -32,12 +17,6 @@ export interface AuthResult {
   error?: string;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Minimal JWT implementation (no external dependency)
-// Uses HMAC-SHA256 via Node.js built-in crypto
-// ─────────────────────────────────────────────────────────────
-import crypto from "crypto";
-
 const DEV_JWT_SECRET_FALLBACK = "dev-secret-change-in-production-min-32-chars!!";
 const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET_FALLBACK;
 
@@ -48,13 +27,13 @@ export function isUsingDevJwtSecret(): boolean {
 export function requireJwtSecret(): void {
     if (isUsingDevJwtSecret()) {
         if (process.env.NODE_ENV === "production") {
-            console.error("\n❌ FATAL: JWT_SECRET not set in production. Set JWT_SECRET environment variable (min 32 chars).");
-            console.error("   Add to .env: JWT_SECRET=your-strong-random-secret-here\n");
+            console.error("\n❌ FATAL: JWT_SECRET not set in production.");
             process.exit(1);
         }
-        console.warn("\n⚠️  WARNING: Using development JWT_SECRET. Set JWT_SECRET environment variable (min 32 chars).");
+        console.warn("\n⚠️  WARNING: Using development JWT_SECRET. Set JWT_SECRET in production.");
     }
 }
+
 const JWT_EXPIRES_IN_SECONDS = parseExpiry(process.env.JWT_EXPIRES_IN || "1h");
 
 function parseExpiry(expr: string): number {
@@ -83,13 +62,6 @@ function sign(data: string, secret: string): string {
     .replace(/\//g, "_");
 }
 
-// ─────────────────────────────────────────────────────────────
-// Public API
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Create a signed JWT token for a user.
- */
 export function createToken(userId: string, role: UserRole): string {
   const header  = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const now     = Math.floor(Date.now() / 1000);
@@ -100,10 +72,6 @@ export function createToken(userId: string, role: UserRole): string {
   return `${header}.${payload}.${signature}`;
 }
 
-/**
- * Verify a JWT and return the decoded payload.
- * Returns { success: false, error } if the token is invalid or expired.
- */
 export function verifyToken(token: string): AuthResult {
   try {
     const parts = token.split(".");
@@ -125,7 +93,7 @@ export function verifyToken(token: string): AuthResult {
       return { success: false, error: "Token expired" };
     }
 
-    const validRoles: UserRole[] = ["admin"];
+    const validRoles: UserRole[] = ["viewer", "analyst", "admin"];
     if (!validRoles.includes(decoded.role)) {
       return { success: false, error: `Invalid role: ${decoded.role}` };
     }
@@ -136,10 +104,6 @@ export function verifyToken(token: string): AuthResult {
   }
 }
 
-/**
- * Extract and verify a Bearer token from an Authorization header.
- * Header format: "Authorization: Bearer <token>"
- */
 export function verifyBearerHeader(authHeader: string | undefined): AuthResult {
   if (!authHeader?.startsWith("Bearer ")) {
     return { success: false, error: "Missing or malformed Authorization header" };
@@ -147,23 +111,44 @@ export function verifyBearerHeader(authHeader: string | undefined): AuthResult {
   return verifyToken(authHeader.slice(7));
 }
 
-/**
- * Guard: throws if the token role doesn't meet minimum required role.
- * (Simplified: everything is admin now)
- */
+const ROLE_HIERARCHY: Record<UserRole, number> = {
+  viewer: 1,
+  analyst: 2,
+  admin: 3,
+};
+
+export function roleAtLeast(role: UserRole, minRole: UserRole): boolean {
+  return (ROLE_HIERARCHY[role] ?? 0) >= (ROLE_HIERARCHY[minRole] ?? 0);
+}
+
 export function requireRole(token: string, minRole: UserRole = "admin"): TokenPayload {
   const result = verifyToken(token);
   if (!result.success || !result.payload) {
     throw new Error(`Unauthorized: ${result.error}`);
   }
+  if (!roleAtLeast(result.payload.role, minRole)) {
+    throw new Error(`Forbidden: requires ${minRole} role, got ${result.payload.role}`);
+  }
   return result.payload;
 }
 
 // ─────────────────────────────────────────────────────────────
-// Dev helper — generate demo tokens (never use in production)
+// Password hashing (Node.js built-in crypto.scryptSync)
 // ─────────────────────────────────────────────────────────────
-export function generateDemoTokens(): Record<UserRole, string> {
-  return {
-    admin:  createToken("user-admin-001",  "admin"),
-  };
+
+const HASH_SALT_LEN = 16;
+const HASH_KEY_LEN = 64;
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(HASH_SALT_LEN).toString("hex");
+  const hash = crypto.scryptSync(password, salt, HASH_KEY_LEN).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+export function verifyPassword(password: string, stored: string): boolean {
+  const parts = stored.split(":");
+  if (parts.length !== 2) return false;
+  const [salt, hash] = parts;
+  const derived = crypto.scryptSync(password, salt, HASH_KEY_LEN).toString("hex");
+  return hash === derived;
 }

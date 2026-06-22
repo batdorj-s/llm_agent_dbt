@@ -118,44 +118,26 @@ with open("${outputFile.replace(/\\/g, "\\\\")}", "w") as _f:
     }
 }
 
-// Mock sandbox for development/PoC if no E2B API Key is provided
 export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TIMEOUT_MS, skipMemorySafe: boolean = false): Promise<string> {
     return traceToolCall("runPythonCode", async () => {
     const hasKey = process.env.E2B_API_KEY && process.env.E2B_API_KEY !== 'your_e2b_api_key_here';
 
     if (!hasKey) {
-        console.warn("[WARN] No E2B_API_KEY found. Attempting local Python fallback.");
-        try {
+        const allowLocal = process.env.ALLOW_LOCAL_PYTHON === "true";
+        if (allowLocal) {
+            console.warn("[WARN] ALLOW_LOCAL_PYTHON=true — executing on host machine (INSECURE).");
             const safeCode = skipMemorySafe ? code : preparePythonCode(code);
             return await runPythonLocally(safeCode, timeoutMs);
-        } catch (localErr: any) {
-            console.warn("[WARN] Local Python fallback failed:", localErr.message);
-            const mockChartPath = path.join(process.cwd(), "analysis_plot.png");
-            if (fs.existsSync(mockChartPath)) {
-                const base64 = fs.readFileSync(mockChartPath).toString("base64");
-                return [
-                    "##CHART_SAVED##",
-                    `##BASE64_IMAGE:${base64}`,
-                    "",
-                    "(Local Python Fallback — E2B_API_KEY not configured)",
-                    "----------------------------------------------",
-                    `Executed Python code snippet:`,
-                    code.length > 200 ? code.slice(0, 200) + "..." : code,
-                    "",
-                    "Result: In a real environment, this code would be executed in an E2B MicroVM.",
-                    `Local Python error: ${localErr.message}`
-                ].join("\n");
-            }
-            return [
-                "(Local Python Fallback — E2B_API_KEY not configured)",
-                "----------------------------------------------",
-                `Executed Python code snippet:`,
-                code.length > 200 ? code.slice(0, 200) + "..." : code,
-                "",
-                "Result: In a real environment, this code would be executed in an E2B MicroVM.",
-                `Local Python error: ${localErr.message}`
-            ].join("\n");
         }
+        return [
+            "(Python execution unavailable — E2B_API_KEY not configured)",
+            "----------------------------------------------",
+            `Executed Python code snippet:`,
+            code.length > 200 ? code.slice(0, 200) + "..." : code,
+            "",
+            "Set E2B_API_KEY in .env to enable sandboxed Python execution.",
+            "Set ALLOW_LOCAL_PYTHON=true to run on host (development only, INSECURE).",
+        ].join("\n");
     }
 
     try {

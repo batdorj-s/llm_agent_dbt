@@ -3,6 +3,8 @@ import fs from "fs";
 import dotenv from "dotenv";
 import { buildSemanticGroups, formatSemanticGroups } from "../utils.js";
 import { traceToolCall } from "../observability/tracer.js";
+import { hashPassword, verifyPassword } from "../auth.js";
+import { parse as parseSql } from "pgsql-ast-parser";
 
 dotenv.config();
 
@@ -43,7 +45,24 @@ export function isPgAvailable(): boolean {
     return _pgAvailable;
 }
 
-export const DANGEROUS_SQL = /\b(DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|REPLACE|TRUNCATE|GRANT|REVOKE)\b/i;
+const ALLOWED_STMT_TYPES = new Set(["select", "with"]);
+
+export function assertSelectOnly(query: string): void {
+  try {
+    const statements = parseSql(query);
+    if (statements.length !== 1) {
+      throw new Error(`Expected exactly 1 statement, got ${statements.length}`);
+    }
+    if (!ALLOWED_STMT_TYPES.has(statements[0].type)) {
+      throw new Error(`Only SELECT queries are permitted. Got "${(statements[0] as any).type ?? "unknown"}" statement.`);
+    }
+  } catch (err: any) {
+    if (err.message?.startsWith("Only SELECT") || err.message?.startsWith("Expected exactly")) {
+      throw err;
+    }
+    throw new Error(`Only SELECT queries are permitted. Query could not be parsed: ${err.message}`);
+  }
+}
 
 export async function initDataLake(): Promise<void> {
     if (pool) return;
@@ -96,6 +115,17 @@ export async function initDataLake(): Promise<void> {
                     description TEXT,
                     owner_id TEXT,
                     visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'shared')),
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
+
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    email TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'viewer',
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 )
             `);
@@ -157,6 +187,23 @@ export async function initDataLake(): Promise<void> {
                 await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["sales", 500000, "USD"]);
                 await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["users", 2000, "users"]);
                 await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["churn_rate", 2.0, "%"]);
+            }
+
+            // Seed default admin user if no users exist
+            const existingUsers = await pool.query("SELECT id FROM users LIMIT 1");
+            if (existingUsers.rows.length === 0) {
+                const adminEmail = process.env.ADMIN_EMAIL || "admin@enterprise.ai";
+                const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+                const adminId = "user-admin-001";
+                const hashedPwd = hashPassword(adminPassword);
+                await pool.query(
+                    `INSERT INTO users (id, email, name, password_hash, role) VALUES ($1, $2, $3, $4, $5)`,
+                    [adminId, adminEmail, "Admin", hashedPwd, "admin"]
+                );
+                console.log(`[Data Lake] Default admin user created: ${adminEmail}`);
+                if (!process.env.ADMIN_PASSWORD) {
+                    console.warn("[Data Lake] Using default admin password 'admin123'. Set ADMIN_PASSWORD in .env for production.");
+                }
             }
 
             _pgAvailable = true;
@@ -619,35 +666,52 @@ function splitSelectColumns(clause: string): string[] {
     return result;
 }
 
+// ─────────────────────────────────────────────────────────────
+// User authentication
+// ─────────────────────────────────────────────────────────────
+
+export async function authenticateUser(email: string, password: string): Promise<{ id: string; email: string; name: string; role: "viewer" | "analyst" | "admin" } | null> {
+  await initDataLake();
+  if (!_pgAvailable || !pool) return null;
+  const result = await pool.query("SELECT id, email, name, password_hash, role FROM users WHERE email = $1", [email]);
+  if (result.rows.length === 0) return null;
+  const user = result.rows[0];
+  if (!verifyPassword(password, user.password_hash)) return null;
+  return { id: user.id, email: user.email, name: user.name, role: user.role };
+}
+
+export async function createUser(email: string, password: string, name: string, role: "viewer" | "analyst" | "admin" = "viewer"): Promise<string | null> {
+  await initDataLake();
+  if (!_pgAvailable || !pool) return null;
+  const id = `user_${Date.now()}`;
+  const hashedPwd = hashPassword(password);
+  try {
+    await pool.query(
+      `INSERT INTO users (id, email, name, password_hash, role) VALUES ($1, $2, $3, $4, $5)`,
+      [id, email, name, hashedPwd, role]
+    );
+    return id;
+  } catch (err: any) {
+    if (err.code === "23505") return null; // unique violation
+    throw err;
+  }
+}
+
 export async function executeSql(query: string, readOnly: boolean, userId: string): Promise<any> {
     return traceToolCall("executeSql", async () => {
         await initDataLake();
         if (!_pgAvailable || !pool) throw new Error("Data Lake unavailable (PostgreSQL not connected).");
 
-        if (DANGEROUS_SQL.test(query)) {
-            throw new Error("Only SELECT/WITH queries are permitted. Mutating operations are strictly prohibited.");
-        }
+        // Structural allowlist: only single SELECT statements are permitted.
+        assertSelectOnly(query);
 
         await validateSqlColumns(query, userId);
 
-        const normalized = query.trim().toUpperCase();
-        const isSelect = /^\s*SELECT\b/i.test(normalized) || (/^\s*WITH\b/i.test(normalized) && /SELECT\b/i.test(normalized.replace(/^\s*WITH[\s\S]*?SELECT\b/i, "")));
-
-        if (readOnly && !isSelect) {
-            throw new Error("Only SELECT/WITH queries allowed in read-only mode.");
-        }
-
         try {
-            if (isSelect) {
-                await pool.query(`EXPLAIN ${query}`);
-                await pool.query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE");
-                const result = await pool.query(query);
-                await pool.query("ROLLBACK");
-                return result.rows;
-            }
-            if (readOnly) throw new Error("Only SELECT/WITH queries allowed in read-only mode.");
+            await pool.query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE");
             const result = await pool.query(query);
-            return { message: "Query executed", changes: result.rowCount };
+            await pool.query("ROLLBACK");
+            return result.rows;
         } catch (err: any) {
             const msg = err.message
                 .replace(/^syntax error at or near/, "SQL syntax error near")

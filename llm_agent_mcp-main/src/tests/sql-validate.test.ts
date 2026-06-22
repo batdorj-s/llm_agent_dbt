@@ -1,48 +1,53 @@
 import { describe, it, expect } from "vitest";
-import { validateSqlColumnsAgainstCatalog, type DataLakeCatalogEntry } from "../db/data-lake.js";
+import { assertSelectOnly, validateSqlColumnsAgainstCatalog, type DataLakeCatalogEntry } from "../db/data-lake.js";
 
-// Test the DANGEROUS_SQL regex and query validation patterns in isolation
-describe("SQL Query Validation", () => {
-    const DANGEROUS_SQL = /\b(DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|REPLACE|TRUNCATE|GRANT|REVOKE)\b/i;
-
-    it("should reject DROP TABLE", () => {
-        expect(DANGEROUS_SQL.test("DROP TABLE users")).toBe(true);
+describe("SQL Query Validation — structural allowlist", () => {
+    it("should allow simple SELECT", () => {
+        expect(() => assertSelectOnly("SELECT * FROM users")).not.toThrow();
     });
 
-    it("should reject DELETE FROM", () => {
-        expect(DANGEROUS_SQL.test("DELETE FROM users WHERE id=1")).toBe(true);
+    it("should allow SELECT with WHERE", () => {
+        expect(() => assertSelectOnly("SELECT id, name FROM users WHERE status = 'active'")).not.toThrow();
+    });
+
+    it("should allow SELECT with JOIN", () => {
+        expect(() => assertSelectOnly("SELECT u.id, o.total FROM users u JOIN orders o ON u.id = o.user_id")).not.toThrow();
+    });
+
+    it("should allow WITH (CTE) + SELECT", () => {
+        expect(() => assertSelectOnly("WITH cte AS (SELECT id FROM users) SELECT * FROM cte")).not.toThrow();
+    });
+
+    it("should reject DROP TABLE", () => {
+        expect(() => assertSelectOnly("DROP TABLE users")).toThrow(/Only SELECT/);
+    });
+
+    it("should reject DELETE", () => {
+        expect(() => assertSelectOnly("DELETE FROM users WHERE id=1")).toThrow(/Only SELECT/);
     });
 
     it("should reject UPDATE", () => {
-        expect(DANGEROUS_SQL.test("UPDATE users SET name='test'")).toBe(true);
+        expect(() => assertSelectOnly("UPDATE users SET name='test'")).toThrow(/Only SELECT/);
     });
 
-    it("should reject INSERT INTO", () => {
-        expect(DANGEROUS_SQL.test("INSERT INTO users VALUES (1)")).toBe(true);
+    it("should reject INSERT", () => {
+        expect(() => assertSelectOnly("INSERT INTO users VALUES (1)")).toThrow(/Only SELECT/);
     });
 
     it("should reject ALTER TABLE", () => {
-        expect(DANGEROUS_SQL.test("ALTER TABLE users ADD COLUMN x INT")).toBe(true);
+        expect(() => assertSelectOnly("ALTER TABLE users ADD COLUMN x INT")).toThrow(/Only SELECT/);
     });
 
     it("should reject CREATE TABLE", () => {
-        expect(DANGEROUS_SQL.test("CREATE TABLE hack (id INT)")).toBe(true);
+        expect(() => assertSelectOnly("CREATE TABLE hack (id INT)")).toThrow(/Only SELECT/);
     });
 
-    it("should allow SELECT", () => {
-        expect(DANGEROUS_SQL.test("SELECT * FROM users")).toBe(false);
+    it("should reject multi-statement queries (SELECT; DROP)", () => {
+        expect(() => assertSelectOnly("SELECT 1; DROP TABLE users")).toThrow(/Expected exactly 1/);
     });
 
-    it("should allow SELECT with WITH", () => {
-        expect(DANGEROUS_SQL.test("WITH cte AS (SELECT * FROM users) SELECT * FROM cte")).toBe(false);
-    });
-
-    it("should not false-positive on column names containing dangerous words", () => {
-        expect(DANGEROUS_SQL.test("SELECT drop_rate, update_count FROM metrics")).toBe(false);
-    });
-
-    it("should not false-positive on aliases containing dangerous words", () => {
-        expect(DANGEROUS_SQL.test("SELECT t.name FROM users AS t WHERE t.status = 'active'")).toBe(false);
+    it("should reject COPY (by failing to parse)", () => {
+        expect(() => assertSelectOnly("COPY users TO '/tmp/passwords'")).toThrow(/Only SELECT/);
     });
 });
 
