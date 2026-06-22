@@ -20,6 +20,7 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=137",
     "api": "tsx src/api-server.ts",
     "ui:dev": "npm run dev --prefix ui",
     "dev": "npm run setup && concurrently \"npm run api\" \"npm run ui:dev\""
@@ -61,10 +62,12 @@
     "@types/node": "^25.9.1",
     "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.11.0",
+    "@types/supertest": "^7.2.0",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.1",
     "concurrently": "^10.0.3",
     "eslint": "^10.5.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"

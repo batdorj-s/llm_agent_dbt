@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import fs from "fs";
+import crypto from "crypto";
 import dotenv from "dotenv";
 import { buildSemanticGroups, formatSemanticGroups } from "../utils.js";
 import { traceToolCall } from "../observability/tracer.js";
@@ -193,16 +194,23 @@ export async function initDataLake(): Promise<void> {
             const existingUsers = await pool.query("SELECT id FROM users LIMIT 1");
             if (existingUsers.rows.length === 0) {
                 const adminEmail = process.env.ADMIN_EMAIL || "admin@enterprise.ai";
-                const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
                 const adminId = "user-admin-001";
+                const randomPwd = crypto.randomBytes(24).toString("hex");
+                const adminPassword = process.env.ADMIN_PASSWORD || randomPwd;
                 const hashedPwd = hashPassword(adminPassword);
                 await pool.query(
                     `INSERT INTO users (id, email, name, password_hash, role) VALUES ($1, $2, $3, $4, $5)`,
                     [adminId, adminEmail, "Admin", hashedPwd, "admin"]
                 );
-                console.log(`[Data Lake] Default admin user created: ${adminEmail}`);
-                if (!process.env.ADMIN_PASSWORD) {
-                    console.warn("[Data Lake] Using default admin password 'admin123'. Set ADMIN_PASSWORD in .env for production.");
+                if (process.env.ADMIN_PASSWORD) {
+                    console.log(`[Data Lake] Admin user created: ${adminEmail} (password from ADMIN_PASSWORD)`);
+                } else {
+                    console.log(`\n═══════════════════════════════════════════`);
+                    console.log(`  Admin credentials`);
+                    console.log(`  Email:    ${adminEmail}`);
+                    console.log(`  Password: ${adminPassword}`);
+                    console.log(`  (Set ADMIN_PASSWORD in .env to silence)`);
+                    console.log(`═══════════════════════════════════════════\n`);
                 }
             }
 

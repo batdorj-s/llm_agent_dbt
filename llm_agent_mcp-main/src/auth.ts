@@ -149,6 +149,8 @@ export function verifyPassword(password: string, stored: string): boolean {
   const parts = stored.split(":");
   if (parts.length !== 2) return false;
   const [salt, hash] = parts;
-  const derived = crypto.scryptSync(password, salt, HASH_KEY_LEN).toString("hex");
-  return hash === derived;
+  const derived = crypto.scryptSync(password, salt, HASH_KEY_LEN);
+  const derivedHex = derived.toString("hex");
+  if (derivedHex.length !== hash.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(derivedHex), Buffer.from(hash));
 }
