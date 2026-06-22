@@ -37,6 +37,10 @@ server.tool(
   }
 );
 
+// SECURITY: userId from env, NOT per-request authenticated. Assumes stdio transport
+// where 1 process = 1 user (inherent isolation). Before adding SSE/WebSocket transport,
+// per-request userId authentication MUST be implemented — otherwise every client shares
+// the same identity.
 const MCP_USER_ID = process.env.MCP_USER_ID || "system";
 
 server.tool(
