@@ -137,6 +137,13 @@ export async function initDataLake(): Promise<void> {
                 console.warn("[Data Lake] ALTER TABLE or legacy migration note:", (alterErr as Error).message);
             }
 
+            try {
+                await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_lake_catalog_created_at ON data_lake_catalog (created_at DESC)`);
+                await pool.query(`CREATE INDEX IF NOT EXISTS idx_uploaded_files_created_at ON uploaded_files (created_at DESC)`);
+            } catch (indexErr) {
+                console.warn("[Data Lake] Index creation error (non-fatal):", (indexErr as Error).message);
+            }
+
             await pool.query(`
                 CREATE TABLE IF NOT EXISTS kpi_targets (
                     metric_name TEXT PRIMARY KEY,
@@ -200,9 +207,10 @@ export async function ensureUploadedFilesSynced(): Promise<void> {
     if (!_pgAvailable || !pool) return;
     try {
         await pool.query(`
-            INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at)
-            SELECT table_name, table_name, 'dataset', description, '{}'::jsonb, created_at
+            INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility)
+            SELECT table_name, table_name, 'dataset', description, '{}'::jsonb, created_at, owner_id, visibility
             FROM data_lake_catalog
+            WHERE owner_id IS NOT NULL
             ON CONFLICT (id) DO NOTHING
         `);
         await pool.query(`
@@ -210,7 +218,14 @@ export async function ensureUploadedFilesSynced(): Promise<void> {
             SET owner_id = dlc.owner_id,
                 visibility = dlc.visibility
             FROM data_lake_catalog dlc
-            WHERE uf.id = dlc.table_name AND uf.type = 'dataset'
+            WHERE uf.id = dlc.table_name
+              AND uf.type = 'dataset'
+              AND dlc.owner_id IS NOT NULL
+        `);
+        await pool.query(`
+            DELETE FROM uploaded_files
+            WHERE type = 'dataset'
+              AND owner_id IS NULL
         `);
     } catch (err) {
         console.warn("[Data Lake] ensureUploadedFilesSynced failed:", (err as Error).message);

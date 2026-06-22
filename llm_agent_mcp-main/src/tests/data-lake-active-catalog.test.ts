@@ -31,32 +31,44 @@ describe("Data Lake — Active Catalog Entry", () => {
         } finally {
             for (const id of savedIds) {
                 await getPool().query(
-                    `INSERT INTO uploaded_files (id, filename, type, description) VALUES ($1, $1, 'dataset', 'restored') ON CONFLICT DO NOTHING`,
+                    `INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility)
+                     VALUES ($1, $1, 'dataset', 'restored', 'system', 'shared')
+                     ON CONFLICT (id) DO NOTHING`,
                     [id]
                 );
             }
-            await ensureUploadedFilesSynced();
         }
     });
 
-    it("FIX-SCENARIO: when uploaded_files is populated, returns explicit entry (not catalog[0])", async () => {
+    it("FIX-SCENARIO: user-uploaded table determines active entry (not catalog[0])", async () => {
         if (!isPgAvailable()) return;
 
-        await ensureUploadedFilesSynced();
-        const catalog = await getCatalog("system");
-        const activeEntry = await getActiveCatalogEntry("system");
+        const testName = `_test_fix_scenario_${Date.now()}`;
+        const userId = "fix_scenario_user";
+        try {
+            await getPool().query(`CREATE TABLE IF NOT EXISTS "${testName}" (id INT)`);
+            await getPool().query(
+                `INSERT INTO data_lake_catalog (table_name, created_by, owner_id, visibility, columns_info, description)
+                 VALUES ($1, $2, $2, 'private', '["id"]', 'fix scenario test')
+                 ON CONFLICT (table_name) DO UPDATE SET owner_id = EXCLUDED.owner_id, visibility = EXCLUDED.visibility`,
+                [testName, userId]
+            );
 
-        expect(activeEntry).not.toBeNull();
+            await ensureUploadedFilesSynced();
 
-        const uploadedFiles = await getPool().query(
-            `SELECT id FROM uploaded_files WHERE type = 'dataset' ORDER BY created_at DESC LIMIT 1`
-        );
-        const mostRecentUploadedId = uploadedFiles.rows[0]?.id;
-        expect(mostRecentUploadedId).toBeTruthy();
-        expect(activeEntry!.table_name).toBe(mostRecentUploadedId);
+            const catalog = await getCatalog(userId);
+            const activeEntry = await getActiveCatalogEntry(userId);
 
-        const isSameAsCatalogFirst = activeEntry!.table_name === catalog[0].table_name;
-        console.log(`[TEST] FIX-SCENARIO: catalog[0]='${catalog[0].table_name}', activeEntry='${activeEntry!.table_name}', sameAsCatalogFirst=${isSameAsCatalogFirst}`);
+            expect(activeEntry).not.toBeNull();
+            expect(activeEntry!.table_name).toBe(testName);
+
+            const isSameAsCatalogFirst = activeEntry!.table_name === catalog[0].table_name;
+            console.log(`[TEST] FIX-SCENARIO: catalog[0]='${catalog[0].table_name}', activeEntry='${activeEntry!.table_name}', sameAsCatalogFirst=${isSameAsCatalogFirst}`);
+        } finally {
+            await getPool().query(`DROP TABLE IF EXISTS "${testName}" CASCADE`).catch(() => {});
+            await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [testName]).catch(() => {});
+            await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [testName]).catch(() => {});
+        }
     });
 
     it("NEW TABLE: uploading new table updates active entry (explicit tracking)", async () => {
