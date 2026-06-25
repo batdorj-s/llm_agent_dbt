@@ -223,30 +223,6 @@ app.get("/api/kpi-history", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Admin: E2B Python Sandbox Console Execution
-// ─────────────────────────────────────────────────────────────
-app.post("/api/admin/run-code", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-  if (!roleAtLeast(auth.payload.role, "admin")) {
-    return res.status(403).json({ error: "Access denied. Admins only." });
-  }
-
-  const { code } = req.body;
-  if (!code) return res.status(400).json({ error: "code required" });
-
-  try {
-    const { runPythonCode } = await import("./sandbox.js");
-    const output = await runPythonCode(code);
-    res.json({ output });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────
 // File Management
 // ─────────────────────────────────────────────────────────────
 app.get("/api/admin/files", async (req, res) => {

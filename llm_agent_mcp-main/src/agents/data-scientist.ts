@@ -95,6 +95,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     let sampleData: any[] = [];
     let exportCsvSql: string | null = null;
 
+    let forecastDimension: string | null = null;
     try {
         if (isForecast && dateCol) {
             const aggCol = numericCols[0] || columnList[0];
@@ -103,7 +104,22 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
             const dateCast = dateInfo?.sqlCast ?? (dateColType === "INT"
                 ? `'1899-12-30'::date + "${dateCol}"::integer`
                 : `CAST("${dateCol}" AS DATE)`);
-            const forecastSql = `SELECT ${dateCast} AS period, SUM(COALESCE("${aggCol}", 0)) AS value FROM "${tableName}" GROUP BY period ORDER BY period`;
+
+            // Detect if query asks for per-dimension forecast
+            // Negative lookahead prevents false positives from longer words
+            // e.g. "бүрээр" in "бүрээрээ" or "салбараар" in "салбараараа"
+            const isPerDimension = /тус\s*бүр|бүрээр(?![а-яөүё])|бүтээгдэхүүнээр(?![а-яөүё])|region.?аар|категори.?аар|салбараар(?![а-яөүё])|per\s+(product|region|category)|each\s+(product|region|category)/i.test(lowerQuery);
+            let dimensionCol: string | null = null;
+            if (isPerDimension && categoryCols.length > 0) {
+                dimensionCol = categoryCols[0];
+                forecastDimension = dimensionCol;
+                console.log(`[DataScientist] Per-dimension forecast using: ${dimensionCol}`);
+            }
+
+            const dimensionSelect = dimensionCol ? `, "${dimensionCol}" AS dimension` : "";
+            const dimensionGroupBy = dimensionCol ? `, "${dimensionCol}"` : "";
+            const dimensionOrderBy = dimensionCol ? `, "${dimensionCol}"` : "";
+            const forecastSql = `SELECT ${dateCast} AS period${dimensionSelect}, SUM(COALESCE("${aggCol}", 0)) AS value FROM "${tableName}" GROUP BY period${dimensionGroupBy} ORDER BY period${dimensionOrderBy}`;
             console.log(`[DataScientist] Forecast mode: ${dateCol} type=${dateColType}, casting as ${dateCast}`);
             const aggResult = await handleExecuteSql({ query: forecastSql, userId });
             if (aggResult.ok && aggResult.results) {
@@ -129,7 +145,8 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     const pythonSystemPrompt = buildPythonPrompt(
         analysisType, tableName, columnList,
         dateCol, dateColType, numericCols, categoryCols,
-        schemaDef, sampleData, ragContext, statsSummary
+        schemaDef, sampleData, ragContext, statsSummary,
+        forecastDimension
     );
 
     try {
@@ -334,12 +351,14 @@ function buildPythonPrompt(
     analysisType: string, tableName: string, columns: string[],
     dateCol: string | null, dateColType: string | null, numericCols: string[], categoryCols: string[],
     schemaDef: string, sampleData: any[],
-    ragContext: string = "", statsSummary: string = ""
+    ragContext: string = "", statsSummary: string = "",
+    forecastDimension: string | null = null
 ): string {
     const totalRows = sampleData.length;
     const sampleJson = JSON.stringify(sampleData.slice(0, 5), null, 2);
+    const dimensionText = forecastDimension ? `, dimension: "${forecastDimension}"` : "";
     const dataSource = analysisType === "forecast" && totalRows <= 500
-        ? `SQL-aggregated (${totalRows} rows, grouped by ${dateCol || "period"}) — full dataset used`
+        ? `SQL-aggregated (${totalRows} rows, grouped by ${dateCol || "period"}${dimensionText}) — full dataset used`
         : `Sampled ${totalRows} rows from the full table`;
     const dateHint = dateCol
         ? `- Date column: "${dateCol}" (PostgreSQL type: ${dateColType || "unknown"}, use for time-series if applicable)`
@@ -354,12 +373,17 @@ function buildPythonPrompt(
     };
     const chartInfo = chartRules[analysisType] || chartRules.general;
 
+    const dimensionHint = forecastDimension
+        ? `- Data includes dimension "${forecastDimension}" — generate a SEPARATE forecast for each unique value in this dimension\n- Group the data by "${forecastDimension}" first, then forecast each group independently\n- Print forecasted values per dimension clearly`
+        : "";
+
     const analysisHints: Record<string, string> = {
         forecast: `## Time-Series Forecasting
 - Use pandas + statsmodels (SARIMAX) or sklearn
 - If "${dateCol}" exists, parse it as datetime, set as index, and forecast the next ${Math.max(3, Math.min(12, columns.length))} periods
 - If no date column, try to infer row order as time
-- Print the forecasted values clearly`,
+- Print the forecasted values clearly
+${dimensionHint}`,
         cluster: `## Clustering Analysis
 - Use sklearn KMeans
 - Use ONLY numeric columns: ${numericCols.join(", ") || "auto-detect"}
@@ -463,7 +487,7 @@ plt.close()
 \`\`\`
 
 ### Chart Guidelines by Type
-- **forecast**: Line chart. Plot historical values as solid line, forecasted values as dashed line with confidence interval shading.
+- **forecast**: Line chart. Plot historical values as solid line, forecasted values as dashed line with confidence interval shading.${forecastDimension ? "\n- Since data includes dimension \"" + forecastDimension + "\", use a separate line (or subplot) for each unique value. Add a legend showing which line belongs to which category." : ""}
 - **cluster**: Bar chart. Show cluster sizes (count) as bars, optionally add a second chart showing average values per cluster.
 - **correlation**: Scatter plot. Use sns.regplot() to add regression line. Add correlation coefficient in title.
 - **regression**: Scatter plot of predicted vs actual. Include R² in title. Add residual plot as second subplot.

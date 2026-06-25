@@ -83,6 +83,49 @@ describe("buildFallbackQuery — #4 hardcoded incomeCol fix", () => {
     });
 });
 
+describe("inferTopLimit / isSingleBestQuery — #8 intent mapping", () => {
+    it("хамгийн их → LIMIT 1 (single best)", async () => {
+        const sql = await buildDeterministicTechSql("хамгийн их борлуулалттай бүтээгдэхүүн", SUPERSTORE_SALES);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("LIMIT 1");
+    });
+
+    it("хамгийн өндөр → LIMIT 1", async () => {
+        const sql = await buildDeterministicTechSql("хамгийн өндөр борлуулалттай бүтээгдэхүүн", SUPERSTORE_SALES);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("LIMIT 1");
+    });
+
+    it("top 5 → LIMIT 5 (unchanged)", async () => {
+        const sql = await buildDeterministicTechSql("top 5 products by sales", SUPERSTORE_SALES);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("LIMIT 5");
+    });
+
+    it("эхний 3 → LIMIT 3 (variable number)", async () => {
+        const sql = await buildDeterministicTechSql("эхний 3 борлуулалттай бүтээгдэхүүн", SUPERSTORE_SALES);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("LIMIT 3");
+    });
+
+    it("top five → LIMIT 5 (word-form)", async () => {
+        const sql = await buildDeterministicTechSql("top five products by sales", SUPERSTORE_SALES);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("LIMIT 5");
+    });
+
+    it("хамгийн ихэвчлэн should NOT match (substring prevention)", async () => {
+        // "ихэвчлэн" contains "их" but is NOT the same as "хамгийн их"
+        const sql = await buildDeterministicTechSql("хамгийн ихэвчлэн борлуулалт", SUPERSTORE_SALES);
+        expect(sql).toBeNull();
+    });
+
+    it("top fifteen should NOT match wordMap 'five' (fifteen → five substring)", async () => {
+        const sql = await buildDeterministicTechSql("top fifteen products by sales", SUPERSTORE_SALES);
+        expect(sql).toBeNull(); // no match for "top fifteen" in our wordMap
+    });
+});
+
 describe("buildDeterministicTechSql — column synonym mapping", () => {
     it("FIX-SCENARIO: s table has no 'sales' column (gross_income is 'income'), top-5 query returns null → falls to LLM", async () => {
         const sql = await buildDeterministicTechSql("top 5 products by sales", S_TABLE);

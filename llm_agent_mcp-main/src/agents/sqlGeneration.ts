@@ -44,6 +44,34 @@ export function findColumn(columns: string[], patterns: RegExp[]): string | null
     return null;
 }
 
+function inferTopLimit(query: string): number | null {
+    const lower = query.toLowerCase();
+
+    // Explicit top N: "эхний 3", "top 10", "first 5"
+    const topN = lower.match(/(?:эхний|top|first)\s*(\d+)/);
+    if (topN) return parseInt(topN[1], 10);
+
+    // Word-form number: "top five", "first five", "эхний тав"
+    // Require the number word to directly follow the qualifier to avoid
+    // false positives like "top fifteen" (where "five" is inside "fifteen").
+    const wordMap: Record<string, number> = { five: 5, ten: 10, three: 3, тав: 5, арав: 10, гурав: 3 };
+    for (const [word, num] of Object.entries(wordMap)) {
+        const pattern = new RegExp(`(?:top|first|эхний)\\s+${word}(?![а-яөүёa-z0-9])`, 'i');
+        if (pattern.test(lower)) return num;
+    }
+
+    return null;
+}
+
+function isSingleBestQuery(query: string): boolean {
+    const lower = query.toLowerCase();
+    // "хамгийн их/өндөр/том/сайн" without explicit count → single best item.
+    // Negative lookahead prevents false positives like "хамгийн ихэвчлэн" or "ихэнхдээ"
+    // Cyrillic/Latin letters after the word would continue the word, so we reject those
+    if (/хамгийн\s+(их|өндөр|том|сайн)(?![а-яөүёa-z0-9])/i.test(lower)) return true;
+    return false;
+}
+
 export async function buildDeterministicTechSql(query: string, entry?: DataLakeCatalogEntry | null): Promise<string | null> {
     const resolvedEntry = entry ?? null;
     if (!resolvedEntry) return null;
@@ -55,8 +83,10 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
     const itemColumn = findConceptColumn(columns, "product", tableName);
     const salesColumn = findConceptColumn(columns, "sales", tableName);
 
-    if (itemColumn && salesColumn && (lowerQuery.includes("top 5") || lowerQuery.includes("top five") || lowerQuery.includes("first 5") || lowerQuery.includes("эхний 5") || lowerQuery.includes("хамгийн их"))) {
-        return `
+    if (itemColumn && salesColumn) {
+        const limit = inferTopLimit(lowerQuery) ?? (isSingleBestQuery(lowerQuery) ? 1 : null);
+        if (limit !== null) {
+            return `
             WITH item_revenue AS (
                 SELECT
                     "${itemColumn}" AS item_name,
@@ -67,8 +97,9 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
             SELECT item_name, total_revenue
             FROM item_revenue
             ORDER BY total_revenue DESC
-            LIMIT 5;
-        `.trim();
+            LIMIT ${limit};
+            `.trim();
+        }
     }
 
     if (lowerQuery.includes("count") || lowerQuery.includes("how many") || lowerQuery.includes("нийт хэдэн") || lowerQuery.includes("гүйлгээ") || lowerQuery.includes("хэдэн") || lowerQuery.includes("хэд")) {
@@ -86,7 +117,7 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
 
 export function formatDeterministicTechResponse(query: string, sql: string, results: any[]): string {
     const lowerQuery = query.toLowerCase();
-    if (lowerQuery.includes("top 5") || lowerQuery.includes("top five") || lowerQuery.includes("first 5") || lowerQuery.includes("эхний 5") || lowerQuery.includes("хамгийн их")) {
+    if (inferTopLimit(lowerQuery) !== null || isSingleBestQuery(lowerQuery)) {
         const lines = results.map((row, index) => {
             const itemName = row.item_name ?? row.item_purchased ?? row.product ?? "Unknown";
             const revenue = Number(row.total_revenue ?? row.revenue ?? 0);
