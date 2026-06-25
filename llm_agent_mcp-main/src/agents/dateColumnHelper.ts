@@ -50,36 +50,35 @@ export function detectDateColumn(
     const isTextLike = /^(text|varchar|character varying|char|character)$/i.test(columnType);
 
     if (isTextLike) {
-        const sample = options?.sampleValues?.find((v) => v && v.trim().length > 0);
-        if (sample) {
-            const trimmed = sample.trim();
-            if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-                return {
-                    sqlCast: `CAST("${columnName}" AS DATE)`,
-                    detectedAs: "text-iso",
-                };
+        const samples = options?.sampleValues?.filter((v) => v && v.trim().length > 0) || [];
+        if (samples.length > 0) {
+            const first = samples[0].trim();
+            let matchFn: ((s: string) => boolean) | null = null;
+            let format: DateColumnInfo | null = null;
+
+            if (/^\d{4}-\d{2}-\d{2}/.test(first)) {
+                matchFn = (s) => /^\d{4}-\d{2}-\d{2}/.test(s);
+                format = { sqlCast: `CAST("${columnName}" AS DATE)`, detectedAs: "text-iso" };
+            } else if (/^\d{2}[\/-]\d{2}[\/-]\d{4}$/.test(first)) {
+                const sep = first.includes("/") ? "/" : "-";
+                matchFn = (s) => /^\d{2}[\/-]\d{2}[\/-]\d{4}$/.test(s);
+                format = { sqlCast: `TO_DATE("${columnName}", 'MM${sep}DD${sep}YYYY')`, detectedAs: "text-us" };
+            } else if (/^\d{2}\.\d{2}\.\d{4}$/.test(first)) {
+                matchFn = (s) => /^\d{2}\.\d{2}\.\d{4}$/.test(s);
+                format = { sqlCast: `TO_DATE("${columnName}", 'DD.MM.YYYY')`, detectedAs: "text-eu" };
+            } else if (/^\d{4}\/\d{2}\/\d{2}/.test(first)) {
+                matchFn = (s) => /^\d{4}\/\d{2}\/\d{2}/.test(s);
+                format = { sqlCast: `TO_DATE("${columnName}", 'YYYY/MM/DD')`, detectedAs: "text-iso" };
             }
-            if (/^\d{2}[\/-]\d{2}[\/-]\d{4}$/.test(trimmed)) {
-                const sep = trimmed.includes("/") ? "/" : "-";
-                return {
-                    sqlCast: `TO_DATE("${columnName}", 'MM${sep}DD${sep}YYYY')`,
-                    detectedAs: "text-us",
-                };
-            }
-            if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
-                return {
-                    sqlCast: `TO_DATE("${columnName}", 'DD.MM.YYYY')`,
-                    detectedAs: "text-eu",
-                };
-            }
-            if (/^\d{4}\/\d{2}\/\d{2}/.test(trimmed)) {
-                return {
-                    sqlCast: `TO_DATE("${columnName}", 'YYYY/MM/DD')`,
-                    detectedAs: "text-iso",
-                };
+
+            if (format && matchFn) {
+                if (samples.every((s) => matchFn(s.trim()))) {
+                    return format;
+                }
+                return null;
             }
         }
-        if (/date|time|month|year|timestamp|day|order_date|invoice/i.test(columnName)) {
+        if (/\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice/i.test(columnName)) {
             return {
                 sqlCast: `CAST("${columnName}" AS DATE)`,
                 detectedAs: "text-iso",
@@ -88,7 +87,7 @@ export function detectDateColumn(
         return null;
     }
 
-    if (/date|time|month|year|timestamp|day|order_date|invoice/i.test(columnName)) {
+    if (/\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice/i.test(columnName)) {
         return {
             sqlCast: `CAST("${columnName}" AS DATE)`,
             detectedAs: "name-heuristic",

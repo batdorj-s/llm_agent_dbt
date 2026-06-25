@@ -125,6 +125,166 @@ describe("detectDateColumn — synthetic column tests", () => {
         });
         expect(result).toBeNull();
     });
+
+    it("INT gap value 5000 (above year, below serial): should reject", () => {
+        const result = detectDateColumn("customer_id", "INT", {
+            min: "5000", max: "5000",
+        });
+        expect(result).toBeNull();
+    });
+
+    it("INT gap value 15000 (above year, below serial): should reject", () => {
+        const result = detectDateColumn("order_code", "INT", {
+            min: "15000", max: "15000",
+        });
+        expect(result).toBeNull();
+    });
+
+    it("INT gap range 101-200 (above ID, below year): should reject", () => {
+        const result = detectDateColumn("dept_code", "INT", {
+            min: "101", max: "200",
+        });
+        expect(result).toBeNull();
+    });
+
+    it("INT gap range 2101-2200 (above year, below serial): should reject", () => {
+        const result = detectDateColumn("fiscal_code", "INT", {
+            min: "2101", max: "2200",
+        });
+        expect(result).toBeNull();
+    });
+
+    it("INT year lower boundary inclusive: 1900 is year", () => {
+        const result = detectDateColumn("year_col", "INT", {
+            min: "1900", max: "1900",
+        });
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("int-year");
+    });
+
+    it("INT just below year: 1899 is not year (rejected as ID range)", () => {
+        const result = detectDateColumn("year_col", "INT", {
+            min: "1899", max: "1899",
+        });
+        expect(result).toBeNull();
+    });
+
+    it("INT year upper boundary inclusive: 2100 is year", () => {
+        const result = detectDateColumn("year_col", "INT", {
+            min: "2000", max: "2100",
+        });
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("int-year");
+    });
+
+    it("INT just above year: 2101 is not year (rejected as gap)", () => {
+        const result = detectDateColumn("year_col", "INT", {
+            min: "2000", max: "2101",
+        });
+        expect(result).toBeNull();
+    });
+
+    it("INT serial lower boundary inclusive: 20000 is serial", () => {
+        const result = detectDateColumn("serial_col", "INT", {
+            min: "20000", max: "20000",
+        });
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("int-serial");
+    });
+
+    it("INT just below serial: 19999 is not serial (rejected as ID range)", () => {
+        const result = detectDateColumn("serial_col", "INT", {
+            min: "19999", max: "19999",
+        });
+        expect(result).toBeNull();
+    });
+
+    it("INT serial upper boundary inclusive: 50000 is serial", () => {
+        const result = detectDateColumn("serial_col", "INT", {
+            min: "40000", max: "50000",
+        });
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("int-serial");
+    });
+
+    it("INT just above serial: 50001 is not serial (rejected as gap)", () => {
+        const result = detectDateColumn("serial_col", "INT", {
+            min: "40000", max: "50001",
+        });
+        expect(result).toBeNull();
+    });
+
+    it("TEXT mixed format samples (ISO + US): should reject", () => {
+        const result = detectDateColumn("mixed_date", "text", {
+            sampleValues: ["2024-01-15", "01/15/2024"],
+        });
+        expect(result).toBeNull();
+    });
+
+    it("TEXT mixed format with majority ISO: should reject (inconsistency)", () => {
+        const result = detectDateColumn("mixed_date", "text", {
+            sampleValues: ["2024-01-15", "2024-02-20", "03/22/2024"],
+        });
+        expect(result).toBeNull();
+    });
+
+    it("TEXT all samples ISO: accepts with consistent ISO format", () => {
+        const result = detectDateColumn("order_date", "text", {
+            sampleValues: ["2024-01-15", "2024-02-20", "2024-03-25"],
+        });
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("text-iso");
+    });
+
+    it("Name heuristic: 'validated' should NOT match (false-positive prevention)", () => {
+        const result = detectDateColumn("validated", "unknown");
+        expect(result).toBeNull();
+    });
+
+    it("Name heuristic: 'monthly_sales' should NOT match (false-positive prevention)", () => {
+        const result = detectDateColumn("monthly_sales", "unknown");
+        expect(result).toBeNull();
+    });
+
+    it("Name heuristic: 'updated_at' should match (_at suffix)", () => {
+        const result = detectDateColumn("updated_at", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+
+    it("Name heuristic: 'created_date' should match (_date suffix)", () => {
+        const result = detectDateColumn("created_date", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+
+    it("Name heuristic: 'inserted_timestamp' should match (_timestamp suffix)", () => {
+        const result = detectDateColumn("inserted_timestamp", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+
+    it("Name heuristic: 'start_time' should match (_time suffix)", () => {
+        const result = detectDateColumn("start_time", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+
+    it("Name heuristic: 'invoice' should match", () => {
+        const result = detectDateColumn("invoice", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+
+    it("Name heuristic: 'today' should NOT match (false-positive prevention)", () => {
+        const result = detectDateColumn("today", "unknown");
+        expect(result).toBeNull();
+    });
+
+    it("Name heuristic: 'birthday' should NOT match (false-positive prevention)", () => {
+        const result = detectDateColumn("birthday", "unknown");
+        expect(result).toBeNull();
+    });
 });
 
 describe("extractProfileFromSchemaDef", () => {
