@@ -1,5 +1,5 @@
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
-import { safeJsonParse } from "../utils.js";
+import { safeJsonParse, queryMentionsTable } from "../utils.js";
 import type { DataLakeCatalogEntry } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 
@@ -16,7 +16,7 @@ export async function buildActiveSchemaContext(query: string, userId: string): P
     if (!catalog || catalog.length === 0) return "(catalog unavailable)";
 
     const mentioned = catalog.find((e: any) =>
-        query.toLowerCase().includes(e.table_name.toLowerCase())
+        queryMentionsTable(query, e.table_name)
     );
     if (mentioned) return await buildSchemaDefinition(mentioned);
 
@@ -149,9 +149,10 @@ export function buildFallbackQuery(query: string, entry?: any): string | null {
     if (columns.length === 0) return null;
 
     const lowerQuery = query.toLowerCase();
-    const hasGrossIncome = columns.some(c => /gross_income/i.test(c));
-    const hasIncome = columns.some(c => /income/i.test(c));
-    const incomeCol = hasGrossIncome ? "gross_income" : (hasIncome ? "income" : null);
+    const incomeCol = findConceptColumn(columns, "income", tableName)
+        || columns.find(c => /gross_income/i.test(c))
+        || columns.find(c => /income/i.test(c))
+        || null;
 
     const isOutlierQuery = /outlier|гажуудал|хэт өндөр|хэт бага|аномали|anomaly|етгээд|стандарт хазайлт|standard deviation|z-score|3σ/i.test(lowerQuery);
     const isIncomeQuery = /gross income|нийт борлуулалт|income|орлого|ашиг/i.test(lowerQuery);

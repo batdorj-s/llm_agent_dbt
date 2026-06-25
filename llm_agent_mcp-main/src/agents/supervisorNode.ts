@@ -2,6 +2,7 @@ import { createLLM } from "../llm-provider.js";
 import { getCatalog, getActiveCatalogEntry } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
 import { trimMessages, withTimeout, type AgentState, type NextAgent } from "./agentState.js";
+import { queryMentionsTable } from "../utils.js";
 import { z } from "zod";
 
 const RouteSchema = z.object({
@@ -31,7 +32,7 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
 
     const lowerMessage = lastMessage.toLowerCase();
     const catalog = await getCatalog(userId);
-    const mentionsKnownTable = catalog.some((row: any) => lowerMessage.includes(row.table_name.toLowerCase()));
+    const mentionsKnownTable = catalog.some((row: any) => queryMentionsTable(lastMessage, row.table_name));
 
     const techSignals = [
         "sql", "database", "table", "tables", "column", "columns", "хүснэгт", "багана",

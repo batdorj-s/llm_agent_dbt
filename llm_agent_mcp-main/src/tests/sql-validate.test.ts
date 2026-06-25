@@ -75,6 +75,71 @@ describe("SELECT query detection", () => {
     });
 });
 
+describe("CTE name resolution — #5 AST-based getCteNames", () => {
+    function entry(tableName: string, extraColumns?: string[]): DataLakeCatalogEntry {
+        return {
+            id: 1,
+            table_name: tableName,
+            created_by: "test",
+            owner_id: "test",
+            visibility: "shared",
+            created_at: "2026-01-01",
+            columns_info: JSON.stringify(extraColumns ?? ["id", "name", "secret"]),
+            description: null,
+        };
+    }
+
+    it("WITH cte + SELECT: CTE name not looked up as real table", () => {
+        const catalog = [entry("users")];
+        expect(() => validateSqlColumnsAgainstCatalog(
+            "WITH cte AS (SELECT id FROM users) SELECT * FROM cte",
+            catalog,
+        )).not.toThrow();
+    });
+
+    it("WITH cte + SELECT with column ref: outer query references CTE, not underlying table", () => {
+        const catalog = [entry("users")];
+        expect(() => validateSqlColumnsAgainstCatalog(
+            "WITH cte AS (SELECT id, name FROM users) SELECT id FROM cte",
+            catalog,
+        )).not.toThrow();
+    });
+
+    it("SELECT without CTE: real table name still validated", () => {
+        const catalog = [entry("users")];
+        expect(() => validateSqlColumnsAgainstCatalog(
+            "SELECT * FROM users",
+            catalog,
+        )).not.toThrow();
+    });
+
+    it("SELECT referencing non-existent table throws", () => {
+        const catalog = [entry("users")];
+        expect(() => validateSqlColumnsAgainstCatalog(
+            "SELECT * FROM nonexistent",
+            catalog,
+        )).toThrow(/Хүснэгт/);
+    });
+
+    it("multiple CTEs: all names extracted, none consulted as real tables", () => {
+        const catalog = [entry("users")];
+        expect(() => validateSqlColumnsAgainstCatalog(
+            "WITH a AS (SELECT id FROM users), b AS (SELECT name FROM users) SELECT a.id, b.name FROM a JOIN b ON a.id = b.id",
+            catalog,
+        )).not.toThrow();
+    });
+
+    it("CTE name shadowing real table: CTE name takes precedence, no lookup for shadowed table", () => {
+        const catalog = [entry("users", ["id", "secret"]), entry("cte", ["x", "y"])];
+        // Even though "cte" exists as a real table in catalog, the CTE definition
+        // takes precedence, so it should not be looked up as a real table
+        expect(() => validateSqlColumnsAgainstCatalog(
+            "WITH cte AS (SELECT id FROM users) SELECT * FROM cte",
+            catalog,
+        )).not.toThrow();
+    });
+});
+
 describe("SQL tenant isolation validation", () => {
     function entry(tableName: string, ownerId: string): DataLakeCatalogEntry {
         return {

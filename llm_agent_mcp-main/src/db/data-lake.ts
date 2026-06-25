@@ -432,11 +432,27 @@ export async function buildSchemaDefinition(entries: DataLakeCatalogEntry | Data
 
 function getCteNames(query: string): Set<string> {
     const cteNames = new Set<string>();
-    const trimmed = query.trimStart();
-    if (!/^with\b/i.test(trimmed)) return cteNames;
-    const ctePattern = /([a-zA-Z0-9_]+)\s+as\s*\(/gi;
-    let match;
-    while ((match = ctePattern.exec(query)) !== null) cteNames.add(match[1].toLowerCase());
+    try {
+        const statements = parseSql(query);
+        for (const stmt of statements) {
+            if (stmt.type === "with") {
+                const bind = (stmt as any).bind;
+                if (Array.isArray(bind)) {
+                    for (const cte of bind) {
+                        if (cte.alias?.name) {
+                            cteNames.add(cte.alias.name.toLowerCase());
+                        }
+                    }
+                }
+            }
+        }
+    } catch {
+        const trimmed = query.trimStart();
+        if (!/^with\b/i.test(trimmed)) return cteNames;
+        const ctePattern = /([a-zA-Z0-9_]+)\s+as\s*\(/gi;
+        let match;
+        while ((match = ctePattern.exec(query)) !== null) cteNames.add(match[1].toLowerCase());
+    }
     return cteNames;
 }
 

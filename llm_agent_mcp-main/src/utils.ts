@@ -94,3 +94,12 @@ export function formatSemanticGroups(groups: Record<string, string[]>): string {
     if (entries.length === 0) return "No semantic groups detected.";
     return entries.map(([group, cols]) => `- ${group}: ${cols.join(", ")}`).join("\n");
 }
+
+function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function queryMentionsTable(query: string, tableName: string): boolean {
+    const pattern = `\\b${escapeRegex(tableName.toLowerCase())}\\b`;
+    return new RegExp(pattern).test(query.toLowerCase());
+}

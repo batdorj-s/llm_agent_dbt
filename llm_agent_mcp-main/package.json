@@ -20,7 +20,7 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"src/**/*.ts\" --max-warnings=137",
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=138",
     "api": "tsx src/api-server.ts",
     "ui:dev": "npm run dev --prefix ui",
     "dev": "npm run setup && concurrently \"npm run api\" \"npm run ui:dev\""

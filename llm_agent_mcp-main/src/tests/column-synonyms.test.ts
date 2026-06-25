@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDeterministicTechSql } from "../agents/sqlGeneration.js";
+import { buildDeterministicTechSql, buildFallbackQuery } from "../agents/sqlGeneration.js";
 import { findConceptColumn } from "../agents/columnSynonyms.js";
 
 function makeEntry(tableName: string, columns: string[]) {
@@ -28,13 +28,50 @@ const RETAIL_SALES = makeEntry("retail_sales", [
     "transaction_id","date","customer_id","product_category","amount","quantity","payment_method",
 ]);
 
-describe("buildDeterministicTechSql — column synonym mapping", () => {
-    it("BUG-SCENARIO: returns SQL for s table (top 5 products by sales)", async () => {
-        const sql = await buildDeterministicTechSql("top 5 products by sales", S_TABLE);
+const SYNTHETIC_INCOME = makeEntry("synthetic_income", [
+    "id", "gross_income_mnt", "other_col",
+]);
 
+describe("buildFallbackQuery — #4 hardcoded incomeCol fix", () => {
+    it("BUG-SCENARIO: old code hardcodes 'gross_income' when actual column is 'gross_income_mnt'", () => {
+        const sql = buildFallbackQuery("show me gross income", SYNTHETIC_INCOME);
+        expect(sql).not.toBeNull();
+
+        // Old code would produce: WHERE "gross_income" > ... (hits PG error)
+        // New code should use actual column name
+        expect(sql).toContain("gross_income_mnt");
+        expect(sql).not.toContain('"gross_income"'); // not the bare hardcoded name
+    });
+
+    it("FIX-SCENARIO: standard 'gross_income' column still works", () => {
+        const sql = buildFallbackQuery("gross income analysis", S_TABLE);
         expect(sql).not.toBeNull();
         expect(sql).toContain("gross_income");
-        expect(sql).toContain("type");
+    });
+
+    it("FIX-SCENARIO: 'income' column also matched as fallback", () => {
+        const entry = makeEntry("test_table", ["id", "net_income", "name"]);
+        const sql = buildFallbackQuery("show income", entry);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("net_income");
+    });
+
+    it("FIX-SCENARIO: no income column → no income-specific SQL, generic fallback instead", () => {
+        const entry = makeEntry("test_table", ["id", "name"]);
+        const sql = buildFallbackQuery("show income", entry);
+        expect(sql).not.toBeNull();
+        expect(sql).not.toContain("income"); // no income-specific aggregation
+        expect(sql).toContain("LIMIT 10");   // generic fallback
+    });
+});
+
+describe("buildDeterministicTechSql — column synonym mapping", () => {
+    it("FIX-SCENARIO: s table has no 'sales' column (gross_income is 'income'), top-5 query returns null → falls to LLM", async () => {
+        const sql = await buildDeterministicTechSql("top 5 products by sales", S_TABLE);
+
+        // gross_income is now an 'income' column, not 'sales' — so deterministic path returns null
+        // Agent will fall back to LLM-generated SQL, which can handle the column mapping
+        expect(sql).toBeNull();
     });
 
     it("FIX-SCENARIO: still returns SQL for superstore_sales (top 5 category by sales)", async () => {
@@ -72,13 +109,16 @@ describe("buildDeterministicTechSql — column synonym mapping", () => {
         expect(findConceptColumn(cols, "product")).toBe("product_name");
     });
 
-    it("COLLISION: same column matches both sales and product — prefers unambiguous match", () => {
+    it("COLLISION: sales and income are now separate concepts — gross_income matches income, not sales", () => {
         const cols = ["id", "sales_category", "gross_income", "item_name"];
         const salesCol = findConceptColumn(cols, "sales");
         const productCol = findConceptColumn(cols, "product");
+        const incomeCol = findConceptColumn(cols, "income");
 
+        // gross_income now belongs to "income" concept, not "sales"
+        expect(incomeCol).toBe("gross_income");
+        expect(salesCol).not.toBe("gross_income");
         expect(salesCol).not.toBe(productCol);
-        expect(salesCol).toBe("gross_income");
         expect(productCol).toBe("item_name");
     });
 

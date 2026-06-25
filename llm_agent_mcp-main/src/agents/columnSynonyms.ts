@@ -29,7 +29,7 @@ export const GLOBAL_CONCEPTS: ColumnConcept[] = [
     {
         concept: "sales",
         patterns: [
-            /sales/i, /revenue/i, /gross_income/i, /income/i,
+            /sales/i, /revenue/i,
             /amount/i, /purchase_amount/i, /total_amount/i, /profit/i,
         ],
     },
@@ -47,6 +47,12 @@ export const GLOBAL_CONCEPTS: ColumnConcept[] = [
     {
         concept: "quantity",
         patterns: [/quantity/i, /qty/i],
+    },
+    {
+        concept: "income",
+        patterns: [
+            /gross_income/i, /income/i,
+        ],
     },
 ];
 
