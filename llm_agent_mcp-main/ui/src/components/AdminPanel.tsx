@@ -6,9 +6,6 @@ import { UploadedFile } from "./types";
 
 interface AdminPanelProps {
   user: { email: string; role: string } | null;
-  adminCode: string;
-  adminCodeOutput: string;
-  isAdminRunningCode: boolean;
   adjustMetric: "sales" | "users" | "churn_rate";
   newTargetValue: number;
   isUpdatingTarget: boolean;
@@ -28,8 +25,6 @@ interface AdminPanelProps {
   isUploadingDoc: boolean;
   docUploadMessage: string | null;
   uploadedFiles: UploadedFile[];
-  onAdminCodeChange: (val: string) => void;
-  onRunAdminCode: () => void;
   onAdjustMetricChange: (val: "sales" | "users" | "churn_rate") => void;
   onNewTargetValueChange: (val: number) => void;
   onUpdateKpiTarget: () => void;
@@ -50,9 +45,6 @@ interface AdminPanelProps {
 
 export const AdminPanel = ({
   user,
-  adminCode,
-  adminCodeOutput,
-  isAdminRunningCode,
   adjustMetric,
   newTargetValue,
   isUpdatingTarget,
@@ -72,8 +64,6 @@ export const AdminPanel = ({
   isUploadingDoc,
   docUploadMessage,
   uploadedFiles,
-  onAdminCodeChange,
-  onRunAdminCode,
   onAdjustMetricChange,
   onNewTargetValueChange,
   onUpdateKpiTarget,
@@ -95,28 +85,6 @@ export const AdminPanel = ({
 
   return (
     <div className="border-t border-border pt-5 space-y-4">
-      {/* PYTHON CONSOLE */}
-      <div className="space-y-2">
-        <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Sandbox Code VM</span>
-        <textarea
-          value={adminCode}
-          onChange={(e) => onAdminCodeChange(e.target.value)}
-          className="w-full h-20 bg-background border border-border rounded p-2 font-mono text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors"
-        />
-        <button
-          onClick={onRunAdminCode}
-          disabled={isAdminRunningCode || !adminCode.trim()}
-          className="w-full py-1.5 bg-background border border-border hover:bg-foreground/5 text-foreground rounded text-[10px] font-bold cursor-pointer transition-colors duration-150"
-        >
-          {isAdminRunningCode ? "Executing..." : "Execute Python VM"}
-        </button>
-        {adminCodeOutput && (
-          <pre className="bg-background border border-border rounded p-2 font-mono text-[9px] text-foreground/70 overflow-x-auto max-h-24">
-            {adminCodeOutput}
-          </pre>
-        )}
-      </div>
-
       {/* TARGET MANAGER */}
       <div className="space-y-2.5">
         <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Target Manager</span>

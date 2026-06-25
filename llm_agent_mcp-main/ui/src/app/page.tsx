@@ -51,11 +51,6 @@ export default function Home() {
   const [activeRoutingState, setActiveRoutingState] = useState<"idle" | "routing" | "finance" | "tech" | "done">("idle");
   const [, setLastAgentResponded] = useState<string | null>(null);
 
-  // ── Admin: Sandbox ──
-  const [adminCode, setAdminCode] = useState<string>("import math\nprint(f'Calculated square root of 144 is: {math.sqrt(144)}')");
-  const [adminCodeOutput, setAdminCodeOutput] = useState<string>("");
-  const [isAdminRunningCode, setIsAdminRunningCode] = useState<boolean>(false);
-
   // ── Admin: Target Manager ──
   const [adjustMetric, setAdjustMetric] = useState<"sales" | "users" | "churn_rate">("sales");
   const [newTargetValue, setNewTargetValue] = useState<number>(200000);
@@ -258,7 +253,7 @@ export default function Home() {
       localStorage.setItem("agent_user", JSON.stringify(data.user));
       setToken(data.token); setUser(data.user); setIsLoggedIn(true);
       setThreadId(`thread_${Date.now()}`);
-      setAdminCodeOutput(""); setSalesUpdateSuccess(null);
+      setSalesUpdateSuccess(null);
       setMessages([{ id: "welcome", sender: "agent", text: "Сайн уу? Би **Шинжээч.ai** — таны өгөгдлийн шинжилгээний туслах. Надаас дата шинжилгээ, forecast, dashboard, эсвэл ерөнхий асуулт асууж болно.", timestamp: new Date(), agentName: "Шинжээч.ai" }]);
     } catch (e: unknown) { alert(e instanceof Error ? e.message : "Connection to API Server failed."); }
     finally { setIsAuthLoading(false); }
@@ -368,21 +363,6 @@ export default function Home() {
     } catch { setFeedbackState(p => ({ ...p, [msgId]: null })); }
   };
 
-  // ── Admin: Run Code ──
-  const handleRunAdminCode = async () => {
-    if (!adminCode.trim() || isAdminRunningCode || !token) return;
-    setIsAdminRunningCode(true); setAdminCodeOutput("Executing script...");
-    try {
-      const res = await fetch("/api/admin/run-code", {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ code: adminCode }),
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Execution failed"); }
-      const data = await res.json(); setAdminCodeOutput(data.output || "Done.");
-    } catch (e: unknown) { setAdminCodeOutput(`Error: ${e instanceof Error ? e.message : e}`); }
-    finally { setIsAdminRunningCode(false); }
-  };
-
   // ── Admin: Update KPI target ──
   const handleUpdateKpiTarget = async () => {
     if (newTargetValue === undefined || isNaN(newTargetValue) || isUpdatingTarget || !token) return;
@@ -479,8 +459,6 @@ export default function Home() {
           <section className="w-full md:w-[320px] shrink-0 border-r border-border bg-sidebar p-5 flex flex-col overflow-y-auto scrollbar-hide space-y-6 md:flex hidden transition-colors duration-200">
             <DashboardPanel salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} />
             <AdminPanel user={user}
-              adminCode={adminCode} adminCodeOutput={adminCodeOutput} isAdminRunningCode={isAdminRunningCode}
-              onAdminCodeChange={setAdminCode} onRunAdminCode={handleRunAdminCode}
               adjustMetric={adjustMetric} newTargetValue={newTargetValue} isUpdatingTarget={isUpdatingTarget} salesUpdateSuccess={salesUpdateSuccess}
               onAdjustMetricChange={setAdjustMetric} onNewTargetValueChange={setNewTargetValue} onUpdateKpiTarget={handleUpdateKpiTarget}
               csvFile={csvFile} tableNameInput={tableNameInput} tableDescInput={tableDescInput}
