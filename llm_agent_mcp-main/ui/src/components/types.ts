@@ -38,4 +38,6 @@ export interface ServerStatus {
   timestamp: string;
 }
 
-export const DEFAULT_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#14b8a6"];
+import { CHART_COLORS } from "./chartTheme";
+
+export const DEFAULT_COLORS = CHART_COLORS;

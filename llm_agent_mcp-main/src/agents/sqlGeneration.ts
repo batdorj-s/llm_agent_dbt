@@ -309,8 +309,10 @@ export function generateVisualTag(jsonResults: string): string {
     }
 
     const sampleLabel = String(data[0][labelKey] || '').toLowerCase();
+    const currentYear = new Date().getFullYear();
+    const years = Array.from({ length: currentYear - 2018 + 1 }, (_, i) => String(2018 + i));
     const timeIndicators = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
-        '2020', '2021', '2022', '2023', '2024', '2025', '2026', 'month', 'year', 'date'];
+        ...years, 'month', 'year', 'date'];
     const isTimeSeries = timeIndicators.some(p => sampleLabel.includes(p) || sampleLabel.startsWith(p))
         || data.some((r: any) => /^\d{4}/.test(String(r[labelKey] || '')));
 

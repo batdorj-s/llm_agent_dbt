@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend } from "recharts";
+import { chartTheme, CHART_COLORS } from "./chartTheme";
 import { DEFAULT_COLORS } from "./types";
 
 const sanitizeVisualJson = (str: string): string => {
@@ -39,11 +40,11 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
     const s = series || ["value"];
     return (
       <ChartComponent data={data.data} layout={extraProps?.layout || undefined}>
-        {extraProps?.layout === "vertical" ? null : <XAxis dataKey="label" stroke="#888888" fontSize={9} />}
-        {extraProps?.layout === "vertical" ? <YAxis dataKey="label" type="category" stroke="#888888" fontSize={9} /> : <YAxis stroke="#888888" fontSize={9} />}
-        {extraProps?.layout === "vertical" ? <XAxis type="number" stroke="#888888" fontSize={9} /> : null}
-        <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
-        {s.length > 1 && <Legend wrapperStyle={{ fontSize: "9px" }} />}
+        {extraProps?.layout === "vertical" ? null : <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />}
+        {extraProps?.layout === "vertical" ? <YAxis dataKey="label" type="category" stroke="#888888" fontSize={chartTheme.font.sizes.axis} /> : <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />}
+        {extraProps?.layout === "vertical" ? <XAxis type="number" stroke="#888888" fontSize={chartTheme.font.sizes.axis} /> : null}
+        <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
+        {s.length > 1 && <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />}
         {s.map((key, i) => (
           <DataComponent key={key} type="monotone" dataKey={key} fill={colors[i % colors.length]} stroke={colors[i % colors.length]} stackId={stacked ? "stack" : undefined} />
         ))}
@@ -59,42 +60,42 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
           {data.type === "bar" ? (
             stacked ? renderMultiSeries(BarChart, Bar) : series && series.length > 1 ? renderMultiSeries(BarChart, Bar) : (
               <BarChart data={data.data}>
-                <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-                <YAxis stroke="#888888" fontSize={9} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+                <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+                <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+                <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
                 <Bar dataKey="value" fill={colors[0]} />
               </BarChart>
             )
           ) : data.type === "horizontal_bar" ? (
             series && series.length > 1 ? renderMultiSeries(BarChart, Bar, { layout: "vertical" }) : (
               <BarChart data={data.data} layout="vertical">
-                <XAxis type="number" stroke="#888888" fontSize={9} />
-                <YAxis dataKey="label" type="category" stroke="#888888" fontSize={9} width={80} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+                <XAxis type="number" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+                <YAxis dataKey="label" type="category" stroke="#888888" fontSize={chartTheme.font.sizes.axis} width={80} />
+                <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
                 <Bar dataKey="value" fill={colors[0]} />
               </BarChart>
             )
           ) : data.type === "line" ? (
             series && series.length > 1 ? renderMultiSeries(LineChart, Line) : (
               <LineChart data={data.data}>
-                <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-                <YAxis stroke="#888888" fontSize={9} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+                <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+                <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+                <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
                 <Line type="monotone" dataKey="value" stroke={colors[0]} />
               </LineChart>
             )
           ) : data.type === "area" ? (
             series && series.length > 1 ? renderMultiSeries(AreaChart, Area) : (
               <AreaChart data={data.data}>
-                <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-                <YAxis stroke="#888888" fontSize={9} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+                <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+                <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+                <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
                 <Area type="monotone" dataKey="value" fill={colors[0]} stroke={colors[0]} fillOpacity={0.3} />
               </AreaChart>
             )
           ) : data.type === "pie" ? (
             <PieChart>
-              <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+              <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
               <Pie data={data.data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={70} label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${value ?? 0}`}>
                 {data.data.map((_, i) => (
                   <Cell key={i} fill={colors[i % colors.length]} />
@@ -147,43 +148,43 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
       case "bar":
         return (
           <BarChart data={widget.data}>
-            <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-            <YAxis stroke="#888888" fontSize={9} />
-            <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+            <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
             <Bar dataKey="value" fill={colors[0]} />
           </BarChart>
         );
       case "horizontal_bar":
         return (
           <BarChart data={widget.data} layout="vertical">
-            <XAxis type="number" stroke="#888888" fontSize={9} />
-            <YAxis dataKey="label" type="category" stroke="#888888" fontSize={9} width={80} />
-            <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+            <XAxis type="number" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <YAxis dataKey="label" type="category" stroke="#888888" fontSize={chartTheme.font.sizes.axis} width={80} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
             <Bar dataKey="value" fill={colors[0]} />
           </BarChart>
         );
       case "line":
         return (
           <LineChart data={widget.data}>
-            <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-            <YAxis stroke="#888888" fontSize={9} />
-            <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+            <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
             <Line type="monotone" dataKey="value" stroke={colors[0]} />
           </LineChart>
         );
       case "area":
         return (
           <AreaChart data={widget.data}>
-            <XAxis dataKey="label" stroke="#888888" fontSize={9} />
-            <YAxis stroke="#888888" fontSize={9} />
-            <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+            <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
             <Area type="monotone" dataKey="value" fill={colors[0]} stroke={colors[0]} fillOpacity={0.3} />
           </AreaChart>
         );
       case "pie":
         return (
           <PieChart>
-            <Tooltip contentStyle={{ backgroundColor: "var(--background)", border: "1px solid var(--card-border)", fontSize: "10px", color: "var(--foreground)" }} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
             <Pie data={widget.data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={60} label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${value ?? 0}`}>
               {widget.data.map((_: any, i: number) => (
                 <Cell key={i} fill={colors[i % colors.length]} />
