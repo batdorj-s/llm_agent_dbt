@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend } from "recharts";
-import { chartTheme, CHART_COLORS } from "./chartTheme";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend, ComposedChart } from "recharts";
+import { chartTheme, type ChartType } from "./chartTheme";
 import { DEFAULT_COLORS } from "./types";
 
 const sanitizeVisualJson = (str: string): string => {
@@ -93,15 +93,52 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
                 <Area type="monotone" dataKey="value" fill={colors[0]} stroke={colors[0]} fillOpacity={0.3} />
               </AreaChart>
             )
-          ) : data.type === "pie" ? (
+          ) : data.type === "donut" || data.type === "pie" ? (
             <PieChart>
               <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-              <Pie data={data.data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={70} label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${value ?? 0}`}>
+              <Pie data={data.data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={70} innerRadius={data.type === "donut" ? 30 : 0} label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${value ?? 0}`}>
                 {data.data.map((_, i) => (
                   <Cell key={i} fill={colors[i % colors.length]} />
                 ))}
               </Pie>
             </PieChart>
+          ) : data.type === "combo" ? (
+            <ComposedChart data={data.data}>
+              <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+              <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+              <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
+              <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />
+              <Bar dataKey="value" fill={colors[0]} />
+              <Line type="monotone" dataKey={series?.[1] || "lineValue"} stroke={colors[1]} strokeWidth={2} />
+            </ComposedChart>
+          ) : data.type === "stacked_bar" ? (
+            series && series.length > 1 ? renderMultiSeries(BarChart, Bar) : (
+              <BarChart data={data.data}>
+                <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+                <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+                <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
+                <Bar dataKey="value" fill={colors[0]} stackId="auto" />
+              </BarChart>
+            )
+          ) : data.type === "heatmap" ? (
+            <div className="grid grid-cols-6 gap-0.5 w-full h-full">
+              {(data.data as Record<string, unknown>[]).map((row: any, i: number) => {
+                const val = parseFloat(row.value) || 0;
+                const maxVal = Math.max(...(data.data as Record<string, unknown>[]).map((r: any) => parseFloat(r.value) || 0), 1);
+                const intensity = Math.min(val / maxVal, 1);
+                const colorIndex = Math.floor((1 - intensity) * (colors.length - 1));
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center justify-center text-[7px] text-white rounded"
+                    style={{ backgroundColor: colors[Math.min(colorIndex, colors.length - 1)], aspectRatio: "1" }}
+                    title={`${row.label}: ${val}`}
+                  >
+                    {row.label}
+                  </div>
+                );
+              })}
+            </div>
           ) : null}
         </ResponsiveContainer>
       </div>
@@ -181,16 +218,61 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
             <Area type="monotone" dataKey="value" fill={colors[0]} stroke={colors[0]} fillOpacity={0.3} />
           </AreaChart>
         );
+      case "donut":
       case "pie":
         return (
           <PieChart>
             <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Pie data={widget.data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={60} label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${value ?? 0}`}>
+            <Pie data={widget.data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={60} innerRadius={widget.type === "donut" ? 25 : 0} label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${value ?? 0}`}>
               {widget.data.map((_: any, i: number) => (
                 <Cell key={i} fill={colors[i % colors.length]} />
               ))}
             </Pie>
           </PieChart>
+        );
+      case "combo":
+        return (
+          <ComposedChart data={widget.data}>
+            <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
+            <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />
+            <Bar dataKey="value" fill={colors[0]} />
+            <Line type="monotone" dataKey="lineValue" stroke={colors[1]} strokeWidth={2} />
+          </ComposedChart>
+        );
+      case "stacked_bar":
+        return (
+          <BarChart data={widget.data}>
+            <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
+            <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />
+            {colors.slice(0, 4).map((color, i) => (
+              <Bar key={i} dataKey={["value", "value2", "value3", "value4"][i] || "value"} fill={color} stackId="auto" />
+            ))}
+          </BarChart>
+        );
+      case "heatmap":
+        return (
+          <div className="grid grid-cols-6 gap-0.5 w-full h-full">
+            {widget.data.map((row: any, i: number) => {
+              const val = parseFloat(row.value) || 0;
+              const maxVal = Math.max(...widget.data.map((r: any) => parseFloat(r.value) || 0), 1);
+              const intensity = Math.min(val / maxVal, 1);
+              const colorIndex = Math.floor((1 - intensity) * (colors.length - 1));
+              return (
+                <div
+                  key={i}
+                  className="flex items-center justify-center text-[7px] text-white rounded"
+                  style={{ backgroundColor: colors[Math.min(colorIndex, colors.length - 1)], aspectRatio: "1" }}
+                  title={`${row.label}: ${val}`}
+                >
+                  {row.label}
+                </div>
+              );
+            })}
+          </div>
         );
       default:
         return null;

@@ -316,12 +316,38 @@ export function generateVisualTag(jsonResults: string): string {
     const isTimeSeries = timeIndicators.some(p => sampleLabel.includes(p) || sampleLabel.startsWith(p))
         || data.some((r: any) => /^\d{4}/.test(String(r[labelKey] || '')));
 
+    const remainingNumeric = allNumericKeys.filter(k => k !== labelKey && k !== valueKey);
+
     if (isTimeSeries) {
+        const hasSecondMetric = remainingNumeric.length >= 1;
+        if (hasSecondMetric) {
+            const seriesKeys = [valueKey, ...remainingNumeric.slice(0, 3)];
+            const visualData = data.map((row: any) => ({
+                label: String(row[labelKey] ?? ''),
+                value: parseFloat(row[valueKey]) || 0,
+                lineValue: parseFloat(row[remainingNumeric[0]]) || 0,
+            }));
+            const visual = { title: "Дүн шинжилгээ", type: "combo" as const, data: visualData, config: { xAxis: "label", yAxis: "value", series: seriesKeys } };
+            return `<visual>${JSON.stringify(visual)}</visual>`;
+        }
         const visualData = data.map((row: any) => ({
             label: String(row[labelKey] ?? ''),
             value: parseFloat(row[valueKey]) || 0
         }));
-        const visual = { title: "Дүн шинжилгээ", type: "line", data: visualData, config: { xAxis: "label", yAxis: "value" } };
+        const visual = { title: "Дүн шинжилгээ", type: "line" as const, data: visualData, config: { xAxis: "label", yAxis: "value" } };
+        return `<visual>${JSON.stringify(visual)}</visual>`;
+    }
+
+    const hasAdditionalMetric = remainingNumeric.length >= 1;
+
+    if (hasAdditionalMetric) {
+        const seriesKeys = [valueKey, ...remainingNumeric.slice(0, 3)];
+        const visualData = data.map((row: any) => {
+            const point: Record<string, unknown> = { label: String(row[labelKey] ?? '') };
+            seriesKeys.forEach((k, i) => { point[i === 0 ? 'value' : `value${i + 1}`] = parseFloat(row[k]) || 0; });
+            return point;
+        });
+        const visual = { title: "Дүн шинжилгээ", type: "stacked_bar" as const, data: visualData, config: { xAxis: "label", yAxis: "value", series: ['value', ...seriesKeys.slice(1).map((_, i) => `value${i + 2}`)] } };
         return `<visual>${JSON.stringify(visual)}</visual>`;
     }
 
