@@ -77,4 +77,45 @@ describe("generateVisualTag dynamic year range", () => {
         expect(result).toContain("<visual>");
         expect(result).toContain('"type":"pie"');
     });
+
+    it("generates combo chart for time series with 2nd metric", () => {
+        vi.setSystemTime(new Date("2026-06-15"));
+
+        const data = makeData([
+            { label: "Jan 2026", value: 100, profit: 20 },
+            { label: "Feb 2026", value: 150, profit: 30 },
+        ]);
+
+        const result = generateVisualTag(data);
+        expect(result).toContain("<visual>");
+        expect(result).toContain('"type":"combo"');
+        expect(result).toContain('"lineValue"');
+    });
+
+    it("generates stacked bar for non-time data with 2nd metric", () => {
+        vi.setSystemTime(new Date("2026-06-15"));
+
+        const data = makeData([
+            { label: "Бүтээгдэхүүн А", value: 100, profit: 20 },
+            { label: "Бүтээгдэхүүн Б", value: 150, profit: 30 },
+        ]);
+
+        const result = generateVisualTag(data);
+        expect(result).toContain("<visual>");
+        expect(result).toContain('"type":"stacked_bar"');
+        expect(result).toContain('"series"');
+    });
+
+    it("generates line chart for time series with single metric (no second metric)", () => {
+        vi.setSystemTime(new Date("2026-06-15"));
+
+        const data = makeData([
+            { label: "Jan 2026", sales: 100 },
+            { label: "Feb 2026", sales: 150 },
+        ]);
+
+        const result = generateVisualTag(data);
+        expect(result).toContain("<visual>");
+        expect(result).toContain('"type":"line"');
+    });
 });

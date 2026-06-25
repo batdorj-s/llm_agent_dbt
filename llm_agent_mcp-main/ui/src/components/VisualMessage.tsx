@@ -18,6 +18,7 @@ const sanitizeVisualJson = (str: string): string => {
 
 export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
   const sanitizedJson = sanitizeVisualJson(visualJson);
+  const [heatmapTip, setHeatmapTip] = useState<{ label: string; value: number; x: number; y: number } | null>(null);
 
   let data: { title?: string; type?: string; data?: Record<string, unknown>[]; config?: Record<string, unknown> };
   try {
@@ -121,23 +122,45 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
               </BarChart>
             )
           ) : data.type === "heatmap" ? (
-            <div className="grid grid-cols-6 gap-0.5 w-full h-full">
-              {(data.data as Record<string, unknown>[]).map((row: any, i: number) => {
-                const val = parseFloat(row.value) || 0;
-                const maxVal = Math.max(...(data.data as Record<string, unknown>[]).map((r: any) => parseFloat(r.value) || 0), 1);
-                const intensity = Math.min(val / maxVal, 1);
-                const colorIndex = Math.floor((1 - intensity) * (colors.length - 1));
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center justify-center text-[7px] text-white rounded"
-                    style={{ backgroundColor: colors[Math.min(colorIndex, colors.length - 1)], aspectRatio: "1" }}
-                    title={`${row.label}: ${val}`}
-                  >
-                    {row.label}
-                  </div>
-                );
-              })}
+            <div className="relative w-full h-full">
+              <div className="grid grid-cols-6 gap-0.5 w-full h-full">
+                {(data.data as Record<string, unknown>[]).map((row: any, i: number) => {
+                  const val = parseFloat(row.value) || 0;
+                  const maxVal = Math.max(...(data.data as Record<string, unknown>[]).map((r: any) => parseFloat(r.value) || 0), 1);
+                  const intensity = Math.min(val / maxVal, 1);
+                  const colorIndex = Math.floor((1 - intensity) * (colors.length - 1));
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center justify-center text-[7px] text-white rounded cursor-pointer"
+                      style={{ backgroundColor: colors[Math.min(colorIndex, colors.length - 1)], aspectRatio: "1" }}
+                      onMouseEnter={(e) => {
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        const parent = (e.currentTarget as HTMLElement).parentElement?.getBoundingClientRect();
+                        setHeatmapTip({ label: row.label, value: val, x: rect.left - (parent?.left || 0), y: rect.top - (parent?.top || 0) - 28 });
+                      }}
+                      onMouseLeave={() => setHeatmapTip(null)}
+                    >
+                      {String(row.label).slice(0, 3)}
+                    </div>
+                  );
+                })}
+              </div>
+              {heatmapTip && (
+                <div
+                  style={{
+                    ...chartTheme.tooltip.contentStyle,
+                    position: "absolute",
+                    left: heatmapTip.x,
+                    top: heatmapTip.y,
+                    pointerEvents: "none",
+                    whiteSpace: "nowrap",
+                    zIndex: 50,
+                  }}
+                >
+                  {heatmapTip.label}: {heatmapTip.value}
+                </div>
+              )}
             </div>
           ) : null}
         </ResponsiveContainer>
@@ -148,6 +171,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
 
 export const DashboardWidget = ({ widget }: { widget: any }) => {
   const chartRef = useRef<HTMLDivElement>(null);
+  const [heatmapTip, setHeatmapTip] = useState<{ label: string; value: number; x: number; y: number } | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -255,23 +279,45 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
         );
       case "heatmap":
         return (
-          <div className="grid grid-cols-6 gap-0.5 w-full h-full">
-            {widget.data.map((row: any, i: number) => {
-              const val = parseFloat(row.value) || 0;
-              const maxVal = Math.max(...widget.data.map((r: any) => parseFloat(r.value) || 0), 1);
-              const intensity = Math.min(val / maxVal, 1);
-              const colorIndex = Math.floor((1 - intensity) * (colors.length - 1));
-              return (
-                <div
-                  key={i}
-                  className="flex items-center justify-center text-[7px] text-white rounded"
-                  style={{ backgroundColor: colors[Math.min(colorIndex, colors.length - 1)], aspectRatio: "1" }}
-                  title={`${row.label}: ${val}`}
-                >
-                  {row.label}
-                </div>
-              );
-            })}
+          <div className="relative w-full h-full">
+            <div className="grid grid-cols-6 gap-0.5 w-full h-full">
+              {widget.data.map((row: any, i: number) => {
+                const val = parseFloat(row.value) || 0;
+                const maxVal = Math.max(...widget.data.map((r: any) => parseFloat(r.value) || 0), 1);
+                const intensity = Math.min(val / maxVal, 1);
+                const colorIndex = Math.floor((1 - intensity) * (colors.length - 1));
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center justify-center text-[7px] text-white rounded cursor-pointer"
+                    style={{ backgroundColor: colors[Math.min(colorIndex, colors.length - 1)], aspectRatio: "1" }}
+                    onMouseEnter={(e) => {
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      const parent = (e.currentTarget as HTMLElement).parentElement?.getBoundingClientRect();
+                      setHeatmapTip({ label: row.label, value: val, x: rect.left - (parent?.left || 0), y: rect.top - (parent?.top || 0) - 28 });
+                    }}
+                    onMouseLeave={() => setHeatmapTip(null)}
+                  >
+                    {String(row.label).slice(0, 3)}
+                  </div>
+                );
+              })}
+            </div>
+            {heatmapTip && (
+              <div
+                style={{
+                  ...chartTheme.tooltip.contentStyle,
+                  position: "absolute",
+                  left: heatmapTip.x,
+                  top: heatmapTip.y,
+                  pointerEvents: "none",
+                  whiteSpace: "nowrap",
+                  zIndex: 50,
+                }}
+              >
+                {heatmapTip.label}: {heatmapTip.value}
+              </div>
+            )}
           </div>
         );
       default:
