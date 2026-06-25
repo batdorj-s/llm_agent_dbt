@@ -37,7 +37,7 @@ const CHART_LABELS: Record<ChartType, string> = {
   pie: "Бялуу", donut: "Donut", combo: "Хосолмол", stacked_bar: "Давхар", heatmap: "Дулааны",
 };
 
-function getCompatibleTypes(series: string[] | undefined, hasMultiNumeric: boolean): ChartType[] {
+export function getCompatibleTypes(series: string[] | undefined, hasMultiNumeric: boolean): ChartType[] {
   const base: ChartType[] = ["bar", "horizontal_bar", "line", "area", "pie", "donut", "heatmap"];
   if (series && series.length > 1) {
     return [...base, "combo", "stacked_bar"];
