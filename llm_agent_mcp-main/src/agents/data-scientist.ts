@@ -5,6 +5,7 @@ import { runPythonCode } from "../sandbox.js";
 import { sandboxLimiter } from "../rate-limiter.js";
 import { searchKnowledgeBase } from "../rag.js";
 import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "../rag.js";
+import { detectDateColumn, extractProfileFromSchemaDef } from "./dateColumnHelper.js";
 
 const LLM_TIMEOUT_MS = 40000;
 const PYTHON_GEN_TIMEOUT_MS = 55000;
@@ -97,9 +98,11 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     try {
         if (isForecast && dateCol) {
             const aggCol = numericCols[0] || columnList[0];
-            const dateCast = dateColType === "INT"
+            const profile = extractProfileFromSchemaDef(schemaDef, dateCol);
+            const dateInfo = detectDateColumn(dateCol, dateColType || "unknown", profile ?? undefined);
+            const dateCast = dateInfo?.sqlCast ?? (dateColType === "INT"
                 ? `'1899-12-30'::date + "${dateCol}"::integer`
-                : `CAST("${dateCol}" AS DATE)`;
+                : `CAST("${dateCol}" AS DATE)`);
             const forecastSql = `SELECT ${dateCast} AS period, SUM(COALESCE("${aggCol}", 0)) AS value FROM "${tableName}" GROUP BY period ORDER BY period`;
             console.log(`[DataScientist] Forecast mode: ${dateCol} type=${dateColType}, casting as ${dateCast}`);
             const aggResult = await handleExecuteSql({ query: forecastSql, userId });
@@ -290,7 +293,7 @@ function findDateColumn(columns: string[], columnTypes?: Record<string, string>)
     const datePatterns = [/date/i, /time/i, /month/i, /year/i, /timestamp/i, /day/i, /order_date/i, /invoice/i];
     for (const col of columns) {
         const type = columnTypes?.[col];
-        if (type === "DATE" || type === "TIMESTAMP") return col;
+        if (type?.toUpperCase() === "DATE" || type?.toUpperCase() === "TIMESTAMP") return col;
         for (const pat of datePatterns) {
             if (pat.test(col)) return col;
         }
