@@ -1,83 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { routeByKeywords } from "../agents/supervisorNode.js";
 
 type NextAgent = "FinanceAgent" | "TechAgent" | "DataScientistAgent" | "END";
-
-// Replicate the EXACT signals from multi-agent.ts supervisorNode
-const techSignals = [
-    "sql", "database", "table", "tables", "column", "columns", "хүснэгт", "багана",
-    "code", "python", "pandas", "matplotlib", "math", "calculate", "analysis", "item purchased", "purchased",
-    "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query", "код ажиллуул",
-    "харуул", "нийт", "нийлбэр", "дундаж", "тоо", "тоолох", "жагсаал", "жагсаалт",
-    "шинжилгээ", "шинжил", "задла", "задлан", "гаргаж", "гаргах", "тооцо", "тооцоол",
-    "хамгийн бага", "хамгийн өндөр",
-    "хэд", "хэдэн", "нийт хэдэн", "гүйлгээ", "бүтээгдэхүүн", "бараа",
-    "chart", "graph", "visualize", "plot", "харагдуул", "зур",
-    "dashboard", "ханалтын самбар", "хана", "widget", "вижет",
-    "count", "sum", "average", "avg", "total", "group by", "order by", "where", "filter",
-    "show me", "list", "give me", "find", "get", "fetch", "select",
-    "өгөгдөл", "мэдээлэл", "харуулах", "тооцоолох", "тооцоо",
-    "шүүх", "шүүлт", "фильтр", "фильтрлэх", "бүлэглэх", "бүлэг",
-    "эрэмбэлэх", "эрэмбэ", "ангилах", "ангилал",
-    "мөр", "мөрүүд", "утга", "утгууд",
-    "analyze", "analytics", "report", "top", "bottom",
-    "highest", "lowest", "maximum", "minimum", "summarize", "summary",
-    "aggregate", "trend", "compare", "comparison",
-    "rank", "percentage", "distribution", "breakdown",
-    "describe", "stats", "statistics", "overview",
-    "first", "last", "limit", "offset",
-    "purchase", "channel", "suva", "суваг", "худалдан авалт", "худалдаа",
-    "platform", "платформ", "source", "эх сурвалж",
-    "даргаар", "зарлага", "зардал", "кампанит",
-    "campaign", "marketing", "маркетинг", "ad", "advertising", "зар",
-    "conversion", "хөрвүүлэлт", "impression", "reach",
-    "click", "тогших", "rate", "cost", "spend",
-];
-
-const dataScienceSignals = [
-    "таамагла", "forecast", "predict", "ирээдүй", "дараагийн", "урьдчилан",
-    "хандлага", "trend analysis", "seasonal", "seasonality",
-    "бүлэглэлт", "cluster", "customer segmentation", "сегментчилэл",
-    "корреляци", "correlation", "хамаарал", "нөлөөлөл",
-    "regression", "регресс", "linear model", "machine learning",
-    "anova", "t-test", "chi-square", "hypothesis", "статистик тест",
-    "outlier detection", "гажуудал илрүүлэх", "anomaly",
-    "prophet", "arima", "time series", "хугацааны цуваа",
-    "k-means", "kmeans", "pca", "dimension reduction",
-    "feature importance", "coefficient", "р square", "r-squared",
-    "deep learning", "нейрон", "neural",
-];
-
-const financeSignals = [
-    "sales target", "revenue target", "profit target", "margin target", "kpi", "kpi target",
-    "борлуулалтын төлөвлөгөө", "орлогын төлөвлөгөө", "ашгийн төлөвлөгөө",
-];
-
-// Replicate the exact routing logic from supervisorNode (including word-boundary fix)
-function hasSignal(text: string, signal: string): boolean {
-    if (/^[a-zA-Z0-9_.\-+]+$/.test(signal)) {
-        const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
-    }
-    return text.includes(signal);
-}
-
-function routeByKeywords(
-    query: string,
-    hasActiveDataset: boolean
-): NextAgent {
-    const lower = query.toLowerCase();
-
-    const hasTech = techSignals.some((word) => hasSignal(lower, word));
-    const hasDataScience = dataScienceSignals.some((word) => hasSignal(lower, word));
-    const hasFinance = financeSignals.some((word) => hasSignal(lower, word));
-
-    if (hasDataScience) return "DataScientistAgent";
-    if (hasTech && hasFinance) return "TechAgent";
-    if (hasTech) return "TechAgent";
-    if (hasFinance) return "FinanceAgent";
-    if (hasActiveDataset) return "TechAgent";
-    return "END";
-}
 
 describe("Supervisor keyword-based routing", () => {
     describe("Data science queries (highest priority)", () => {
@@ -174,20 +98,37 @@ describe("Supervisor keyword-based routing", () => {
         });
     });
 
-    describe("Hybrid queries (tech + finance → TechAgent)", () => {
-        it("routes browser/business hybrid to TechAgent", () => {
+    describe("Hybrid queries (finance + tech → FinanceAgent after #13 fix)", () => {
+        it("routes browser/business hybrid to FinanceAgent (trade-off: FinanceAgent was 100% dead before)", () => {
             expect(routeByKeywords("sales kpi харуулах", false))
+                .toBe("FinanceAgent");
+        });
+
+        it("routes target + data to FinanceAgent", () => {
+            expect(routeByKeywords("sales target-тай харьцуулсан хүснэгт", false))
+                .toBe("FinanceAgent");
+        });
+
+        it("routes kpi + харуул to FinanceAgent (not TechAgent) after priority reorder", () => {
+            expect(routeByKeywords("kpi үзүүлэлтүүдийг харуул", false))
+                .toBe("FinanceAgent");
+        });
+    });
+
+    describe("Tech-only queries (no finance signal → TechAgent)", () => {
+        it("routes pure SQL query to TechAgent", () => {
+            expect(routeByKeywords("SQL query бичээд харуул", false))
                 .toBe("TechAgent");
         });
 
-        it("routes target + data to TechAgent", () => {
-            expect(routeByKeywords("sales target-тай харьцуулсан хүснэгт", false))
+        it("routes python code to TechAgent", () => {
+            expect(routeByKeywords("python код ажиллуул", false))
                 .toBe("TechAgent");
         });
     });
 
     describe("Finance queries (when no tech signal present)", () => {
-        it("routes borluulaltiin tolovlogoo query to FinanceAgent", () => {
+        it("routes borluulaltiin tolovlogoo to FinanceAgent", () => {
             expect(routeByKeywords("борлуулалтын төлөвлөгөө", false))
                 .toBe("FinanceAgent");
         });
@@ -197,20 +138,14 @@ describe("Supervisor keyword-based routing", () => {
                 .toBe("FinanceAgent");
         });
 
-        it("routes sales target query to FinanceAgent (word boundary fix)", () => {
+        it("routes sales target to FinanceAgent (word boundary fix)", () => {
             expect(routeByKeywords("sales target", false))
                 .toBe("FinanceAgent");
         });
 
-        it("routes revenue target query to FinanceAgent (word boundary fix)", () => {
+        it("routes revenue target to FinanceAgent (word boundary fix)", () => {
             expect(routeByKeywords("revenue target", false))
                 .toBe("FinanceAgent");
-        });
-
-        it("routes hybrid (kpi + show) to TechAgent (not Finance)", () => {
-            // "харуул" is a tech signal → hybrid → TechAgent
-            expect(routeByKeywords("kpi үзүүлэлтүүдийг харуул", false))
-                .toBe("TechAgent");
         });
     });
 
@@ -223,6 +158,23 @@ describe("Supervisor keyword-based routing", () => {
         it("returns END when no dataset and no signals match", () => {
             expect(routeByKeywords("би чинь сайн уу", false))
                 .toBe("END");
+        });
+    });
+
+    describe("Empty result vs SQL error — #10 regression", () => {
+        it("empty array '[]' should NOT be treated as SQL error (valid execution, zero rows)", () => {
+            const hasError = "[]".startsWith("SQL Execution Error:");
+            expect(hasError).toBe(false);
+        });
+
+        it("SQL syntax error should be detected as error", () => {
+            const hasError = "SQL Execution Error: column 'x' does not exist".startsWith("SQL Execution Error:");
+            expect(hasError).toBe(true);
+        });
+
+        it("empty string should NOT be treated as SQL error", () => {
+            const hasError = "".startsWith("SQL Execution Error:");
+            expect(hasError).toBe(false);
         });
     });
 
@@ -242,6 +194,11 @@ describe("Supervisor keyword-based routing", () => {
         it("prioritizes data science over tech when both match", () => {
             expect(routeByKeywords("forecast SQL query", false))
                 .toBe("DataScientistAgent");
+        });
+
+        it("prioritizes finance over tech (no more dead FinanceAgent)", () => {
+            expect(routeByKeywords("kpi analysis", false))
+                .toBe("FinanceAgent");
         });
     });
 });

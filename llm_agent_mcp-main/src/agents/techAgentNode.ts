@@ -154,18 +154,13 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             if (onChunk) onChunk(logEntry);
             accumulatedText += logEntry;
 
-            const isEmpty = sandboxResult.trim() === "[]" || sandboxResult.trim() === "";
-            const hasError = sandboxResult.startsWith("SQL Execution Error:") || isEmpty;
+            const hasError = sandboxResult.startsWith("SQL Execution Error:");
 
             if (!hasError) {
                 isSuccess = true;
                 break;
             } else {
-                if (isEmpty) {
-                    feedback = `Error: The query returned an empty array []. This might mean the filters (WHERE clause) are too restrictive or column names are slightly off. Available tables/columns: ${schemaContext}`;
-                } else {
-                    feedback = sandboxResult;
-                }
+                feedback = sandboxResult;
             }
         } catch (err: any) {
             feedback = err.message;

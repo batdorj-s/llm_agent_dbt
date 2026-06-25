@@ -133,6 +133,15 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     );
 
     try {
+        const limiterKey = config?.configurable?.threadId || "data-scientist-global";
+        const limiterResult = sandboxLimiter.check(limiterKey);
+        if (!limiterResult.allowed) {
+            const waitMsg = `\n[АНХААР] Шинжилгээний хязгаарт хүрлээ. ${Math.ceil(limiterResult.resetInMs / 1000)} секунд хүлээнэ үү.\n`;
+            if (onChunk) onChunk(waitMsg);
+            const fallback = `${prefix}${waitMsg}`;
+            return { messages: [{ role: "assistant", content: fallback }] };
+        }
+
         if (onChunk) onChunk(`\n*Python код бэлдэж байна...*\n`);
 
         const llmResult = await invokeWithFallback(
@@ -162,15 +171,6 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
 
         const codeBlock = `\`\`\`python\n${pythonCode}\n\`\`\`\n\n`;
         if (onChunk) onChunk(codeBlock);
-
-        const limiterKey = config?.configurable?.threadId || "data-scientist-global";
-        const limiterResult = sandboxLimiter.check(limiterKey);
-        if (!limiterResult.allowed) {
-            const waitMsg = `\n[АНХААР] Шинжилгээний хязгаарт хүрлээ. ${Math.ceil(limiterResult.resetInMs / 1000)} секунд хүлээнэ үү.\n`;
-            if (onChunk) onChunk(waitMsg);
-            const fallback = `${prefix}\`\`\`python\n${pythonCode}\n\`\`\`\n\n${waitMsg}`;
-            return { messages: [{ role: "assistant", content: fallback }] };
-        }
 
         const output = await runPythonCode(pythonCode, undefined, true);
 

@@ -11,12 +11,72 @@ const RouteSchema = z.object({
     reason: z.string().describe("One sentence explaining the routing decision.")
 });
 
-function hasSignal(text: string, signal: string): boolean {
+export const TECH_SIGNALS = [
+    "sql", "database", "table", "tables", "column", "columns", "хүснэгт", "багана",
+    "code", "python", "pandas", "matplotlib", "math", "calculate", "analysis", "item purchased", "purchased",
+    "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query", "код ажиллуул",
+    "харуул", "нийт", "нийлбэр", "дундаж", "тоо", "тоолох", "жагсаал", "жагсаалт",
+    "шинжилгээ", "шинжил", "задла", "задлан", "гаргаж", "гаргах", "тооцо", "тооцоол",
+    "хамгийн бага", "хамгийн өндөр",
+    "хэд", "хэдэн", "нийт хэдэн", "гүйлгээ", "бүтээгдэхүүн", "бараа",
+    "chart", "graph", "visualize", "plot", "харагдуул", "зур",
+    "dashboard", "ханалтын самбар", "хана", "widget", "вижет",
+    "count", "sum", "average", "avg", "total", "group by", "order by", "where", "filter",
+    "show me", "list", "give me", "find", "get", "fetch", "select",
+    "өгөгдөл", "мэдээлэл", "харуулах", "тооцоолох", "тооцоо",
+    "шүүх", "шүүлт", "фильтр", "фильтрлэх", "бүлэглэх", "бүлэг",
+    "эрэмбэлэх", "эрэмбэ", "ангилах", "ангилал",
+    "мөр", "мөрүүд", "утга", "утгууд",
+    "analyze", "analytics", "report", "top", "bottom",
+    "highest", "lowest", "maximum", "minimum", "summarize", "summary",
+    "aggregate", "trend", "compare", "comparison",
+    "rank", "percentage", "distribution", "breakdown",
+    "describe", "stats", "statistics", "overview",
+    "first", "last", "limit", "offset",
+    "purchase", "channel", "suva", "суваг", "худалдан авалт", "худалдаа",
+    "platform", "платформ", "source", "эх сурвалж",
+    "даргаар", "зарлага", "зардал", "кампанит",
+    "campaign", "marketing", "маркетинг", "ad", "advertising", "зар",
+    "conversion", "хөрвүүлэлт", "impression", "reach",
+    "click", "тогших", "rate", "cost", "spend",
+];
+export const DATA_SCIENCE_SIGNALS = [
+    "таамагла", "forecast", "predict", "ирээдүй", "дараагийн", "урьдчилан",
+    "хандлага", "trend analysis", "seasonal", "seasonality",
+    "бүлэглэлт", "cluster", "customer segmentation", "сегментчилэл",
+    "корреляци", "correlation", "хамаарал", "нөлөөлөл",
+    "regression", "регресс", "linear model", "machine learning",
+    "anova", "t-test", "chi-square", "hypothesis", "статистик тест",
+    "outlier detection", "гажуудал илрүүлэх", "anomaly",
+    "prophet", "arima", "time series", "хугацааны цуваа",
+    "k-means", "kmeans", "pca", "dimension reduction",
+    "feature importance", "coefficient", "р square", "r-squared",
+    "deep learning", "нейрон", "neural",
+];
+export const FINANCE_SIGNALS = [
+    "sales target", "revenue target", "profit target", "margin target", "kpi", "kpi target",
+    "борлуулалтын төлөвлөгөө", "орлогын төлөвлөгөө", "ашгийн төлөвлөгөө",
+];
+
+export function hasSignal(text: string, signal: string): boolean {
     if (/^[a-zA-Z0-9_.\-+]+$/.test(signal)) {
         const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
     }
     return text.includes(signal);
+}
+
+export function routeByKeywords(query: string, hasActiveDataset: boolean, mentionsKnownTable?: boolean): NextAgent {
+    const lower = query.toLowerCase();
+    const hasTech = TECH_SIGNALS.some((word) => hasSignal(lower, word)) || !!mentionsKnownTable;
+    const hasDataScience = DATA_SCIENCE_SIGNALS.some((word) => hasSignal(lower, word));
+    const hasFinance = FINANCE_SIGNALS.some((word) => hasSignal(lower, word));
+
+    if (hasDataScience) return "DataScientistAgent";
+    if (hasFinance) return "FinanceAgent";
+    if (hasTech) return "TechAgent";
+    if (hasActiveDataset) return "TechAgent";
+    return "END";
 }
 
 export async function supervisorNode(state: any, config?: any): Promise<Partial<AgentState>> {
@@ -30,75 +90,11 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
     const systemPrompt = prompts.supervisor;
     const onChunk = config?.configurable?.onChunk;
 
-    const lowerMessage = lastMessage.toLowerCase();
     const catalog = await getCatalog(userId);
     const mentionsKnownTable = catalog.some((row: any) => queryMentionsTable(lastMessage, row.table_name));
 
-    const techSignals = [
-        "sql", "database", "table", "tables", "column", "columns", "хүснэгт", "багана",
-        "code", "python", "pandas", "matplotlib", "math", "calculate", "analysis", "item purchased", "purchased",
-        "top 5", "first 5", "эхний 5", "хамгийн их", "дата", "өгөгдөл", "query", "код ажиллуул",
-        "харуул", "нийт", "нийлбэр", "дундаж", "тоо", "тоолох", "жагсаал", "жагсаалт",
-        "шинжилгээ", "шинжил", "задла", "задлан", "гаргаж", "гаргах", "тооцо", "тооцоол",
-        "хамгийн бага", "хамгийн өндөр",
-        "хэд", "хэдэн", "нийт хэдэн", "гүйлгээ", "бүтээгдэхүүн", "бараа",
-        "chart", "graph", "visualize", "plot", "харагдуул", "зур",
-        "dashboard", "ханалтын самбар", "хана", "widget", "вижет",
-        "count", "sum", "average", "avg", "total", "group by", "order by", "where", "filter",
-        "show me", "list", "give me", "find", "get", "fetch", "select",
-        "өгөгдөл", "мэдээлэл", "харуулах", "тооцоолох", "тооцоо",
-        "шүүх", "шүүлт", "фильтр", "фильтрлэх", "бүлэглэх", "бүлэг",
-        "эрэмбэлэх", "эрэмбэ", "ангилах", "ангилал",
-        "мөр", "мөрүүд", "утга", "утгууд",
-        "analyze", "analytics", "report", "top", "bottom",
-        "highest", "lowest", "maximum", "minimum", "summarize", "summary",
-        "aggregate", "trend", "compare", "comparison",
-        "rank", "percentage", "distribution", "breakdown",
-        "describe", "stats", "statistics", "overview",
-        "first", "last", "limit", "offset",
-        "purchase", "channel", "suva", "суваг", "худалдан авалт", "худалдаа",
-        "platform", "платформ", "source", "эх сурвалж",
-        "даргаар", "зарлага", "зардал", "кампанит",
-        "campaign", "marketing", "маркетинг", "ad", "advertising", "зар",
-        "conversion", "хөрвүүлэлт", "impression", "reach",
-        "click", "тогших", "rate", "cost", "spend",
-    ];
-    const dataScienceSignals = [
-        "таамагла", "forecast", "predict", "ирээдүй", "дараагийн", "урьдчилан",
-        "хандлага", "trend analysis", "seasonal", "seasonality",
-        "бүлэглэлт", "cluster", "customer segmentation", "сегментчилэл",
-        "корреляци", "correlation", "хамаарал", "нөлөөлөл",
-        "regression", "регресс", "linear model", "machine learning",
-        "anova", "t-test", "chi-square", "hypothesis", "статистик тест",
-        "outlier detection", "гажуудал илрүүлэх", "anomaly",
-        "prophet", "arima", "time series", "хугацааны цуваа",
-        "k-means", "kmeans", "pca", "dimension reduction",
-        "feature importance", "coefficient", "р square", "r-squared",
-        "deep learning", "нейрон", "neural",
-    ];
-    const financeSignals = [
-        "sales target", "revenue target", "profit target", "margin target", "kpi", "kpi target",
-        "борлуулалтын төлөвлөгөө", "орлогын төлөвлөгөө", "ашгийн төлөвлөгөө",
-    ];
-
-    const hasTech = techSignals.some((word) => hasSignal(lowerMessage, word)) || mentionsKnownTable;
-    const hasDataScience = dataScienceSignals.some((word) => hasSignal(lowerMessage, word));
-    const hasFinance = financeSignals.some((word) => hasSignal(lowerMessage, word));
-
-    let immediateRoute: NextAgent | null = null;
-    if (hasDataScience) {
-        console.log("[Supervisor] Data science query detected. Routing to DataScientistAgent.");
-        immediateRoute = "DataScientistAgent";
-    } else if (hasTech && hasFinance) {
-        console.log("[Supervisor] Hybrid query detected. Defaulting to TechAgent for data analysis.");
-        immediateRoute = "TechAgent";
-    } else if (hasTech) {
-        immediateRoute = "TechAgent";
-    } else if (hasFinance) {
-        immediateRoute = "FinanceAgent";
-    }
-
-    if (immediateRoute) {
+    const immediateRoute = routeByKeywords(lastMessage, false, mentionsKnownTable);
+    if (immediateRoute !== "END") {
         console.log(`[Supervisor] Immediate keyword route -> ${immediateRoute}`);
         return { nextAgent: immediateRoute };
     }
@@ -154,23 +150,9 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
         console.log("[Supervisor] No LLM API key — using keyword routing fallback.");
     }
 
-    let route: NextAgent = "END";
-    if (dataScienceSignals.some((word) => lowerMessage.includes(word))) {
-        route = "DataScientistAgent";
-    } else if (mentionsKnownTable || techSignals.some((word) => lowerMessage.includes(word))) {
-        route = "TechAgent";
-    } else if (financeSignals.some((word) => lowerMessage.includes(word))) {
-        route = "FinanceAgent";
-    }
+    const activeEntry = await getActiveCatalogEntry(userId);
+    let route: NextAgent = routeByKeywords(lastMessage, !!activeEntry, mentionsKnownTable);
     console.log(`[Supervisor] Keyword routed to -> ${route}`);
-
-    if (route === "END") {
-        const activeEntry = await getActiveCatalogEntry(userId);
-        if (activeEntry) {
-            console.log(`[Supervisor] No keyword match but active dataset '${activeEntry.table_name}' found. Routing to TechAgent.`);
-            route = "TechAgent";
-        }
-    }
 
     if (route === "END") {
         const text = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Би танд санхүүгийн асуултууд, борлуулалтын KPI болон код ажиллуулах даалгавар өгөхөд тусалж чадна.\n\nТа дараах зүйлсийг асууж болно:\n- **Борлуулалтын тайлан** — KPI үзүүлэлт, орлого, зорилт\n- **Өгөгдлийн шинжилгээ** — SQL query, тооцоолол, график\n- **Таамаглал** — Forecast, сегментчлэл, корреляци\n\nЭсвэл дээрх файл оруулах хэсгээр CSV өгөгдлөө upload хийгээрэй.";
