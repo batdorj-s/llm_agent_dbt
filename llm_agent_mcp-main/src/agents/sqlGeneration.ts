@@ -159,11 +159,10 @@ export function buildFallbackQuery(query: string, entry?: any): string | null {
 
     if (isOutlierQuery && incomeCol) {
         return [
-            `SELECT "${incomeCol}", COUNT(*) AS count`,
+            `SELECT "${incomeCol}" AS outlier_value`,
             `FROM "${tableName}"`,
             `WHERE "${incomeCol}" > (SELECT AVG("${incomeCol}") + 2 * STDDEV("${incomeCol}") FROM "${tableName}")`,
             `   OR "${incomeCol}" < (SELECT AVG("${incomeCol}") - 2 * STDDEV("${incomeCol}") FROM "${tableName}")`,
-            `GROUP BY "${incomeCol}"`,
             `ORDER BY "${incomeCol}" DESC`,
             `LIMIT 20;`,
         ].join("\n");

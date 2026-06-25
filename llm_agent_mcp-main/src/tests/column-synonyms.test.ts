@@ -63,6 +63,24 @@ describe("buildFallbackQuery — #4 hardcoded incomeCol fix", () => {
         expect(sql).not.toContain("income"); // no income-specific aggregation
         expect(sql).toContain("LIMIT 10");   // generic fallback
     });
+
+    it("BUG-SCENARIO #6: outlier query groups by incomeCol (wrong), should filter rows by threshold", () => {
+        const sql = buildFallbackQuery("find outliers in gross income", S_TABLE);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("outlier_value");
+        expect(sql).not.toContain("GROUP BY");     // removed: GROUP BY on income value is meaningless
+        expect(sql).not.toContain("COUNT(*)");     // removed: counted individual income values
+        expect(sql).toContain("WHERE");            // threshold filter via WHERE
+        expect(sql).toContain("STDDEV");           // stddev threshold
+    });
+
+    it("FIX-SCENARIO #6: outlier query returns rows, not grouped counts", () => {
+        const sql = buildFallbackQuery("standard deviation anomaly detection", S_TABLE);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("outlier_value");
+        expect(sql).toContain("LIMIT 20");
+        expect(sql).not.toContain("GROUP BY");
+    });
 });
 
 describe("buildDeterministicTechSql — column synonym mapping", () => {
