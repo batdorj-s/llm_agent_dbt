@@ -466,7 +466,7 @@ export default function Home() {
       <Header serverStatus={serverStatus} isLoggedIn={isLoggedIn} user={user} theme={theme}
         onToggleTheme={toggleTheme} onLogout={handleLogout}
         activeTab={activeTab} onTabChange={setActiveTab}
-        onUploadClick={() => { setActiveTab("dashboard"); setSidebarOpen(true); }} />
+ />
 
       {!isLoggedIn ? (
         <LoginForm email={email} password={password} isAuthLoading={isAuthLoading}
