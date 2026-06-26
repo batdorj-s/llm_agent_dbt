@@ -45,13 +45,20 @@ async function getActiveTableInfo(userId: string): Promise<{
   }
 }
 
-function buildDateWhere(dateCol: string, dateCast: string | null, startDate?: string, endDate?: string): string {
-  if (!startDate && !endDate) return "";
+function buildDateWhere(dateCol: string, dateCast: string | null, startDate?: string, endDate?: string, paramOffset: number = 0): { clause: string; params: any[] } {
+  if (!startDate && !endDate) return { clause: "", params: [] };
   const col = dateCast || `"${dateCol}"`;
   const clauses: string[] = [];
-  if (startDate) clauses.push(`${col} >= '${startDate}'`);
-  if (endDate) clauses.push(`${col} <= '${endDate}'`);
-  return " AND " + clauses.join(" AND ");
+  const params: any[] = [];
+  if (startDate) {
+    clauses.push(`${col} >= $${paramOffset + params.length + 1}`);
+    params.push(startDate);
+  }
+  if (endDate) {
+    clauses.push(`${col} <= $${paramOffset + params.length + 1}`);
+    params.push(endDate);
+  }
+  return { clause: " AND " + clauses.join(" AND "), params };
 }
 
 export async function computeMetrics(userId: string, startDate?: string, endDate?: string): Promise<ComputedMetrics | null> {
@@ -76,12 +83,14 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
   let topCategory = "—";
   let topCategoryValue = 0;
 
-  const dateWhere = buildDateWhere(dateCol || "", dateCast, startDate, endDate);
+  const { clause: dateWhere, params: dateParams } = buildDateWhere(dateCol || "", dateCast, startDate, endDate);
+  const dateLen = dateParams.length;
 
   if (salesCol && qtyCol) {
     try {
       const result = await getPool().query(
-        `SELECT COALESCE(SUM(CAST("${salesCol}" AS NUMERIC)) / NULLIF(SUM(CAST("${qtyCol}" AS NUMERIC)), 0), 0) as aov FROM "${tableName}" WHERE 1=1${dateWhere}`
+        `SELECT COALESCE(SUM(CAST("${salesCol}" AS NUMERIC)) / NULLIF(SUM(CAST("${qtyCol}" AS NUMERIC)), 0), 0) as aov FROM "${tableName}" WHERE 1=1${dateWhere}`,
+        dateParams
       );
       aov = Number(result.rows[0]?.aov || 0);
     } catch {}
@@ -89,9 +98,9 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
 
   if (salesCol && dateCast) {
     try {
-      const dateFilterClause = startDate && endDate
-        ? `${dateCast} >= '${startDate}' AND ${dateCast} <= '${endDate}'`
-        : `${dateCast} >= CURRENT_DATE - INTERVAL '60 days'`;
+      const { clause: filterClause, params: filterParams } = startDate && endDate
+        ? buildDateWhere(dateCol || "", dateCast, startDate, endDate, 0)
+        : { clause: `${dateCast} >= CURRENT_DATE - INTERVAL '60 days'`, params: [] as any[] };
 
       const result = await getPool().query(`
         WITH periods AS (
@@ -101,7 +110,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
             END AS period,
             SUM(CAST("${salesCol}" AS NUMERIC)) AS total
           FROM "${tableName}"
-          WHERE ${dateFilterClause}
+          WHERE ${filterClause}
           GROUP BY period
         )
         SELECT
@@ -112,7 +121,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
             0
           ) as growth
         FROM periods
-      `);
+      `, filterParams);
       growthRate = Number(result.rows[0]?.growth || 0);
     } catch {}
   }
@@ -124,7 +133,8 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
          FROM "${tableName}"
          WHERE 1=1${dateWhere}
          GROUP BY "${catCol}"
-         ORDER BY total DESC LIMIT 1`
+         ORDER BY total DESC LIMIT 1`,
+        dateParams
       );
       if (result.rows.length > 0) {
         topCategory = String(result.rows[0].category);

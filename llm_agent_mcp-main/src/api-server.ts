@@ -320,7 +320,7 @@ app.delete("/api/admin/files/:id", async (req, res) => {
   try {
     if (file.type === "dataset") {
       const tableName = file.id || file.filename;
-      await getPool().query(`DROP TABLE IF EXISTS "${tableName}"`);
+      await getPool().query(`DROP TABLE IF EXISTS "${tableName}" CASCADE`);
       await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [tableName]);
       await clearConversationMemory();
     }

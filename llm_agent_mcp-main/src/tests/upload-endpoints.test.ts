@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { initDataLake, isPgAvailable, getPool } from "../db/data-lake.js";
+import { removeDocumentsByPrefix } from "../rag.js";
 import type { Express } from "express";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@admin.com";
@@ -30,6 +31,8 @@ describe("Upload endpoints — /api/admin/upload-csv, files, etc.", () => {
             await getPool().query(`DROP TABLE IF EXISTS "${TEST_TABLE}"`);
             await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [TEST_TABLE]);
             await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [TEST_TABLE]);
+            await removeDocumentsByPrefix(`uploaded_${TEST_TABLE}_`);
+            await removeDocumentsByPrefix(`dbt_warning_${TEST_TABLE}`);
         } catch {}
     });
 

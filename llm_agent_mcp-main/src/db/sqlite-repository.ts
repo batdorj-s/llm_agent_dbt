@@ -1,12 +1,19 @@
 import { IKpiRepository, KpiMetric, SalesRecord, DateFilter } from "./types.js";
 import { initDataLake, getPool } from "./data-lake.js";
 
-function buildDateWhere(tableInfo: { dateCol: string }, df?: DateFilter): string {
-    if (!df?.startDate && !df?.endDate) return "";
+function buildDateWhere(tableInfo: { dateCol: string }, df?: DateFilter, paramOffset: number = 0): { clause: string; params: any[] } {
+    if (!df?.startDate && !df?.endDate) return { clause: "", params: [] };
     const clauses: string[] = [];
-    if (df.startDate) clauses.push(`"${tableInfo.dateCol}" >= '${df.startDate}'`);
-    if (df.endDate) clauses.push(`"${tableInfo.dateCol}" <= '${df.endDate}'`);
-    return " AND " + clauses.join(" AND ");
+    const params: any[] = [];
+    if (df.startDate) {
+        clauses.push(`"${tableInfo.dateCol}" >= $${paramOffset + params.length + 1}`);
+        params.push(df.startDate);
+    }
+    if (df.endDate) {
+        clauses.push(`"${tableInfo.dateCol}" <= $${paramOffset + params.length + 1}`);
+        params.push(df.endDate);
+    }
+    return { clause: " AND " + clauses.join(" AND "), params };
 }
 
 export class SQLiteKpiRepository implements IKpiRepository {
@@ -34,20 +41,23 @@ export class SQLiteKpiRepository implements IKpiRepository {
 
             let current = 0;
 
-            const dateWhere = buildDateWhere(tableInfo, dateFilter);
+            const { clause: dateWhere, params: dateParams } = buildDateWhere(tableInfo, dateFilter);
             if (metric === "sales") {
                 const result = await getPool().query(
-                    `SELECT COALESCE(SUM(CAST("${tableInfo.salesCol}" AS NUMERIC)), 0) as total FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`
+                    `SELECT COALESCE(SUM(CAST("${tableInfo.salesCol}" AS NUMERIC)), 0) as total FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`,
+                    dateParams
                 );
                 current = Number(result.rows[0]?.total || 0);
             } else if (metric === "users") {
                 const result = await getPool().query(
-                    `SELECT COUNT(DISTINCT "${tableInfo.userCol}") as count FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`
+                    `SELECT COUNT(DISTINCT "${tableInfo.userCol}") as count FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`,
+                    dateParams
                 );
                 current = Number(result.rows[0]?.count || 0);
             } else if (metric === "churn_rate") {
                 const result = await getPool().query(
-                    `SELECT COUNT(*) FILTER (WHERE "${tableInfo.dateCol}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as rate FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`
+                    `SELECT COUNT(*) FILTER (WHERE "${tableInfo.dateCol}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as rate FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`,
+                    dateParams
                 );
                 current = Number(result.rows[0]?.rate || 0);
             }
@@ -66,17 +76,13 @@ export class SQLiteKpiRepository implements IKpiRepository {
 
     private async getActiveTableInfo(): Promise<{ tableName: string; salesCol: string; userCol: string; dateCol: string } | null> {
         const catalogResult = await getPool().query(
-            `SELECT * FROM data_lake_catalog ORDER BY created_at DESC LIMIT 1`
+            `SELECT * FROM data_lake_catalog ORDER BY created_at DESC`
         );
-        const catalog = catalogResult.rows[0] as any;
-        if (!catalog) return null;
-
-        const columns = JSON.parse(catalog.columns_info) as string[];
+        if (catalogResult.rows.length === 0) return null;
 
         const typeResult = await getPool().query(
             `SELECT column_name, data_type FROM information_schema.columns
-             WHERE table_name = $1 AND table_schema = 'public'`,
-            [catalog.table_name]
+             WHERE table_schema = 'public'`
         );
         const typeMap = new Map<string, string>();
         for (const row of typeResult.rows as Array<{ column_name: string; data_type: string }>) {
@@ -88,24 +94,35 @@ export class SQLiteKpiRepository implements IKpiRepository {
             return t && /numeric|integer|double|real|float|money|dec/i.test(t);
         };
 
-        const salesCol = columns.find(c => /amount|sales|revenue|price/i.test(c))
-            || columns.find(c => /total|income|spend|value|cost|profit/i.test(c))
-            || columns.find(c => isNumeric(c))
-            || null;
-        if (!salesCol) return null;
+        for (const catalog of catalogResult.rows as Array<any>) {
+            let columns: string[];
+            try {
+                columns = JSON.parse(catalog.columns_info) as string[];
+            } catch {
+                continue;
+            }
 
-        const userCol = columns.find(c => /customer_id|user_id|_id/i.test(c))
-            || columns.find(c => /customer|client|user|member|account/i.test(c))
-            || null;
-        if (!userCol) return null;
+            const salesCol = columns.find(c => /amount|sales|revenue|price/i.test(c))
+                || columns.find(c => /total|income|spend|value|cost|profit/i.test(c))
+                || columns.find(c => isNumeric(c))
+                || null;
+            if (!salesCol) continue;
 
-        const dateCol = columns.find(c => /date|time/i.test(c))
-            || columns.find(c => /timestamp/i.test(c))
-            || columns.find(c => /year|month|day/i.test(c))
-            || null;
-        if (!dateCol) return null;
+            const userCol = columns.find(c => /customer_id|user_id|_id/i.test(c))
+                || columns.find(c => /customer|client|user|member|account/i.test(c))
+                || null;
+            if (!userCol) continue;
 
-        return { tableName: catalog.table_name, salesCol, userCol, dateCol };
+            const dateCol = columns.find(c => /date|time/i.test(c))
+                || columns.find(c => /timestamp/i.test(c))
+                || columns.find(c => /year|month|day/i.test(c))
+                || null;
+            if (!dateCol) continue;
+
+            return { tableName: catalog.table_name, salesCol, userCol, dateCol };
+        }
+
+        return null;
     }
 
     async getSalesHistory(limit: number, dateFilter?: DateFilter): Promise<SalesRecord[]> {
@@ -118,7 +135,7 @@ export class SQLiteKpiRepository implements IKpiRepository {
             if (!tableInfo) return [];
 
             await initDataLake();
-            const dateWhere = buildDateWhere(tableInfo, dateFilter);
+            const { clause: dateWhere, params: dateParams } = buildDateWhere(tableInfo, dateFilter);
             const rows = await getPool().query(`
                 SELECT
                     TO_CHAR(REPLACE("${tableInfo.dateCol}", '.', '-')::timestamp, 'YYYY-MM') as month,
@@ -127,8 +144,8 @@ export class SQLiteKpiRepository implements IKpiRepository {
                 WHERE 1=1${dateWhere}
                 GROUP BY month
                 ORDER BY month DESC
-                LIMIT $1
-            `, [limit]);
+                LIMIT $${dateParams.length + 1}
+            `, [...dateParams, limit]);
 
             const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 

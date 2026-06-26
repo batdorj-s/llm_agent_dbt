@@ -20,7 +20,7 @@ select
     {{ id_col }} as order_id,
     cast({{ date_col }} as timestamp) as order_date,
     {{ sales_col }} as sales,
-    {{ profit_col }} as profit,
+    {% if profit_col %} {{ profit_col }} {% else %} cast(null as numeric) {% endif %} as profit,
     {{ customer_col }} as customer_id,
     {% if segment_col %} {{ segment_col }} {% else %} cast(null as varchar) as segment {% endif %},
     {% if category_col %} {{ category_col }} {% else %} cast(null as varchar) as category {% endif %}

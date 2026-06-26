@@ -402,14 +402,19 @@ Respond with ONLY the JSON. No markdown, no explanation.`;
 
 export async function removeDocumentsByPrefix(idPrefix: string): Promise<number> {
   const before = knowledgeDocuments.length;
-  knowledgeDocuments = knowledgeDocuments.filter(d => !d.id.startsWith(idPrefix));
+  const removedIds: string[] = [];
+  knowledgeDocuments = knowledgeDocuments.filter(d => {
+    const match = d.id.startsWith(idPrefix);
+    if (match) removedIds.push(d.id);
+    return !match;
+  });
   const removed = before - knowledgeDocuments.length;
 
   const col = await getChromaCollection();
-  if (col && removed > 0) {
+  if (col && removedIds.length > 0) {
     try {
-      await col.delete({ where: { source_name: { "$starts_with": idPrefix } } });
-      console.log(`[RAG] Deleted ${removed} ChromaDB docs matching prefix: ${idPrefix}`);
+      await col.delete(removedIds);
+      console.log(`[RAG] Deleted ${removedIds.length} ChromaDB docs by id (prefix: ${idPrefix})`);
     } catch (err: any) {
       console.warn(`[RAG] ChromaDB delete failed for prefix ${idPrefix}:`, err.message);
     }
