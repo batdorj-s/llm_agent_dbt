@@ -20,10 +20,6 @@ interface AdminPanelProps {
   excelDescInput: string;
   isUploadingExcel: boolean;
   excelUploadMessage: string | null;
-  docFile: File | null;
-  docDescInput: string;
-  isUploadingDoc: boolean;
-  docUploadMessage: string | null;
   uploadedFiles: UploadedFile[];
   onAdjustMetricChange: (val: "sales" | "users" | "churn_rate") => void;
   onNewTargetValueChange: (val: number) => void;
@@ -36,9 +32,6 @@ interface AdminPanelProps {
   onExcelTableNameInputChange: (val: string) => void;
   onExcelDescInputChange: (val: string) => void;
   onUploadExcel: (e: React.FormEvent) => void;
-  onDocFileChange: (file: File | null) => void;
-  onDocDescInputChange: (val: string) => void;
-  onUploadDoc: (e: React.FormEvent) => void;
   onViewFile: (file: UploadedFile) => void;
   onDeleteFile: (id: string) => void;
 }
@@ -59,10 +52,6 @@ export const AdminPanel = ({
   excelDescInput,
   isUploadingExcel,
   excelUploadMessage,
-  docFile,
-  docDescInput,
-  isUploadingDoc,
-  docUploadMessage,
   uploadedFiles,
   onAdjustMetricChange,
   onNewTargetValueChange,
@@ -75,9 +64,6 @@ export const AdminPanel = ({
   onExcelTableNameInputChange,
   onExcelDescInputChange,
   onUploadExcel,
-  onDocFileChange,
-  onDocDescInputChange,
-  onUploadDoc,
   onViewFile,
   onDeleteFile,
 }: AdminPanelProps) => {
@@ -157,25 +143,6 @@ export const AdminPanel = ({
           </button>
         </form>
         {excelUploadMessage && <p className="text-[9px] text-foreground/60 mt-1 max-w-full break-words">{excelUploadMessage}</p>}
-      </div>
-
-      {/* DOCUMENT UPLOADER */}
-      <div className="border-t border-border pt-4 space-y-2">
-        <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Upload Document (PDF/DOCX)</span>
-        <form onSubmit={onUploadDoc} className="space-y-2">
-          <input type="text" required placeholder="Brief description..." value={docDescInput} onChange={(e) => onDocDescInputChange(e.target.value)}
-            className="w-full bg-background border border-border rounded p-1.5 text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors" />
-          <div className="relative border border-dashed border-border hover:border-foreground/30 rounded p-3 text-center transition-colors cursor-pointer bg-background/50 text-foreground">
-            <input type="file" accept=".pdf,.docx" required onChange={(e) => onDocFileChange(e.target.files?.[0] || null)}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-            <span className="text-[10px] text-foreground/60 block truncate">{docFile ? docFile.name : "Select PDF or Word file"}</span>
-          </div>
-          <button type="submit" disabled={isUploadingDoc || !docFile || !docDescInput.trim()}
-            className="w-full py-1.5 bg-background border border-border hover:bg-foreground/5 text-foreground rounded text-[10px] font-bold cursor-pointer transition-colors disabled:opacity-50 duration-150">
-            {isUploadingDoc ? "Indexing..." : "Index Document"}
-          </button>
-        </form>
-        {docUploadMessage && <p className="text-[9px] text-foreground/60 mt-1 max-w-full break-words">{docUploadMessage}</p>}
       </div>
 
       {/* FILE MANAGER */}
