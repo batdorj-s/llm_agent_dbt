@@ -9,6 +9,20 @@ interface KpiGridProps {
   usersKpi: KpiData | null;
   churnKpi: KpiData | null;
   computedMetrics: ComputedMetrics | null;
+  isLoading?: boolean;
+}
+
+function SkeletonCard() {
+  return (
+    <div className="border border-border/80 rounded-xl p-4 bg-card shadow-sm animate-pulse flex flex-col gap-3">
+      <div className="h-2.5 bg-foreground/10 rounded w-1/2" />
+      <div className="h-6 bg-foreground/10 rounded w-2/3" />
+      <div className="flex justify-between">
+        <div className="h-2 bg-foreground/10 rounded w-1/3" />
+        <div className="h-2 bg-foreground/10 rounded w-1/5" />
+      </div>
+    </div>
+  );
 }
 
 function KpiCard({
@@ -44,7 +58,7 @@ function KpiCard({
   );
 }
 
-export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics }: KpiGridProps) => {
+export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, isLoading }: KpiGridProps) => {
   const churnColor = churnKpi && churnKpi.current > churnKpi.target
     ? "#ef4444" : "#10b981";
 
@@ -52,6 +66,17 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics }: KpiGr
   const growthRate = computedMetrics?.growthRate ?? null;
   const topCategory = computedMetrics?.topCategory ?? null;
   const growthDirection = computedMetrics?.growthDirection ?? "up";
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

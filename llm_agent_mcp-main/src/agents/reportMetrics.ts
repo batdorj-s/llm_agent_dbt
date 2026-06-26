@@ -1,5 +1,6 @@
 import { getPool } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
+import { detectDateColumn } from "./dateColumnHelper.js";
 
 export interface ComputedMetrics {
   aov: number;
@@ -11,38 +12,61 @@ export interface ComputedMetrics {
   topCategoryUnit: string;
 }
 
-async function getActiveTableColumns(): Promise<{ tableName: string; columns: string[] } | null> {
+async function getActiveTableInfo(userId: string): Promise<{
+  tableName: string;
+  columns: string[];
+  columnTypes: Record<string, string>;
+} | null> {
   try {
     const catalogResult = await getPool().query(
-      `SELECT table_name, columns_info FROM data_lake_catalog ORDER BY created_at DESC LIMIT 1`
+      `SELECT table_name, columns_info FROM data_lake_catalog
+       WHERE visibility = 'shared' OR owner_id = $1
+       ORDER BY created_at DESC LIMIT 1`,
+      [userId]
     );
     const row = catalogResult.rows[0] as any;
     if (!row) return null;
-    return {
-      tableName: row.table_name,
-      columns: JSON.parse(row.columns_info) as string[],
-    };
+
+    const columns = JSON.parse(row.columns_info) as string[];
+
+    const typeResult = await getPool().query(
+      `SELECT column_name, data_type FROM information_schema.columns
+       WHERE table_name = $1 AND table_schema = 'public'`,
+      [row.table_name]
+    );
+    const columnTypes: Record<string, string> = {};
+    for (const r of typeResult.rows as Array<{ column_name: string; data_type: string }>) {
+      columnTypes[r.column_name.toLowerCase()] = r.data_type;
+    }
+
+    return { tableName: row.table_name, columns, columnTypes };
   } catch {
     return null;
   }
 }
 
-export async function computeMetrics(): Promise<ComputedMetrics | null> {
-  const table = await getActiveTableColumns();
+export async function computeMetrics(userId: string): Promise<ComputedMetrics | null> {
+  const table = await getActiveTableInfo(userId);
   if (!table) return null;
 
-  const { tableName, columns } = table;
+  const { tableName, columns, columnTypes } = table;
   const salesCol = findConceptColumn(columns, "sales", tableName);
   const qtyCol = findConceptColumn(columns, "quantity", tableName);
   const catCol = findConceptColumn(columns, "product", tableName);
   const dateCol = findConceptColumn(columns, "date", tableName);
+
+  let dateCast: string | null = null;
+  if (dateCol) {
+    const colType = columnTypes[dateCol.toLowerCase()] || "unknown";
+    const dateInfo = detectDateColumn(dateCol, colType);
+    dateCast = dateInfo?.sqlCast || `CAST("${dateCol}" AS DATE)`;
+  }
 
   let aov = 0;
   let growthRate = 0;
   let topCategory = "—";
   let topCategoryValue = 0;
 
-  // AOV: SUM(sales) / SUM(quantity)
   if (salesCol && qtyCol) {
     try {
       const result = await getPool().query(
@@ -52,18 +76,17 @@ export async function computeMetrics(): Promise<ComputedMetrics | null> {
     } catch {}
   }
 
-  // Growth Rate: last 30 days vs previous 30 days
-  if (salesCol && dateCol) {
+  if (salesCol && dateCast) {
     try {
       const result = await getPool().query(`
         WITH periods AS (
           SELECT
-            CASE WHEN REPLACE("${dateCol}", '.', '-')::date >= CURRENT_DATE - INTERVAL '30 days'
+            CASE WHEN ${dateCast} >= CURRENT_DATE - INTERVAL '30 days'
               THEN 'current' ELSE 'previous'
             END AS period,
             SUM(CAST("${salesCol}" AS NUMERIC)) AS total
           FROM "${tableName}"
-          WHERE REPLACE("${dateCol}", '.', '-')::date >= CURRENT_DATE - INTERVAL '60 days'
+          WHERE ${dateCast} >= CURRENT_DATE - INTERVAL '60 days'
           GROUP BY period
         )
         SELECT
@@ -79,7 +102,6 @@ export async function computeMetrics(): Promise<ComputedMetrics | null> {
     } catch {}
   }
 
-  // Top Category
   if (catCol && salesCol) {
     try {
       const result = await getPool().query(

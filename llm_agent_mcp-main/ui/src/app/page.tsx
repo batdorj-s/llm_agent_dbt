@@ -7,6 +7,7 @@ import { Message, KpiData, SalesHistory, UploadedFile, ServerStatus, ComputedMet
 import { Header } from "../components/Header";
 import { LoginForm } from "../components/LoginForm";
 import { KpiGrid } from "../components/KpiGrid";
+import { ReportView } from "../components/ReportView";
 import { AdminPanel } from "../components/AdminPanel";
 import { ChatInput } from "../components/ChatInput";
 import { PreviewDrawer } from "../components/PreviewDrawer";
@@ -44,6 +45,7 @@ export default function Home() {
   const [usersKpi, setUsersKpi] = useState<KpiData | null>(null);
   const [churnKpi, setChurnKpi] = useState<KpiData | null>(null);
   const [computedMetrics, setComputedMetrics] = useState<ComputedMetrics | null>(null);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const [, setSalesHistory] = useState<SalesHistory[]>([]);
   const [, setDashboardError] = useState<string | null>(null);
   const [historyLimit] = useState<number>(5);
@@ -178,7 +180,7 @@ export default function Home() {
     localStorage.removeItem("agent_token");
     localStorage.removeItem("agent_user");
     setToken(null); setUser(null); setIsLoggedIn(false);
-    setMessages([]); setSalesKpi(null); setUsersKpi(null); setChurnKpi(null); setComputedMetrics(null); setSalesHistory([]);
+    setMessages([]); setSalesKpi(null); setUsersKpi(null); setChurnKpi(null); setComputedMetrics(null); setSalesHistory([]); setIsDashboardLoading(true);
   };
 
   // ── Data fetching ──
@@ -187,7 +189,8 @@ export default function Home() {
   };
 
   const fetchDashboardData = async () => {
-    if (!token) return;
+    if (!token) { setIsDashboardLoading(false); return; }
+    setIsDashboardLoading(true);
     try {
       setDashboardError(null);
       const headers = { Authorization: `Bearer ${token}` };
@@ -205,6 +208,7 @@ export default function Home() {
       if (historyRes.ok) setSalesHistory(await historyRes.json());
       if (computedRes.ok) setComputedMetrics(await computedRes.json());
     } catch { setDashboardError("Could not retrieve KPI data."); }
+    finally { setIsDashboardLoading(false); }
   };
 
   const fetchUploadedFiles = async () => {
@@ -459,7 +463,8 @@ export default function Home() {
     <div className="h-screen overflow-hidden bg-background text-foreground/80 font-sans antialiased text-xs flex flex-col transition-colors duration-200">
       <Header serverStatus={serverStatus} isLoggedIn={isLoggedIn} user={user} theme={theme}
         onToggleTheme={toggleTheme} onLogout={handleLogout}
-        activeTab={activeTab} onTabChange={setActiveTab} />
+        activeTab={activeTab} onTabChange={setActiveTab}
+        onUploadClick={() => { setActiveTab("dashboard"); setSidebarOpen(true); }} />
 
       {!isLoggedIn ? (
         <LoginForm email={email} password={password} isAuthLoading={isAuthLoading}
@@ -618,7 +623,7 @@ export default function Home() {
                     </div>
 
                     {/* KPI GRID */}
-                    <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} computedMetrics={computedMetrics} />
+                    <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} computedMetrics={computedMetrics} isLoading={isDashboardLoading} />
 
                     {/* CHARTS ROW */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -642,15 +647,7 @@ export default function Home() {
 
           {activeTab === "report" && (
             <main className="flex-1 flex overflow-hidden min-h-0">
-              <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background p-6">
-                <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-                  <FileText className="w-12 h-12 text-foreground/20" />
-                  <div>
-                    <p className="text-sm font-semibold text-foreground/60">Тайлан бэлтгэж байна</p>
-                    <p className="text-[10px] text-foreground/40 mt-1">Энэ хэсэг удахгүй нэмэгдэнэ.</p>
-                  </div>
-                </div>
-              </section>
+              <ReportView token={token!} />
             </main>
           )}
         </>

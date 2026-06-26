@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { LogOut, Sun, Moon, MessageSquare, LayoutDashboard, FileText } from "lucide-react";
+import { LogOut, Sun, Moon, MessageSquare, LayoutDashboard, FileText, Upload } from "lucide-react";
 import { ServerStatus } from "./types";
 
 type TabId = "ask" | "dashboard" | "report";
@@ -15,6 +15,7 @@ interface HeaderProps {
   onLogout: () => void;
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
+  onUploadClick?: () => void;
 }
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
@@ -23,7 +24,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "report", label: "Тайлан", icon: <FileText className="w-3.5 h-3.5" /> },
 ];
 
-export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, onLogout, activeTab, onTabChange }: HeaderProps) => {
+export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, onLogout, activeTab, onTabChange, onUploadClick }: HeaderProps) => {
   return (
     <header className="border-b border-border bg-background px-6 py-3 flex items-center justify-between transition-colors duration-200">
       <div className="flex items-center gap-2">
@@ -47,6 +48,16 @@ export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, o
               {t.label}
             </button>
           ))}
+          {onUploadClick && (
+            <button
+              onClick={onUploadClick}
+              className="flex items-center gap-1 px-2.5 py-1.5 ml-1 text-[10px] font-bold uppercase tracking-wider rounded bg-primary/10 text-primary hover:bg-primary/20 transition-all cursor-pointer"
+              title="Өгөгдөл оруулах"
+            >
+              <Upload className="w-3 h-3" />
+              Upload
+            </button>
+          )}
         </div>
       )}
 

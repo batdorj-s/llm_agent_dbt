@@ -233,7 +233,7 @@ app.get("/api/dashboard/computed-metrics", async (req, res) => {
   }
 
   try {
-    const metrics = await computeMetrics();
+    const metrics = await computeMetrics(auth.payload.userId);
     if (!metrics) return res.status(404).json({ error: "No active dataset found" });
     res.json(metrics);
   } catch (err: any) {
