@@ -214,6 +214,28 @@ export async function initDataLake(): Promise<void> {
                 }
             }
 
+            // Update admin credentials from env vars on every startup
+            if (process.env.ADMIN_PASSWORD || process.env.ADMIN_EMAIL) {
+                const adminId = "user-admin-001";
+                const sets: string[] = [];
+                const params: any[] = [];
+                let idx = 1;
+                if (process.env.ADMIN_PASSWORD) {
+                    sets.push(`password_hash = $${idx++}`);
+                    params.push(hashPassword(process.env.ADMIN_PASSWORD));
+                }
+                if (process.env.ADMIN_EMAIL) {
+                    sets.push(`email = $${idx++}`);
+                    params.push(process.env.ADMIN_EMAIL);
+                }
+                params.push(adminId);
+                await pool.query(
+                    `UPDATE users SET ${sets.join(", ")} WHERE id = $${idx}`,
+                    params
+                );
+                console.log(`[Data Lake] Admin credentials updated from env vars`);
+            }
+
             _pgAvailable = true;
             console.log("[Data Lake] Connected to PostgreSQL");
 
