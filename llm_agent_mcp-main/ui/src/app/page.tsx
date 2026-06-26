@@ -578,11 +578,11 @@ export default function Home() {
               )}
 
               {/* SIDEBAR - only AdminPanel */}
-              <section className={`w-full md:w-[280px] shrink-0 border-r border-border bg-sidebar p-4 flex flex-col overflow-y-auto scrollbar-hide space-y-4 transition-all duration-200 ${
+              <section className={`shrink-0 border-r border-border bg-sidebar p-4 flex-col overflow-y-auto scrollbar-hide space-y-4 transition-all duration-200 md:w-[280px] md:flex md:relative ${
                 sidebarOpen
                   ? "fixed inset-y-0 left-0 z-50 w-[280px] shadow-xl flex"
-                  : "md:flex hidden"
-              }`}>
+                  : "hidden"
+              } md:inset-auto md:z-auto md:shadow-none`}>
                 <div className="flex items-center justify-between md:hidden">
                   <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Удирдлага</span>
                   <button onClick={() => setSidebarOpen(false)} className="text-foreground/50 hover:text-foreground text-xs p-1 cursor-pointer">✕</button>
