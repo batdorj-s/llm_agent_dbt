@@ -1,13 +1,14 @@
 "use client";
 
 import React from "react";
-import { KpiData } from "./types";
+import { KpiData, ComputedMetrics } from "./types";
 import { chartTheme } from "./chartTheme";
 
 interface KpiGridProps {
   salesKpi: KpiData | null;
   usersKpi: KpiData | null;
   churnKpi: KpiData | null;
+  computedMetrics: ComputedMetrics | null;
 }
 
 function KpiCard({
@@ -43,9 +44,14 @@ function KpiCard({
   );
 }
 
-export const KpiGrid = ({ salesKpi, usersKpi, churnKpi }: KpiGridProps) => {
+export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics }: KpiGridProps) => {
   const churnColor = churnKpi && churnKpi.current > churnKpi.target
     ? "#ef4444" : "#10b981";
+
+  const aov = computedMetrics?.aov ?? null;
+  const growthRate = computedMetrics?.growthRate ?? null;
+  const topCategory = computedMetrics?.topCategory ?? null;
+  const growthDirection = computedMetrics?.growthDirection ?? "up";
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -72,10 +78,11 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi }: KpiGridProps) => {
       />
       <KpiCard
         label="Average Order Value"
-        value="—"
-        subLabel="Trend"
-        subValue="—"
+        value={aov !== null ? `${aov.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+        subLabel="Top Category"
+        subValue={topCategory !== null && aov !== null ? topCategory : "—"}
         color={chartTheme.colors.semantic.area}
+        trend={growthRate !== null ? { direction: growthDirection, label: `${Math.abs(growthRate).toFixed(1)}%` } : undefined}
       />
     </div>
   );

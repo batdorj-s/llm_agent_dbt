@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { BarChart2, Activity, TrendingUp, PieChart as PieChartIcon, LayoutDashboard, Upload, ThumbsUp, ThumbsDown, FileText } from "lucide-react";
 
-import { Message, KpiData, SalesHistory, UploadedFile, ServerStatus } from "../components/types";
+import { Message, KpiData, SalesHistory, UploadedFile, ServerStatus, ComputedMetrics } from "../components/types";
 import { Header } from "../components/Header";
 import { LoginForm } from "../components/LoginForm";
 import { KpiGrid } from "../components/KpiGrid";
@@ -43,6 +43,7 @@ export default function Home() {
   const [salesKpi, setSalesKpi] = useState<KpiData | null>(null);
   const [usersKpi, setUsersKpi] = useState<KpiData | null>(null);
   const [churnKpi, setChurnKpi] = useState<KpiData | null>(null);
+  const [computedMetrics, setComputedMetrics] = useState<ComputedMetrics | null>(null);
   const [, setSalesHistory] = useState<SalesHistory[]>([]);
   const [, setDashboardError] = useState<string | null>(null);
   const [historyLimit] = useState<number>(5);
@@ -177,7 +178,7 @@ export default function Home() {
     localStorage.removeItem("agent_token");
     localStorage.removeItem("agent_user");
     setToken(null); setUser(null); setIsLoggedIn(false);
-    setMessages([]); setSalesKpi(null); setUsersKpi(null); setChurnKpi(null); setSalesHistory([]);
+    setMessages([]); setSalesKpi(null); setUsersKpi(null); setChurnKpi(null); setComputedMetrics(null); setSalesHistory([]);
   };
 
   // ── Data fetching ──
@@ -190,17 +191,19 @@ export default function Home() {
     try {
       setDashboardError(null);
       const headers = { Authorization: `Bearer ${token}` };
-      const [salesRes, usersRes, churnRes, historyRes] = await Promise.all([
+      const [salesRes, usersRes, churnRes, historyRes, computedRes] = await Promise.all([
         fetch("/api/kpi/sales", { headers }),
         fetch("/api/kpi/users", { headers }),
         fetch("/api/kpi/churn_rate", { headers }),
         fetch(`/api/kpi-history?limit=${historyLimit}`, { headers }),
+        fetch("/api/dashboard/computed-metrics", { headers }),
       ]);
       if (salesRes.ok) setSalesKpi(await salesRes.json());
       else if (salesRes.status === 401) { handleLogout(); return; }
       if (usersRes.ok) setUsersKpi(await usersRes.json());
       if (churnRes.ok) setChurnKpi(await churnRes.json());
       if (historyRes.ok) setSalesHistory(await historyRes.json());
+      if (computedRes.ok) setComputedMetrics(await computedRes.json());
     } catch { setDashboardError("Could not retrieve KPI data."); }
   };
 
@@ -615,7 +618,7 @@ export default function Home() {
                     </div>
 
                     {/* KPI GRID */}
-                    <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} />
+                    <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} computedMetrics={computedMetrics} />
 
                     {/* CHARTS ROW */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

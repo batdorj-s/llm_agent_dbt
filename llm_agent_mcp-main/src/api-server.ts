@@ -17,6 +17,7 @@ import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, authenticateUser, createUser } from "./db/data-lake.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
+import { computeMetrics } from "./agents/reportMetrics.js";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -220,6 +221,24 @@ app.get("/api/kpi-history", async (req, res) => {
   const repo = await getRepository();
   const history = await repo.getSalesHistory(limit);
   res.json(history);
+});
+
+// ─────────────────────────────────────────────────────────────
+// Dashboard — Computed Metrics (AOV, Growth Rate, Top Category)
+// ─────────────────────────────────────────────────────────────
+app.get("/api/dashboard/computed-metrics", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  try {
+    const metrics = await computeMetrics();
+    if (!metrics) return res.status(404).json({ error: "No active dataset found" });
+    res.json(metrics);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────

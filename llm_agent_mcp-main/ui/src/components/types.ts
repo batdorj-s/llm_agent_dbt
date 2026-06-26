@@ -27,6 +27,16 @@ export interface UploadedFile {
   description?: string;
 }
 
+export interface ComputedMetrics {
+  aov: number;
+  aovUnit: string;
+  growthRate: number;
+  growthDirection: "up" | "down";
+  topCategory: string;
+  topCategoryValue: number;
+  topCategoryUnit: string;
+}
+
 export interface ServerStatus {
   status: string;
   llm: {
