@@ -6,6 +6,7 @@ import { sandboxLimiter } from "../rate-limiter.js";
 import { searchKnowledgeBase } from "../rag.js";
 import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "../rag.js";
 import { detectDateColumn, extractProfileFromSchemaDef } from "./dateColumnHelper.js";
+import { sanitizeUserInput } from "./sanitize.js";
 
 const LLM_TIMEOUT_MS = 40000;
 const PYTHON_GEN_TIMEOUT_MS = 55000;
@@ -13,7 +14,7 @@ const PYTHON_GEN_TIMEOUT_MS = 55000;
 export async function dataScientistNode(state: any, config?: any): Promise<Partial<import("../multi-agent.js").AgentState>> {
     const onChunk = config?.configurable?.onChunk;
     const lastMsg = state.messages[state.messages.length - 1];
-    const query = lastMsg ? lastMsg.content : "";
+    const query = lastMsg ? sanitizeUserInput(lastMsg.content) : "";
     const userId = state.userId || "system";
 
     const prefix = "(Data Scientist Agent)\nӨгөгдөлд шинжилгээ хийж байна...\n\n";
@@ -189,7 +190,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
         const codeBlock = `\`\`\`python\n${pythonCode}\n\`\`\`\n\n`;
         if (onChunk) onChunk(codeBlock);
 
-        const output = await runPythonCode(pythonCode, undefined, true);
+        const output = await runPythonCode(pythonCode, undefined, true, userId);
 
         let cleanOutput = output;
         let chartTag = "";

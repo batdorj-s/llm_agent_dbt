@@ -8,7 +8,7 @@ import { traceToolCall } from "./observability/tracer.js";
 
 dotenv.config();
 
-let _sandboxInstance: any = null;
+const _sandboxInstances = new Map<string, any>();
 
 const SANDBOX_TIMEOUT_MS = 20_000;
 const SANDBOX_CREATE_TIMEOUT_MS = 60_000;
@@ -118,7 +118,7 @@ with open("${outputFile.replace(/\\/g, "\\\\")}", "w") as _f:
     }
 }
 
-export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TIMEOUT_MS, skipMemorySafe: boolean = false): Promise<string> {
+export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TIMEOUT_MS, skipMemorySafe: boolean = false, userId: string = "anonymous"): Promise<string> {
     return traceToolCall("runPythonCode", async () => {
     const hasKey = process.env.E2B_API_KEY && process.env.E2B_API_KEY !== 'your_e2b_api_key_here';
 
@@ -140,17 +140,19 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
         ].join("\n");
     }
 
+    let instance = _sandboxInstances.get(userId);
     try {
-        console.log(" Accessing E2B MicroVM Sandbox...");
-        if (!_sandboxInstance) {
-            console.log(" Initializing new E2B Sandbox MicroVM (takes ~2s)...");
-            _sandboxInstance = await withTimeout(
+        console.log(` Accessing E2B MicroVM Sandbox for user=${userId}...`);
+        if (!instance) {
+            console.log(` Initializing new E2B Sandbox MicroVM for user=${userId} (takes ~2s)...`);
+            instance = await withTimeout(
                 Sandbox.create({ apiKey: process.env.E2B_API_KEY }),
                 "Sandbox creation",
                 SANDBOX_CREATE_TIMEOUT_MS
             );
+            _sandboxInstances.set(userId, instance);
         } else {
-            console.log(" Reusing cached E2B Sandbox MicroVM (instant)...");
+            console.log(` Reusing cached E2B Sandbox MicroVM for user=${userId} (instant)...`);
         }
 
         // Dynamically write/seed datasets if they exist in local workspace
@@ -158,7 +160,7 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
         for (const file of datasets) {
             if (fs.existsSync(file)) {
                 const csvData = fs.readFileSync(file, "utf8");
-                await _sandboxInstance.files.write(file, csvData);
+                await instance.files.write(file, csvData);
                 console.log(` Seeded ${file} into E2B Sandbox.`);
             }
         }
@@ -166,7 +168,7 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
         const safeCode = skipMemorySafe ? code : preparePythonCode(code);
         console.log(`Python Executing Python Code${skipMemorySafe ? " (full data mode)" : " (memory safe)"}...`);
         const execution: any = await withTimeout(
-            _sandboxInstance.runCode(safeCode, { timeout: timeoutMs }),
+            instance.runCode(safeCode, { timeout: timeoutMs }),
             "Python execution",
             timeoutMs
         );
@@ -183,7 +185,7 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
         }
 
         try {
-            const chartContent = await _sandboxInstance.files.read("analysis_plot.png");
+            const chartContent = await instance.files.read("analysis_plot.png");
             if (chartContent) {
                 const base64 = Buffer.from(chartContent).toString("base64");
                 output += `\n##CHART_SAVED##\n##BASE64_IMAGE:${base64}\n`;
@@ -194,9 +196,9 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
 
         return output || "Execution complete. No output.";
     } catch (error: any) {
-        // Reset the instance on error so it spins up a fresh one next time
-        _sandboxInstance = null;
-        console.error("E2B Sandbox execution error:", error);
+        // Remove only this user's instance on error
+        _sandboxInstances.delete(userId);
+        console.error(`E2B Sandbox execution error for user=${userId}:`, error);
         return `E2B Execution Error: ${error.message}`;
     }
 });

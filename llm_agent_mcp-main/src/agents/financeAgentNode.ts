@@ -5,13 +5,14 @@ import { getCatalog } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
 import { techAgentNode } from "./techAgentNode.js";
+import { sanitizeUserInput } from "./sanitize.js";
 
 export async function financeAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
     console.log("[Finance Agent] Activated.");
     const onChunk = config?.configurable?.onChunk;
 
     const lastMsg = state.messages[state.messages.length - 1];
-    const query = lastMsg ? lastMsg.content : "sales targets";
+    const query = lastMsg ? sanitizeUserInput(lastMsg.content) : "sales targets";
     const userId = state.userId || "system";
 
     const llm = await createLLM({ temperature: 0 });

@@ -16,12 +16,13 @@ import {
 } from "./sqlGeneration.js";
 import { executeTechPythonAgent } from "./pythonExecution.js";
 import { buildDashboard } from "./dashboardBuilder.js";
+import { sanitizeUserInput } from "./sanitize.js";
 
 export async function techAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
     const onChunk = config?.configurable?.onChunk;
 
     const lastMsg = state.messages[state.messages.length - 1];
-    const query = lastMsg ? lastMsg.content : "";
+    const query = lastMsg ? sanitizeUserInput(lastMsg.content) : "";
     const userId = state.userId || "system";
 
     const llm = await createLLM({ temperature: 0 });
@@ -34,7 +35,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
     }
 
     if (isPythonQuery(query)) {
-        return await executeTechPythonAgent(llm, query, onChunk);
+        return await executeTechPythonAgent(llm, query, onChunk, userId);
     }
 
     console.log("[Tech Agent] Activated. Writing SQL query...");

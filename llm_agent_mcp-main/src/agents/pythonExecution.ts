@@ -1,12 +1,15 @@
 import { createLLM } from "../llm-provider.js";
 import { runPythonCode } from "../sandbox.js";
 import { type AgentState, withTimeout } from "./agentState.js";
+import { sanitizeUserInput } from "./sanitize.js";
 
 export async function executeTechPythonAgent(
     llm: any,
-    query: string,
-    onChunk?: (chunk: string) => void
+    rawQuery: string,
+    onChunk?: (chunk: string) => void,
+    userId: string = "anonymous",
 ): Promise<Partial<AgentState>> {
+    const query = sanitizeUserInput(rawQuery);
     console.log("[Tech Agent] Activated. Running Python via E2B sandbox...");
     const prefix = "(Tech Agent)\nPython код бэлдэж, E2B sandbox-д ажиллуулж байна...\n\n";
     if (onChunk) onChunk(prefix);
@@ -37,7 +40,7 @@ Task: ${query}`;
         const codeBlock = `\`\`\`python\n${pythonCode}\n\`\`\`\n\n`;
         if (onChunk) onChunk(codeBlock);
 
-        const output = await runPythonCode(pythonCode);
+        const output = await runPythonCode(pythonCode, undefined, false, userId);
         const resultBlock = `### Гүйцэтгэлийн үр дүн\n\`\`\`\n${output}\n\`\`\`\n`;
         if (onChunk) onChunk(resultBlock);
 

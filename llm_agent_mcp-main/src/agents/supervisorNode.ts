@@ -4,6 +4,7 @@ import { prompts } from "./prompts.js";
 import { trimMessages, withTimeout, type AgentState, type NextAgent } from "./agentState.js";
 import { queryMentionsTable } from "../utils.js";
 import { z } from "zod";
+import { sanitizeUserInput } from "./sanitize.js";
 
 const RouteSchema = z.object({
     route: z.enum(["FinanceAgent", "TechAgent", "DataScientistAgent", "END"])
@@ -83,7 +84,7 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
     const lastMsg = state.messages[state.messages.length - 1];
     if (!lastMsg) return { nextAgent: "END" };
 
-    const lastMessage = lastMsg.content;
+    const lastMessage = sanitizeUserInput(lastMsg.content);
     const userId = state.userId || "system";
     console.log(`[Supervisor] Analyzing query: "${lastMessage}"`);
 
