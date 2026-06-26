@@ -6,7 +6,7 @@ import { BarChart2, Activity, TrendingUp, PieChart as PieChartIcon, LayoutDashbo
 import { Message, KpiData, SalesHistory, UploadedFile, ServerStatus } from "../components/types";
 import { Header } from "../components/Header";
 import { LoginForm } from "../components/LoginForm";
-import { DashboardPanel } from "../components/DashboardPanel";
+import { KpiGrid } from "../components/KpiGrid";
 import { AdminPanel } from "../components/AdminPanel";
 import { ChatInput } from "../components/ChatInput";
 import { PreviewDrawer } from "../components/PreviewDrawer";
@@ -93,6 +93,7 @@ export default function Home() {
 
   // ── Tab navigation ──
   const [activeTab, setActiveTab] = useState<"ask" | "dashboard" | "report">("ask");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ── Refs ──
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -563,9 +564,22 @@ export default function Home() {
           )}
 
           {activeTab === "dashboard" && (
-            <main className="flex-1 flex overflow-hidden min-h-0">
-              <section className="w-full md:w-[320px] shrink-0 border-r border-border bg-sidebar p-5 flex flex-col overflow-y-auto scrollbar-hide space-y-6 md:flex hidden transition-colors duration-200">
-                <DashboardPanel salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} />
+            <main className="flex-1 flex overflow-hidden min-h-0 relative">
+              {/* Mobile sidebar overlay */}
+              {sidebarOpen && (
+                <div className="md:hidden fixed inset-0 z-40 bg-black/30" onClick={() => setSidebarOpen(false)} />
+              )}
+
+              {/* SIDEBAR - only AdminPanel */}
+              <section className={`w-full md:w-[280px] shrink-0 border-r border-border bg-sidebar p-4 flex flex-col overflow-y-auto scrollbar-hide space-y-4 transition-all duration-200 ${
+                sidebarOpen
+                  ? "fixed inset-y-0 left-0 z-50 w-[280px] shadow-xl flex"
+                  : "md:flex hidden"
+              }`}>
+                <div className="flex items-center justify-between md:hidden">
+                  <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Удирдлага</span>
+                  <button onClick={() => setSidebarOpen(false)} className="text-foreground/50 hover:text-foreground text-xs p-1 cursor-pointer">✕</button>
+                </div>
                 <AdminPanel user={user}
                   adjustMetric={adjustMetric} newTargetValue={newTargetValue} isUpdatingTarget={isUpdatingTarget} salesUpdateSuccess={salesUpdateSuccess}
                   onAdjustMetricChange={setAdjustMetric} onNewTargetValueChange={setNewTargetValue} onUpdateKpiTarget={handleUpdateKpiTarget}
@@ -580,7 +594,8 @@ export default function Home() {
                   uploadedFiles={uploadedFiles} onViewFile={handleViewFile} onDeleteFile={handleDeleteFile} />
               </section>
 
-              <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background p-6">
+              {/* DASHBOARD CONTENT */}
+              <section className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-background p-4 md:p-6">
                 {!hasDataset ? (
                   <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
                     <LayoutDashboard className="w-12 h-12 text-foreground/20" />
@@ -590,11 +605,31 @@ export default function Home() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-                    <LayoutDashboard className="w-12 h-12 text-foreground/20" />
-                    <div>
-                      <p className="text-sm font-semibold text-foreground/60">Dashboard ачааллаж байна...</p>
-                      <p className="text-[10px] text-foreground/40 mt-1">КPI үзүүлэлт, графикууд удахгүй харагдана.</p>
+                  <div className="space-y-6">
+                    {/* Mobile sidebar toggle */}
+                    <div className="flex items-center gap-2 md:hidden">
+                      <button onClick={() => setSidebarOpen(true)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-border rounded bg-sidebar text-foreground/60 hover:text-foreground transition-colors cursor-pointer">
+                        Удирдлага
+                      </button>
+                    </div>
+
+                    {/* KPI GRID */}
+                    <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} />
+
+                    {/* CHARTS ROW */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="border border-border/80 rounded-xl p-4 bg-card min-h-[200px] flex items-center justify-center">
+                        <span className="text-[10px] text-foreground/30">Борлуулалтын график</span>
+                      </div>
+                      <div className="border border-border/80 rounded-xl p-4 bg-card min-h-[200px] flex items-center justify-center">
+                        <span className="text-[10px] text-foreground/30">Категорийн график</span>
+                      </div>
+                    </div>
+
+                    {/* TABLE */}
+                    <div className="border border-border/80 rounded-xl p-4 bg-card min-h-[150px] flex items-center justify-center">
+                      <span className="text-[10px] text-foreground/30">Дэлгэрэнгүй хүснэгт</span>
                     </div>
                   </div>
                 )}
