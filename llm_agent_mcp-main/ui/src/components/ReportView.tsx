@@ -56,6 +56,42 @@ function TrendBadge({ rate, direction }: { rate: number; direction: "up" | "down
   );
 }
 
+function ExportButton({ token, label, endpoint, icon }: { token: string; label: string; endpoint: string; icon: React.ReactNode }) {
+  const [isExporting, setIsExporting] = useState(false);
+  const handleExport = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `report-${new Date().toISOString().split("T")[0]}.${label.toLowerCase()}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Export amjiltgüi bolloo.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  return (
+    <button
+      onClick={handleExport}
+      disabled={isExporting}
+      className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-border bg-card text-foreground/70 hover:bg-foreground/5 hover:text-foreground transition-all cursor-pointer disabled:opacity-50"
+    >
+      {icon}
+      {isExporting ? "..." : label}
+    </button>
+  );
+}
+
 export const ReportView = ({ token }: { token: string }) => {
   const [data, setData] = useState<ReportData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -132,22 +168,8 @@ export const ReportView = ({ token }: { token: string }) => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              disabled
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-border bg-card text-foreground/30 cursor-not-allowed"
-              title="Удахгүй"
-            >
-              <Download className="w-3 h-3" />
-              PDF
-            </button>
-            <button
-              disabled
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-border bg-card text-foreground/30 cursor-not-allowed"
-              title="Удахгүй"
-            >
-              <FileSpreadsheet className="w-3 h-3" />
-              Excel
-            </button>
+            <ExportButton token={token} label="PDF" endpoint="/api/report/export-pdf" icon={<Download className="w-3 h-3" />} />
+            <ExportButton token={token} label="Excel" endpoint="/api/report/export-xlsx" icon={<FileSpreadsheet className="w-3 h-3" />} />
           </div>
         </div>
 

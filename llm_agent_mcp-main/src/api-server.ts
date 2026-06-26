@@ -18,6 +18,7 @@ import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumn
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { computeMetrics } from "./agents/reportMetrics.js";
+import { generateReportPdf, generateReportXlsx } from "./agents/reportExport.js";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -236,6 +237,41 @@ app.get("/api/dashboard/computed-metrics", async (req, res) => {
     const metrics = await computeMetrics(auth.payload.userId);
     if (!metrics) return res.status(404).json({ error: "No active dataset found" });
     res.json(metrics);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Report Export — PDF / Excel (JWT-scoped userId)
+// ─────────────────────────────────────────────────────────────
+app.post("/api/report/export-pdf", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  try {
+    const pdfBuffer = await generateReportPdf(auth.payload.userId);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/report/export-xlsx", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  try {
+    const xlsxBuffer = await generateReportXlsx(auth.payload.userId);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.xlsx"`);
+    res.send(xlsxBuffer);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
