@@ -76,6 +76,12 @@ export default function Home() {
   const [isUploadingExcel, setIsUploadingExcel] = useState<boolean>(false);
   const [excelUploadMessage, setExcelUploadMessage] = useState<string | null>(null);
 
+  // ── Upload: Document ──
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docDescInput, setDocDescInput] = useState<string>("");
+  const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
+  const [docUploadMessage, setDocUploadMessage] = useState<string | null>(null);
+
   // ── File Manager ──
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [, setIsFilesLoading] = useState(false);
@@ -431,6 +437,22 @@ export default function Home() {
   };
 
   // ── Upload: Document ──
+  const handleUploadDoc = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!docFile || !docDescInput.trim() || isUploadingDoc || !token) return;
+    setIsUploadingDoc(true); setDocUploadMessage(null);
+    const formData = new FormData();
+    formData.append("file", docFile); formData.append("description", docDescInput); formData.append("category", "manual"); formData.append("department", "general");
+    try {
+      const res = await fetch("/api/admin/upload-doc", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setDocUploadMessage(`Success: Document '${docFile.name}' indexed!`);
+      setDocFile(null); setDocDescInput(""); fetchUploadedFiles();
+    } catch (err: unknown) { setDocUploadMessage(`Error: ${err instanceof Error ? err.message : err}`); }
+    finally { setIsUploadingDoc(false); }
+  };
+
   // ── Close preview ──
   const closePreview = () => {
     setPreviewData(null); setPreviewDescription(null); setPreviewContent(null); setPreviewHasDownload(false); setPreviewFileId(null);
@@ -574,6 +596,8 @@ export default function Home() {
                   excelFile={excelFile} excelTableNameInput={excelTableNameInput} excelDescInput={excelDescInput}
                   isUploadingExcel={isUploadingExcel} excelUploadMessage={excelUploadMessage}
                   onExcelFileChange={setExcelFile} onExcelTableNameInputChange={setExcelTableNameInput} onExcelDescInputChange={setExcelDescInput} onUploadExcel={handleUploadExcel}
+                  docFile={docFile} docDescInput={docDescInput} isUploadingDoc={isUploadingDoc} docUploadMessage={docUploadMessage}
+                  onDocFileChange={setDocFile} onDocDescInputChange={setDocDescInput} onUploadDoc={handleUploadDoc}
                   uploadedFiles={uploadedFiles} onViewFile={handleViewFile} onDeleteFile={handleDeleteFile} />
               </section>
 

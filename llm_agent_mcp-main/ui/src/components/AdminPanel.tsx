@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Activity, FileText, Trash2 } from "lucide-react";
 import { UploadedFile } from "./types";
 
@@ -20,6 +20,10 @@ interface AdminPanelProps {
   excelDescInput: string;
   isUploadingExcel: boolean;
   excelUploadMessage: string | null;
+  docFile: File | null;
+  docDescInput: string;
+  isUploadingDoc: boolean;
+  docUploadMessage: string | null;
   uploadedFiles: UploadedFile[];
   onAdjustMetricChange: (val: "sales" | "users" | "churn_rate") => void;
   onNewTargetValueChange: (val: number) => void;
@@ -32,6 +36,9 @@ interface AdminPanelProps {
   onExcelTableNameInputChange: (val: string) => void;
   onExcelDescInputChange: (val: string) => void;
   onUploadExcel: (e: React.FormEvent) => void;
+  onDocFileChange: (file: File | null) => void;
+  onDocDescInputChange: (val: string) => void;
+  onUploadDoc: (e: React.FormEvent) => void;
   onViewFile: (file: UploadedFile) => void;
   onDeleteFile: (id: string) => void;
 }
@@ -52,6 +59,10 @@ export const AdminPanel = ({
   excelDescInput,
   isUploadingExcel,
   excelUploadMessage,
+  docFile,
+  docDescInput,
+  isUploadingDoc,
+  docUploadMessage,
   uploadedFiles,
   onAdjustMetricChange,
   onNewTargetValueChange,
@@ -64,10 +75,26 @@ export const AdminPanel = ({
   onExcelTableNameInputChange,
   onExcelDescInputChange,
   onUploadExcel,
+  onDocFileChange,
+  onDocDescInputChange,
+  onUploadDoc,
   onViewFile,
   onDeleteFile,
 }: AdminPanelProps) => {
+  const [datasetFormat, setDatasetFormat] = useState<"csv" | "excel">("csv");
   if (!user) return null;
+
+  const isCsv = datasetFormat === "csv";
+  const activeFile = isCsv ? csvFile : excelFile;
+  const activeTableName = isCsv ? tableNameInput : excelTableNameInput;
+  const activeTableDesc = isCsv ? tableDescInput : excelDescInput;
+  const isUploading = isCsv ? isUploadingCsv : isUploadingExcel;
+  const uploadMessage = isCsv ? csvUploadMessage : excelUploadMessage;
+  const onSubmit = isCsv ? onUploadCsv : onUploadExcel;
+  const acceptExt = isCsv ? ".csv" : ".xlsx,.xls";
+  const onFileChange = isCsv ? onCsvFileChange : onExcelFileChange;
+  const onNameChange = isCsv ? onTableNameInputChange : onExcelTableNameInputChange;
+  const onDescChange = isCsv ? onTableDescInputChange : onExcelDescInputChange;
 
   return (
     <div className="border-t border-border pt-5 space-y-4">
@@ -103,46 +130,54 @@ export const AdminPanel = ({
         )}
       </div>
 
-      {/* CSV UPLOADER */}
+      {/* UNIFIED UPLOAD DATASET */}
       <div className="border-t border-border pt-4 space-y-2">
-        <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Upload Dataset (CSV)</span>
-        <form onSubmit={onUploadCsv} className="space-y-2">
-          <input type="text" required placeholder="Table name (e.g. branch_sales)" value={tableNameInput} onChange={(e) => onTableNameInputChange(e.target.value)}
+        <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Upload Dataset</span>
+        <div className="flex gap-1 bg-background border border-border rounded p-0.5">
+          <button type="button" onClick={() => setDatasetFormat("csv")}
+            className={`flex-1 py-1 text-[10px] font-bold rounded cursor-pointer transition-colors ${isCsv ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground"}`}>
+            CSV
+          </button>
+          <button type="button" onClick={() => setDatasetFormat("excel")}
+            className={`flex-1 py-1 text-[10px] font-bold rounded cursor-pointer transition-colors ${!isCsv ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground"}`}>
+            Excel
+          </button>
+        </div>
+        <form onSubmit={onSubmit} className="space-y-2">
+          <input type="text" required placeholder="Table name (e.g. branch_sales)" value={activeTableName} onChange={(e) => onNameChange(e.target.value)}
             className="w-full bg-background border border-border rounded p-1.5 text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors" />
-          <input type="text" required placeholder="Description of data..." value={tableDescInput} onChange={(e) => onTableDescInputChange(e.target.value)}
+          <input type="text" required placeholder="Description of data..." value={activeTableDesc} onChange={(e) => onDescChange(e.target.value)}
             className="w-full bg-background border border-border rounded p-1.5 text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors" />
           <div className="relative border border-dashed border-border hover:border-foreground/30 rounded p-3 text-center transition-colors cursor-pointer bg-background/50 text-foreground">
-            <input type="file" accept=".csv" required onChange={(e) => onCsvFileChange(e.target.files?.[0] || null)}
+            <input type="file" accept={acceptExt} required onChange={(e) => onFileChange(e.target.files?.[0] || null)}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-            <span className="text-[10px] text-foreground/60 block truncate">{csvFile ? csvFile.name : "Select CSV file"}</span>
+            <span className="text-[10px] text-foreground/60 block truncate">{activeFile ? activeFile.name : `Select ${isCsv ? "CSV" : "Excel"} file`}</span>
           </div>
-          <button type="submit" disabled={isUploadingCsv || !csvFile || !tableNameInput.trim() || !tableDescInput.trim()}
+          <button type="submit" disabled={isUploading || !activeFile || !activeTableName.trim() || !activeTableDesc.trim()}
             className="w-full py-1.5 bg-background border border-border hover:bg-foreground/5 text-foreground rounded text-[10px] font-bold cursor-pointer transition-colors disabled:opacity-50 duration-150">
-            {isUploadingCsv ? "Uploading..." : "Upload & Index"}
+            {isUploading ? "Uploading..." : "Upload & Index"}
           </button>
         </form>
-        {csvUploadMessage && <p className="text-[9px] text-foreground/60 mt-1 max-w-full break-words">{csvUploadMessage}</p>}
+        {uploadMessage && <p className="text-[9px] text-foreground/60 mt-1 max-w-full break-words">{uploadMessage}</p>}
       </div>
 
-      {/* EXCEL UPLOADER */}
+      {/* DOCUMENT UPLOADER */}
       <div className="border-t border-border pt-4 space-y-2">
-        <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Upload Excel (XLSX/XLS)</span>
-        <form onSubmit={onUploadExcel} className="space-y-2">
-          <input type="text" required placeholder="Table name..." value={excelTableNameInput} onChange={(e) => onExcelTableNameInputChange(e.target.value)}
-            className="w-full bg-background border border-border rounded p-1.5 text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors" />
-          <input type="text" required placeholder="Description..." value={excelDescInput} onChange={(e) => onExcelDescInputChange(e.target.value)}
+        <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Upload Document (PDF/DOCX)</span>
+        <form onSubmit={onUploadDoc} className="space-y-2">
+          <input type="text" required placeholder="Brief description..." value={docDescInput} onChange={(e) => onDocDescInputChange(e.target.value)}
             className="w-full bg-background border border-border rounded p-1.5 text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors" />
           <div className="relative border border-dashed border-border hover:border-foreground/30 rounded p-3 text-center transition-colors cursor-pointer bg-background/50 text-foreground">
-            <input type="file" accept=".xlsx,.xls" required onChange={(e) => onExcelFileChange(e.target.files?.[0] || null)}
+            <input type="file" accept=".pdf,.docx" required onChange={(e) => onDocFileChange(e.target.files?.[0] || null)}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-            <span className="text-[10px] text-foreground/60 block truncate">{excelFile ? excelFile.name : "Select Excel file"}</span>
+            <span className="text-[10px] text-foreground/60 block truncate">{docFile ? docFile.name : "Select PDF or Word file"}</span>
           </div>
-          <button type="submit" disabled={isUploadingExcel || !excelFile || !excelTableNameInput.trim() || !excelDescInput.trim()}
+          <button type="submit" disabled={isUploadingDoc || !docFile || !docDescInput.trim()}
             className="w-full py-1.5 bg-background border border-border hover:bg-foreground/5 text-foreground rounded text-[10px] font-bold cursor-pointer transition-colors disabled:opacity-50 duration-150">
-            {isUploadingExcel ? "Uploading..." : "Upload & Index"}
+            {isUploadingDoc ? "Indexing..." : "Index Document"}
           </button>
         </form>
-        {excelUploadMessage && <p className="text-[9px] text-foreground/60 mt-1 max-w-full break-words">{excelUploadMessage}</p>}
+        {docUploadMessage && <p className="text-[9px] text-foreground/60 mt-1 max-w-full break-words">{docUploadMessage}</p>}
       </div>
 
       {/* FILE MANAGER */}
