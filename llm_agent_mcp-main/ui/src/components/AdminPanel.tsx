@@ -165,7 +165,7 @@ export const AdminPanel = ({
       <div className="border-t border-border pt-4 space-y-2">
         <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Upload Document (PDF/DOCX)</span>
         <form onSubmit={onUploadDoc} className="space-y-2">
-          <input type="text" required placeholder="Brief description..." value={docDescInput} onChange={(e) => onDocDescInputChange(e.target.value)}
+          <input type="text" required placeholder="Brief description..." value={docDescInput ?? ""} onChange={(e) => onDocDescInputChange(e.target.value)}
             className="w-full bg-background border border-border rounded p-1.5 text-[10px] text-foreground placeholder-zinc-500 focus:outline-none focus:border-foreground/30 transition-colors" />
           <div className="relative border border-dashed border-border hover:border-foreground/30 rounded p-3 text-center transition-colors cursor-pointer bg-background/50 text-foreground">
             <input type="file" accept=".pdf,.docx" required onChange={(e) => onDocFileChange(e.target.files?.[0] || null)}
