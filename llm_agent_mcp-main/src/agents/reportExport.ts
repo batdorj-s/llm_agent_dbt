@@ -15,13 +15,14 @@ function formatNumber(value: number): string {
 
 // ── PDF Report ─────────────────────────────────────────────────────────
 
-export async function generateReportPdf(userId: string): Promise<Buffer> {
-  const [metrics, repo] = await Promise.all([computeMetrics(userId), getRepository()]);
+export async function generateReportPdf(userId: string, startDate?: string, endDate?: string): Promise<Buffer> {
+  const dateFilter = { startDate, endDate };
+  const [metrics, repo] = await Promise.all([computeMetrics(userId, startDate, endDate), getRepository()]);
   const [history, salesKpi, usersKpi, churnKpi] = await Promise.all([
-    repo.getSalesHistory(12),
-    repo.getKpi("sales"),
-    repo.getKpi("users"),
-    repo.getKpi("churn_rate"),
+    repo.getSalesHistory(12, dateFilter),
+    repo.getKpi("sales", dateFilter),
+    repo.getKpi("users", dateFilter),
+    repo.getKpi("churn_rate", dateFilter),
   ]);
 
   const doc = await PDFDocument.create();
@@ -150,16 +151,17 @@ export async function generateReportPdf(userId: string): Promise<Buffer> {
 
 // ── Excel Report ────────────────────────────────────────────────────────
 
-export async function generateReportXlsx(userId: string): Promise<Buffer> {
+export async function generateReportXlsx(userId: string, startDate?: string, endDate?: string): Promise<Buffer> {
   const XLSX = await import("xlsx");
   const mod = (XLSX as any).default || XLSX;
+  const dateFilter = { startDate, endDate };
 
-  const [metrics, repo] = await Promise.all([computeMetrics(userId), getRepository()]);
+  const [metrics, repo] = await Promise.all([computeMetrics(userId, startDate, endDate), getRepository()]);
   const [history, salesKpi, usersKpi, churnKpi] = await Promise.all([
-    repo.getSalesHistory(12),
-    repo.getKpi("sales"),
-    repo.getKpi("users"),
-    repo.getKpi("churn_rate"),
+    repo.getSalesHistory(12, dateFilter),
+    repo.getKpi("sales", dateFilter),
+    repo.getKpi("users", dateFilter),
+    repo.getKpi("churn_rate", dateFilter),
   ]);
 
   const wb = mod.utils.book_new();

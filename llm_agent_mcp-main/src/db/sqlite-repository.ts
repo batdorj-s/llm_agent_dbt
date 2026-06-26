@@ -1,16 +1,24 @@
-import { IKpiRepository, KpiMetric, SalesRecord } from "./types.js";
+import { IKpiRepository, KpiMetric, SalesRecord, DateFilter } from "./types.js";
 import { initDataLake, getPool } from "./data-lake.js";
+
+function buildDateWhere(tableInfo: { dateCol: string }, df?: DateFilter): string {
+    if (!df?.startDate && !df?.endDate) return "";
+    const clauses: string[] = [];
+    if (df.startDate) clauses.push(`"${tableInfo.dateCol}" >= '${df.startDate}'`);
+    if (df.endDate) clauses.push(`"${tableInfo.dateCol}" <= '${df.endDate}'`);
+    return " AND " + clauses.join(" AND ");
+}
 
 export class SQLiteKpiRepository implements IKpiRepository {
     constructor() {
         // Data Lake tables (kpi_targets, etc.) are initialized by initDataLake()
     }
 
-    async getKpi(metric: KpiMetric["name"]): Promise<KpiMetric | null> {
-        return this.getKpiFallback(metric);
+    async getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter): Promise<KpiMetric | null> {
+        return this.getKpiFallback(metric, dateFilter);
     }
 
-    private async getKpiFallback(metric: KpiMetric["name"]): Promise<KpiMetric | null> {
+    private async getKpiFallback(metric: KpiMetric["name"], dateFilter?: DateFilter): Promise<KpiMetric | null> {
         try {
             await initDataLake();
 
@@ -26,19 +34,20 @@ export class SQLiteKpiRepository implements IKpiRepository {
 
             let current = 0;
 
+            const dateWhere = buildDateWhere(tableInfo, dateFilter);
             if (metric === "sales") {
                 const result = await getPool().query(
-                    `SELECT COALESCE(SUM(CAST("${tableInfo.salesCol}" AS NUMERIC)), 0) as total FROM "${tableInfo.tableName}"`
+                    `SELECT COALESCE(SUM(CAST("${tableInfo.salesCol}" AS NUMERIC)), 0) as total FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`
                 );
                 current = Number(result.rows[0]?.total || 0);
             } else if (metric === "users") {
                 const result = await getPool().query(
-                    `SELECT COUNT(DISTINCT "${tableInfo.userCol}") as count FROM "${tableInfo.tableName}"`
+                    `SELECT COUNT(DISTINCT "${tableInfo.userCol}") as count FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`
                 );
                 current = Number(result.rows[0]?.count || 0);
             } else if (metric === "churn_rate") {
                 const result = await getPool().query(
-                    `SELECT COUNT(*) FILTER (WHERE "${tableInfo.dateCol}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as rate FROM "${tableInfo.tableName}"`
+                    `SELECT COUNT(*) FILTER (WHERE "${tableInfo.dateCol}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as rate FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`
                 );
                 current = Number(result.rows[0]?.rate || 0);
             }
@@ -99,21 +108,23 @@ export class SQLiteKpiRepository implements IKpiRepository {
         return { tableName: catalog.table_name, salesCol, userCol, dateCol };
     }
 
-    async getSalesHistory(limit: number): Promise<SalesRecord[]> {
-        return this.getSalesHistoryFallback(limit);
+    async getSalesHistory(limit: number, dateFilter?: DateFilter): Promise<SalesRecord[]> {
+        return this.getSalesHistoryFallback(limit, dateFilter);
     }
 
-    private async getSalesHistoryFallback(limit: number): Promise<SalesRecord[]> {
+    private async getSalesHistoryFallback(limit: number, dateFilter?: DateFilter): Promise<SalesRecord[]> {
         try {
             const tableInfo = await this.getActiveTableInfo();
             if (!tableInfo) return [];
 
             await initDataLake();
+            const dateWhere = buildDateWhere(tableInfo, dateFilter);
             const rows = await getPool().query(`
                 SELECT
                     TO_CHAR(REPLACE("${tableInfo.dateCol}", '.', '-')::timestamp, 'YYYY-MM') as month,
                     SUM(CAST("${tableInfo.salesCol}" AS NUMERIC)) as revenue
                 FROM "${tableInfo.tableName}"
+                WHERE 1=1${dateWhere}
                 GROUP BY month
                 ORDER BY month DESC
                 LIMIT $1

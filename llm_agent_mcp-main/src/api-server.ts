@@ -192,6 +192,13 @@ app.post("/api/chat/stream", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+function extractDateFilter(req: any): { startDate?: string; endDate?: string } {
+  return {
+    startDate: req.query.startDate as string | undefined,
+    endDate: req.query.endDate as string | undefined,
+  };
+}
+
 // KPI Dashboard Data
 // ─────────────────────────────────────────────────────────────
 app.get("/api/kpi/:metric", async (req, res) => {
@@ -202,9 +209,10 @@ app.get("/api/kpi/:metric", async (req, res) => {
 
   const { metric } = req.params;
   const repo = await getRepository();
+  const dateFilter = extractDateFilter(req);
 
   try {
-    const data = await repo.getKpi(metric as any);
+    const data = await repo.getKpi(metric as any, dateFilter);
     if (!data) return res.status(404).json({ error: `Metric '${metric}' not found` });
     res.json(data);
   } catch (err: any) {
@@ -220,7 +228,8 @@ app.get("/api/kpi-history", async (req, res) => {
 
   const limit = req.query.limit ? Number(req.query.limit) : 6;
   const repo = await getRepository();
-  const history = await repo.getSalesHistory(limit);
+  const dateFilter = extractDateFilter(req);
+  const history = await repo.getSalesHistory(limit, dateFilter);
   res.json(history);
 });
 
@@ -233,8 +242,10 @@ app.get("/api/dashboard/computed-metrics", async (req, res) => {
     return res.status(401).json({ error: auth.error });
   }
 
+  const { startDate, endDate } = extractDateFilter(req);
+
   try {
-    const metrics = await computeMetrics(auth.payload.userId);
+    const metrics = await computeMetrics(auth.payload.userId, startDate, endDate);
     if (!metrics) return res.status(404).json({ error: "No active dataset found" });
     res.json(metrics);
   } catch (err: any) {
@@ -251,8 +262,10 @@ app.post("/api/report/export-pdf", async (req, res) => {
     return res.status(401).json({ error: auth.error });
   }
 
+  const { startDate, endDate } = extractDateFilter(req);
+
   try {
-    const pdfBuffer = await generateReportPdf(auth.payload.userId);
+    const pdfBuffer = await generateReportPdf(auth.payload.userId, startDate, endDate);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.pdf"`);
     res.send(pdfBuffer);
@@ -267,8 +280,10 @@ app.post("/api/report/export-xlsx", async (req, res) => {
     return res.status(401).json({ error: auth.error });
   }
 
+  const { startDate, endDate } = extractDateFilter(req);
+
   try {
-    const xlsxBuffer = await generateReportXlsx(auth.payload.userId);
+    const xlsxBuffer = await generateReportXlsx(auth.payload.userId, startDate, endDate);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.xlsx"`);
     res.send(xlsxBuffer);

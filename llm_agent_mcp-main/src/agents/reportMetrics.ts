@@ -45,7 +45,16 @@ async function getActiveTableInfo(userId: string): Promise<{
   }
 }
 
-export async function computeMetrics(userId: string): Promise<ComputedMetrics | null> {
+function buildDateWhere(dateCol: string, dateCast: string | null, startDate?: string, endDate?: string): string {
+  if (!startDate && !endDate) return "";
+  const col = dateCast || `"${dateCol}"`;
+  const clauses: string[] = [];
+  if (startDate) clauses.push(`${col} >= '${startDate}'`);
+  if (endDate) clauses.push(`${col} <= '${endDate}'`);
+  return " AND " + clauses.join(" AND ");
+}
+
+export async function computeMetrics(userId: string, startDate?: string, endDate?: string): Promise<ComputedMetrics | null> {
   const table = await getActiveTableInfo(userId);
   if (!table) return null;
 
@@ -67,10 +76,12 @@ export async function computeMetrics(userId: string): Promise<ComputedMetrics | 
   let topCategory = "—";
   let topCategoryValue = 0;
 
+  const dateWhere = buildDateWhere(dateCol || "", dateCast, startDate, endDate);
+
   if (salesCol && qtyCol) {
     try {
       const result = await getPool().query(
-        `SELECT COALESCE(SUM(CAST("${salesCol}" AS NUMERIC)) / NULLIF(SUM(CAST("${qtyCol}" AS NUMERIC)), 0), 0) as aov FROM "${tableName}"`
+        `SELECT COALESCE(SUM(CAST("${salesCol}" AS NUMERIC)) / NULLIF(SUM(CAST("${qtyCol}" AS NUMERIC)), 0), 0) as aov FROM "${tableName}" WHERE 1=1${dateWhere}`
       );
       aov = Number(result.rows[0]?.aov || 0);
     } catch {}
@@ -78,6 +89,10 @@ export async function computeMetrics(userId: string): Promise<ComputedMetrics | 
 
   if (salesCol && dateCast) {
     try {
+      const dateFilterClause = startDate && endDate
+        ? `${dateCast} >= '${startDate}' AND ${dateCast} <= '${endDate}'`
+        : `${dateCast} >= CURRENT_DATE - INTERVAL '60 days'`;
+
       const result = await getPool().query(`
         WITH periods AS (
           SELECT
@@ -86,7 +101,7 @@ export async function computeMetrics(userId: string): Promise<ComputedMetrics | 
             END AS period,
             SUM(CAST("${salesCol}" AS NUMERIC)) AS total
           FROM "${tableName}"
-          WHERE ${dateCast} >= CURRENT_DATE - INTERVAL '60 days'
+          WHERE ${dateFilterClause}
           GROUP BY period
         )
         SELECT
@@ -107,6 +122,7 @@ export async function computeMetrics(userId: string): Promise<ComputedMetrics | 
       const result = await getPool().query(
         `SELECT "${catCol}" as category, SUM(CAST("${salesCol}" AS NUMERIC)) as total
          FROM "${tableName}"
+         WHERE 1=1${dateWhere}
          GROUP BY "${catCol}"
          ORDER BY total DESC LIMIT 1`
       );

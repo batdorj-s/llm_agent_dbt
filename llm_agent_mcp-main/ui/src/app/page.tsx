@@ -50,7 +50,34 @@ export default function Home() {
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const [salesHistory, setSalesHistory] = useState<SalesHistory[]>([]);
   const [, setDashboardError] = useState<string | null>(null);
-  const [historyLimit] = useState<number>(5);
+  type Period = "7d" | "1m" | "3m" | "6m" | "12m" | "all";
+  const [period, setPeriod] = useState<Period>("all");
+
+  function periodToDateRange(p: Period): { startDate?: string; endDate?: string } {
+    const now = new Date();
+    const end = now.toISOString().split("T")[0];
+    const start = new Date(now);
+    switch (p) {
+      case "7d": start.setDate(start.getDate() - 7); break;
+      case "1m": start.setMonth(start.getMonth() - 1); break;
+      case "3m": start.setMonth(start.getMonth() - 3); break;
+      case "6m": start.setMonth(start.getMonth() - 6); break;
+      case "12m": start.setMonth(start.getMonth() - 12); break;
+      case "all": return {};
+    }
+    return { startDate: start.toISOString().split("T")[0], endDate: end };
+  }
+
+  function periodToHistoryLimit(p: Period): number {
+    switch (p) {
+      case "7d": return 7;
+      case "1m": return 30;
+      case "3m": return 90;
+      case "6m": return 180;
+      case "12m": return 365;
+      case "all": return 12;
+    }
+  }
 
   // ── Routing state ──
   const [activeRoutingState, setActiveRoutingState] = useState<"idle" | "routing" | "finance" | "tech" | "done">("idle");
@@ -164,7 +191,7 @@ export default function Home() {
       fetchDashboardData();
       fetchUploadedFiles();
     }
-  }, [isLoggedIn, token, historyLimit]);
+  }, [isLoggedIn, token, period]);
 
   // ── Auto-scroll ──
   useEffect(() => {
@@ -196,12 +223,19 @@ export default function Home() {
     try {
       setDashboardError(null);
       const headers = { Authorization: `Bearer ${token}` };
+      const dr = periodToDateRange(period);
+      const params = new URLSearchParams();
+      params.set("limit", String(periodToHistoryLimit(period)));
+      if (dr.startDate) params.set("startDate", dr.startDate);
+      if (dr.endDate) params.set("endDate", dr.endDate);
+      const qs = params.toString();
+
       const [salesRes, usersRes, churnRes, historyRes, computedRes] = await Promise.all([
-        fetch("/api/kpi/sales", { headers }),
-        fetch("/api/kpi/users", { headers }),
-        fetch("/api/kpi/churn_rate", { headers }),
-        fetch(`/api/kpi-history?limit=${historyLimit}`, { headers }),
-        fetch("/api/dashboard/computed-metrics", { headers }),
+        fetch(`/api/kpi/sales?${qs}`, { headers }),
+        fetch(`/api/kpi/users?${qs}`, { headers }),
+        fetch(`/api/kpi/churn_rate?${qs}`, { headers }),
+        fetch(`/api/kpi-history?${qs}`, { headers }),
+        fetch(`/api/dashboard/computed-metrics?${qs}`, { headers }),
       ]);
       if (salesRes.ok) setSalesKpi(await salesRes.json());
       else if (salesRes.status === 401) { handleLogout(); return; }
@@ -621,13 +655,26 @@ export default function Home() {
                       </button>
                     </div>
 
+                    {/* PERIOD SELECTOR */}
+                    <div className="flex items-center gap-2 animate-fade-in-up" style={{ animationDelay: "0ms" }}>
+                      <span className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider">Хугацаа:</span>
+                      <div className="flex items-center border border-border rounded overflow-hidden text-[10px] font-bold">
+                        {(["7d", "1m", "3m", "6m", "12m", "all"] as Period[]).map((p) => (
+                          <button key={p} onClick={() => setPeriod(p)}
+                            className={`px-2 py-1 uppercase tracking-wider transition-colors cursor-pointer ${period === p ? "bg-foreground text-background" : "text-foreground/60 hover:text-foreground"}`}>
+                            {p === "all" ? "Бүгд" : p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* KPI GRID */}
-                    <div className="animate-fade-in-up" style={{ animationDelay: "0ms" }}>
+                    <div className="animate-fade-in-up" style={{ animationDelay: "50ms" }}>
                       <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} computedMetrics={computedMetrics} salesHistory={salesHistory} isLoading={isDashboardLoading} />
                     </div>
 
                     {/* CHARTS ROW */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in-up" style={{ animationDelay: "100ms" }}>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in-up" style={{ animationDelay: "150ms" }}>
                       <div className="border border-border/80 rounded-xl p-4 bg-card min-h-[200px]">
                         <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-3">Борлуулалтын график</p>
                         {salesHistory.length > 0 ? (
@@ -661,7 +708,7 @@ export default function Home() {
                     </div>
 
                     {/* TABLE */}
-                    <div className="border border-border/80 rounded-xl p-4 bg-card animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+                    <div className="border border-border/80 rounded-xl p-4 bg-card animate-fade-in-up" style={{ animationDelay: "250ms" }}>
                       <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-3">Борлуулалтын дэлгэрэнгүй</p>
                       {salesHistory.length > 0 ? (
                         <div className="overflow-x-auto">

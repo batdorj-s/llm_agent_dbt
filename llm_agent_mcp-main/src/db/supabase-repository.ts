@@ -35,7 +35,7 @@
  * ─────────────────────────────────────────
  */
 
-import type { IKpiRepository, KpiMetric, SalesRecord } from "./types.js";
+import type { IKpiRepository, KpiMetric, SalesRecord, DateFilter } from "./types.js";
 
 export class SupabaseKpiRepository implements IKpiRepository {
   private supabase: any;
@@ -44,7 +44,7 @@ export class SupabaseKpiRepository implements IKpiRepository {
     this.supabase = supabase;
   }
 
-  async getKpi(metric: KpiMetric["name"]): Promise<KpiMetric | null> {
+  async getKpi(metric: KpiMetric["name"], _dateFilter?: DateFilter): Promise<KpiMetric | null> {
     const { data, error } = await this.supabase
       .from("kpi_metrics")
       .select("name, current, target, unit, updated_at")
@@ -65,7 +65,7 @@ export class SupabaseKpiRepository implements IKpiRepository {
     };
   }
 
-  async getSalesHistory(limit: number): Promise<SalesRecord[]> {
+  async getSalesHistory(limit: number, _dateFilter?: DateFilter): Promise<SalesRecord[]> {
     const { data, error } = await this.supabase
       .from("sales_history")
       .select("month, revenue")
