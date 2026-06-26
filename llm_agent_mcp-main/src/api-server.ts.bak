@@ -1,0 +1,924 @@
+/**
+ * api-server.ts — Express REST API for the Chat UI
+ */
+
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import { createToken, requireJwtSecret, verifyBearerHeader, verifyToken, requireRole, roleAtLeast } from "./auth.js";
+import { agentLimiter } from "./rate-limiter.js";
+import { detectProvider } from "./llm-provider.js";
+import { getRepository } from "./db/kpi-repository.js";
+import { setupKnowledgeBase } from "./rag.js";
+import { ensureProjectReady, runDbtForTable, runDbtTest } from "./setup/init.js";
+import { generateSchemaYml } from "./setup/generate-schema.js";
+import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
+import type { UserRole } from "./multi-agent.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, authenticateUser, createUser } from "./db/data-lake.js";
+import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
+import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
+import { computeMetrics } from "./agents/reportMetrics.js";
+import { generateReportPdf, generateReportXlsx } from "./agents/reportExport.js";
+import fs from "fs";
+import path from "path";
+import multer from "multer";
+import { PDFParse } from "pdf-parse";
+import mammoth from "mammoth";
+
+dotenv.config();
+
+const app = express();
+
+app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
+app.use(express.json({ limit: "50mb" }));
+
+// Configure Multer for file uploads
+const UPLOAD_DIR = "uploads/";
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+const upload = multer({ dest: UPLOAD_DIR });
+
+// ─────────────────────────────────────────────────────────────
+// Health / Status
+// ─────────────────────────────────────────────────────────────
+app.get("/api/status", (req, res) => {
+  const provider = detectProvider();
+  res.json({
+    status: "ok",
+    llm: {
+      provider: provider.provider,
+      model: provider.model,
+      isFree: provider.isFree,
+      rateLimit: provider.rateLimit,
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Auth — Login (credential verification)
+// ─────────────────────────────────────────────────────────────
+app.post("/api/auth/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password required" });
+  }
+  if (password.length < 4) {
+    return res.status(400).json({ error: "Password must be at least 4 characters" });
+  }
+  if (!email.includes("@")) {
+    return res.status(400).json({ error: "Invalid email format" });
+  }
+
+  try {
+    const user = await authenticateUser(email, password);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const token = createToken(user.id, user.role);
+    res.json({
+      token,
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      message: `Logged in as ${user.name}`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Auth — Register (admin only)
+// ─────────────────────────────────────────────────────────────
+app.post("/api/auth/register", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+  if (auth.payload.role !== "admin") {
+    return res.status(403).json({ error: "Only admins can create new users" });
+  }
+
+  const { email, password, name, role } = req.body;
+  if (!email || !password || !name) {
+    return res.status(400).json({ error: "email, password, and name are required" });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters" });
+  }
+
+  const userRole: UserRole = role === "analyst" ? "analyst" : role === "admin" ? "admin" : "viewer";
+
+  try {
+    const userId = await createUser(email, password, name, userRole);
+    if (!userId) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+    res.status(201).json({ success: true, userId, role: userRole });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Chat — Standard (non-streaming)
+// ─────────────────────────────────────────────────────────────
+app.post("/api/chat", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { userId, role } = auth.payload;
+  const limit = agentLimiter.check(userId);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: limit.message, resetInMs: limit.resetInMs });
+  }
+
+  const { message, threadId, visualRequest } = req.body;
+  if (!message) return res.status(400).json({ error: "message required" });
+
+  try {
+    const threadIdFinal = threadId ?? `thread_${Date.now()}`;
+    const response = await runMultiAgent(message, role, threadIdFinal, visualRequest, userId);
+
+    res.json({
+      response,
+      threadId: threadIdFinal,
+      role,
+      remaining: limit.remaining,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Chat Streaming — SSE (Server-Sent Events)
+// ─────────────────────────────────────────────────────────────
+app.post("/api/chat/stream", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { userId, role } = auth.payload;
+  const limit = agentLimiter.check(userId);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: limit.message });
+  }
+
+  const { message, threadId, visualRequest } = req.body;
+  if (!message) return res.status(400).json({ error: "message required" });
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const threadIdFinal = threadId ?? `thread_${Date.now()}`;
+  let fullResponse = "";
+
+  try {
+    await runMultiAgentStream(message, role, threadIdFinal, (chunk) => {
+      fullResponse += chunk;
+      res.write(`data: ${JSON.stringify({ chunk, type: "delta" })}\n\n`);
+    }, visualRequest, userId);
+    res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);
+  } catch (err: any) {
+    res.write(`data: ${JSON.stringify({ type: "error", error: err.message })}\n\n`);
+  } finally {
+    res.end();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+function extractDateFilter(req: any): { startDate?: string; endDate?: string } {
+  return {
+    startDate: req.query.startDate as string | undefined,
+    endDate: req.query.endDate as string | undefined,
+  };
+}
+
+// KPI Dashboard Data
+// ─────────────────────────────────────────────────────────────
+app.get("/api/kpi/:metric", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { metric } = req.params;
+  const repo = await getRepository();
+  const dateFilter = extractDateFilter(req);
+
+  try {
+    const data = await repo.getKpi(metric as any, dateFilter);
+    if (!data) return res.status(404).json({ error: `Metric '${metric}' not found` });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/kpi-history", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const limit = req.query.limit ? Number(req.query.limit) : 6;
+  const repo = await getRepository();
+  const dateFilter = extractDateFilter(req);
+  const history = await repo.getSalesHistory(limit, dateFilter);
+  res.json(history);
+});
+
+// ─────────────────────────────────────────────────────────────
+// Dashboard — Computed Metrics (AOV, Growth Rate, Top Category)
+// ─────────────────────────────────────────────────────────────
+app.get("/api/dashboard/computed-metrics", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { startDate, endDate } = extractDateFilter(req);
+
+  try {
+    const metrics = await computeMetrics(auth.payload.userId, startDate, endDate);
+    if (!metrics) return res.status(404).json({ error: "No active dataset found" });
+    res.json(metrics);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+// ─────────────────────────────────────────────────────────────
+// File Management
+// ─────────────────────────────────────────────────────────────
+app.get("/api/admin/files", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (!roleAtLeast(auth.payload.role, "analyst")) return res.status(403).json({ error: "Access denied. Analyst role required." });
+
+  await initDataLake();
+  const result = await getPool().query(`SELECT * FROM uploaded_files ORDER BY created_at DESC`);
+  res.json(result.rows);
+});
+
+app.delete("/api/admin/files/:id", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (!roleAtLeast(auth.payload.role, "analyst")) return res.status(403).json({ error: "Access denied. Analyst role required." });
+
+  const { id } = req.params;
+  await initDataLake();
+
+  const fileResult = await getPool().query(`SELECT * FROM uploaded_files WHERE id = $1`, [id]);
+  const file = fileResult.rows[0] as any;
+  if (!file) return res.status(404).json({ error: "File not found" });
+
+  try {
+    if (file.type === "dataset") {
+      const tableName = file.id || file.filename;
+      await getPool().query(`DROP TABLE IF EXISTS "${tableName}"`);
+      await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [tableName]);
+      await clearConversationMemory();
+    }
+    await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/files/:id/preview", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+
+  const { id } = req.params;
+  await initDataLake();
+
+  try {
+    const fileResult = await getPool().query(`SELECT * FROM uploaded_files WHERE id = $1`, [id]);
+    const file = fileResult.rows[0] as any;
+    if (!file) return res.status(404).json({ error: "File not found" });
+
+    if (file.type === "dataset") {
+      const tableName = file.id || file.filename;
+      const previewResult = await getPool().query(`SELECT * FROM "${tableName}" LIMIT 20`);
+      let columns: string[] = [];
+      try {
+        const catalogResult = await getPool().query(
+          `SELECT columns_info FROM data_lake_catalog WHERE table_name = $1`, [tableName]
+        );
+        if (catalogResult.rows.length > 0) {
+          columns = JSON.parse(catalogResult.rows[0].columns_info as string);
+        }
+      } catch {}
+      if (columns.length === 0 && previewResult.rows.length > 0) {
+        columns = Object.keys(previewResult.rows[0]);
+      }
+      return res.json({ type: "dataset", preview: previewResult.rows, columns, tableName });
+    }
+
+    // Document: read extracted text file
+    const textPath = path.join(DOCUMENTS_DIR, `${id}.txt`);
+    let content = "";
+    if (fs.existsSync(textPath)) {
+      content = fs.readFileSync(textPath, "utf8");
+    }
+
+    return res.json({
+      type: "document",
+      preview: [],
+      columns: [],
+      tableName: file.id || file.filename,
+      description: file.description || "No description",
+      content: content.substring(0, 10000), // cap at 10K chars
+      hasDownload: fs.existsSync(path.join(DOCUMENTS_DIR, `${id}_${file.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`)),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/files/:id/download", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (!roleAtLeast(auth.payload.role, "analyst")) return res.status(403).json({ error: "Access denied. Analyst role required." });
+
+  const { id } = req.params;
+  await initDataLake();
+
+  try {
+    const fileResult = await getPool().query(`SELECT * FROM uploaded_files WHERE id = $1`, [id]);
+    const file = fileResult.rows[0] as any;
+    if (!file) return res.status(404).json({ error: "File not found" });
+    if (file.type !== "document") return res.status(400).json({ error: "Only documents can be downloaded" });
+
+    const safeFilename = `${id}_${file.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const filePath = path.join(DOCUMENTS_DIR, safeFilename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File not available" });
+
+    res.download(filePath, file.filename);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function buildColumnMapping(cols: string[]): Record<string, string | null> {
+  const colLower = cols.map(c => c.toLowerCase());
+  return {
+    sales_col: cols.find(c => /sales|revenue|amount|price/i.test(c)) || null,
+    date_col: cols.find(c => /date|time|timestamp|month|year|day/i.test(c)) || null,
+    customer_col: cols.find(c => /customer_id|user_id|client_id|account_id|email/i.test(c)) || null,
+    segment_col: cols.find(c => /segment|group|type|class|tier|bucket/i.test(c)) || null,
+    category_col: cols.find(c => /category|product|item|brand|department|sub_category/i.test(c)) || null,
+    profit_col: cols.find(c => /profit|margin|cogs/i.test(c)) || null,
+    id_col: cols.find(c => /_id$|^id$|order_id|transaction|invoice/i.test(c)) || null,
+    region_col: cols.find(c => /region|city|state|country|area|location|market/i.test(c)) || null,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Admin: Upload CSV Dataset
+// ─────────────────────────────────────────────────────────────
+app.post("/api/admin/upload-csv", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { userId, role } = auth.payload;
+  const { filename, csvContent, tableName, description } = req.body;
+  if (!filename || !csvContent || !tableName || !description) {
+    return res.status(400).json({ error: "filename, csvContent, tableName, and description are required" });
+  }
+
+  const sanitizedTableName = tableName.trim().replace(/[^a-zA-Z0-9_]/g, "");
+  const tempFilePath = path.join("/tmp", `csv_${Date.now()}_${filename}`);
+
+  try {
+    fs.writeFileSync(tempFilePath, csvContent, "utf8");
+    await seedCsv(tempFilePath, sanitizedTableName, userId, description, true, "private");
+
+    const catalog = await getCatalog(userId);
+    const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
+
+    let cols: string[] = [];
+    if (tableInfo) {
+      cols = JSON.parse(tableInfo.columns_info) as string[];
+
+      // Schema Evolution: remove stale RAG entries for this table before re-indexing
+      await removeDocumentsByPrefix(`uploaded_${sanitizedTableName}_`);
+
+      const [samples, profile] = await Promise.all([
+        getColumnSamples(sanitizedTableName, cols, 5),
+        getColumnProfile(sanitizedTableName, cols),
+      ]);
+      const sampleText = cols.map(c => {
+        const p = profile[c];
+        const typeLabel = p?.type ? (p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type) : "TEXT";
+        const rangeInfo = p?.min !== undefined && p?.max !== undefined ? ` [${p.min}..${p.max}]` : "";
+        const vals = samples[c];
+        return vals && vals.length > 0 ? `"${c}" (${typeLabel}${rangeInfo}, e.g. ${vals.join(", ")})` : `"${c}" (${typeLabel}${rangeInfo})`;
+      }).join(", ");
+      const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}.`;
+      await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, {
+        category: "data_catalog",
+        department: "analytics",
+        author: userId || "unknown",
+        source_name: `Upload: ${sanitizedTableName}`,
+      }, [sanitizedTableName]);
+    }
+
+    const semanticGroups = buildSemanticGroups(cols);
+    await getPool().query(
+      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
+       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
+      [sanitizedTableName, sanitizedTableName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString(), userId]
+    );
+
+    await clearConversationMemory();
+
+    // Hybrid dbt: if table has standard KPI columns, run dbt pipeline
+    if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
+        && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
+
+        const mapping = buildColumnMapping(cols);
+        try {
+            runDbtForTable(sanitizedTableName, cols, mapping);
+            await generateSchemaYml(sanitizedTableName, cols);
+
+            const testOutput = runDbtTest(JSON.stringify({ input_table: sanitizedTableName, ...mapping }));
+            const hasFailures = /FAILED|ERROR/i.test(testOutput);
+            if (hasFailures) {
+                const warningText = `[АНХААР] DATA QUALITY WARNING for table '${sanitizedTableName}': dbt tests detected issues. Agents should verify data before reporting.`;
+                await addDocumentToCatalog(`dbt_warning_${sanitizedTableName}`, warningText, {
+                    category: "data_catalog",
+                    department: "analytics",
+                    author: "system",
+                    source_name: "Data Quality Gate",
+                }, [sanitizedTableName, "dbt_warning", "data_quality"]);
+                console.warn(`[Upload] dbt tests FAILED for '${sanitizedTableName}' — RAG warning added`);
+            } else {
+                console.log(`[Upload] dbt tests PASSED for '${sanitizedTableName}' [OK]`);
+            }
+        } catch (err) {
+            console.warn(`[Upload] dbt pipeline error for '${sanitizedTableName}':`, (err as Error).message);
+        }
+    }
+
+    let preview: Record<string, unknown>[] = [];
+    try {
+      const previewResult = await getPool().query(`SELECT * FROM "${sanitizedTableName}" LIMIT 20`);
+      preview = previewResult.rows;
+    } catch (previewErr) {
+      console.warn("[Upload] Preview fetch failed:", (previewErr as Error).message);
+    }
+
+    res.json({
+      success: true,
+      message: `Table '${sanitizedTableName}' successfully imported.`,
+      preview,
+      columns: cols.length > 0 ? cols : (preview.length > 0 ? Object.keys(preview[0]) : []),
+    });
+  } catch (err: any) {
+    console.error("[API] CSV Upload Error:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Admin: Upload Excel (XLSX/XLS)
+// ─────────────────────────────────────────────────────────────
+app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { userId, role } = auth.payload;
+  const { tableName, description } = req.body;
+
+  if (!req.file || !tableName || !description) {
+    return res.status(400).json({ error: "file, tableName, and description are required" });
+  }
+
+  const sanitizedTableName = tableName.trim().replace(/[^a-zA-Z0-9_]/g, "");
+  const tempPath = req.file.path;
+  const originalName = req.file.originalname;
+  const extension = path.extname(originalName).toLowerCase();
+
+  if (extension !== ".xlsx" && extension !== ".xls") {
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    return res.status(400).json({ error: "Only .xlsx and .xls files are supported." });
+  }
+
+  let csvTempPath = "";
+  try {
+    const XLSX = await import("xlsx");
+    // @ts-ignore - xlsx is a CJS module, accessed via default or named
+    const xlsxMod = XLSX.default || XLSX;
+    const workbook = xlsxMod.readFile(tempPath);
+    const firstSheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[firstSheetName];
+    const jsonData = xlsxMod.utils.sheet_to_json(sheet, { defval: "" });
+
+    if (jsonData.length === 0) {
+      throw new Error("Excel file is empty or has no data rows.");
+    }
+
+    const headers = Object.keys(jsonData[0] as Record<string, unknown>);
+
+    const csvLines: string[] = [];
+    const escapeCsv = (val: unknown): string => {
+      const str = String(val ?? "");
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+    csvLines.push(headers.map(h => escapeCsv(h)).join(","));
+    for (const row of jsonData) {
+      csvLines.push(headers.map(h => escapeCsv((row as Record<string, unknown>)[h])).join(","));
+    }
+
+    const csvContent = csvLines.join("\n");
+    csvTempPath = path.join("/tmp", `xls_${Date.now()}_${sanitizedTableName}.csv`);
+    fs.writeFileSync(csvTempPath, csvContent, "utf8");
+    await seedCsv(csvTempPath, sanitizedTableName, userId, description, true, "private");
+
+    const catalog = await getCatalog(userId);
+    const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
+
+    let cols: string[] = [];
+    if (tableInfo) {
+      cols = JSON.parse(tableInfo.columns_info) as string[];
+
+      await removeDocumentsByPrefix(`uploaded_${sanitizedTableName}_`);
+
+      const [samples, profile] = await Promise.all([
+        getColumnSamples(sanitizedTableName, cols, 5),
+        getColumnProfile(sanitizedTableName, cols),
+      ]);
+      const sampleText = cols.map(c => {
+        const p = profile[c];
+        const typeLabel = p?.type ? (p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type) : "TEXT";
+        const rangeInfo = p?.min !== undefined && p?.max !== undefined ? ` [${p.min}..${p.max}]` : "";
+        const vals = samples[c];
+        return vals && vals.length > 0 ? `"${c}" (${typeLabel}${rangeInfo}, e.g. ${vals.join(", ")})` : `"${c}" (${typeLabel}${rangeInfo})`;
+      }).join(", ");
+      const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}.`;
+      await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, {
+        category: "data_catalog",
+        department: "analytics",
+        author: userId || "unknown",
+        source_name: `Upload: ${sanitizedTableName}`,
+      }, [sanitizedTableName]);
+    }
+
+    const semanticGroups = buildSemanticGroups(cols);
+    await getPool().query(
+      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
+       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
+      [sanitizedTableName, originalName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString(), userId]
+    );
+
+    await clearConversationMemory();
+
+    if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
+        && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
+      const mapping = buildColumnMapping(cols);
+      try {
+        runDbtForTable(sanitizedTableName, cols, mapping);
+        await generateSchemaYml(sanitizedTableName, cols);
+        const testOutput = runDbtTest(JSON.stringify({ input_table: sanitizedTableName, ...mapping }));
+        const hasFailures = /FAILED|ERROR/i.test(testOutput);
+        if (hasFailures) {
+          const warningText = `[АНХААР] DATA QUALITY WARNING for table '${sanitizedTableName}': dbt tests detected issues. Agents should verify data before reporting.`;
+          await addDocumentToCatalog(`dbt_warning_${sanitizedTableName}`, warningText, {
+            category: "data_catalog", department: "analytics", author: "system", source_name: "Data Quality Gate",
+          }, [sanitizedTableName, "dbt_warning", "data_quality"]);
+        } else {
+          console.log(`[Upload] dbt tests PASSED for '${sanitizedTableName}' [OK]`);
+        }
+      } catch (err) {
+        console.warn(`[Upload] dbt pipeline error:`, (err as Error).message);
+      }
+    }
+
+    let preview: Record<string, unknown>[] = [];
+    try {
+      const previewResult = await getPool().query(`SELECT * FROM "${sanitizedTableName}" LIMIT 20`);
+      preview = previewResult.rows;
+    } catch (previewErr) {
+      console.warn("[Upload] Preview fetch failed:", (previewErr as Error).message);
+    }
+
+    res.json({
+      success: true,
+      message: `Table '${sanitizedTableName}' successfully imported from Excel.`,
+      preview,
+      columns: cols.length > 0 ? cols : (preview.length > 0 ? Object.keys(preview[0]) : []),
+    });
+  } catch (err: any) {
+    console.error("[API] Excel Upload Error:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    if (csvTempPath && fs.existsSync(csvTempPath)) fs.unlinkSync(csvTempPath);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Admin: Upload Document (PDF/DOCX)
+// ─────────────────────────────────────────────────────────────
+const DOCUMENTS_DIR = "uploads/documents/";
+if (!fs.existsSync(DOCUMENTS_DIR)) {
+  fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
+}
+
+app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(401).json({ error: auth.error });
+  }
+
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+  const { description, category, department } = req.body;
+  const tempPath = req.file.path;
+  const originalName = req.file.originalname;
+
+  const docId = `doc_${Date.now()}`;
+  const safeFilename = `${docId}_${originalName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const savedPath = path.join(DOCUMENTS_DIR, safeFilename);
+  const textPath = path.join(DOCUMENTS_DIR, `${docId}.txt`);
+
+  try {
+    let extractedText = "";
+    const extension = path.extname(originalName).toLowerCase();
+
+    if (extension === ".pdf") {
+      const dataBuffer = fs.readFileSync(tempPath);
+      const parser = new PDFParse({ data: dataBuffer });
+      const result = await parser.getText();
+      extractedText = result.text;
+    } else if (extension === ".docx") {
+      const result = await mammoth.extractRawText({ path: tempPath });
+      extractedText = result.value;
+    } else {
+      throw new Error("Unsupported file format.");
+    }
+
+    // Save original file permanently
+    fs.renameSync(tempPath, savedPath);
+    // Save extracted text
+    fs.writeFileSync(textPath, extractedText, "utf8");
+
+    await addDocumentToCatalog(
+        docId,
+        `Document: ${originalName}\nDescription: ${description}\n\nContent:\n${extractedText}`,
+        { category: (category === "manual" ? "business_policy" : "data_catalog") as "business_policy" | "data_catalog", department: department || "general", author: auth.payload.userId },
+        [originalName.toLowerCase(), "document"]
+    );
+
+    await initDataLake();
+    await getPool().query(
+        `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
+         ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
+        [docId, originalName, "document", description, null, new Date().toISOString(), auth.payload.userId]
+    );
+
+    res.json({ success: true, message: `Document '${originalName}' indexed.` });
+  } catch (err: any) {
+    console.error("[API] Doc Upload Error:", err);
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Feedback Loop: User rating (positive / negative)
+// ─────────────────────────────────────────────────────────────
+const FAILED_QUERIES_PATH = path.join(process.cwd(), "logs", "failed_queries.json");
+
+function ensureFailedQueriesFile(): void {
+  const dir = path.dirname(FAILED_QUERIES_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(FAILED_QUERIES_PATH)) fs.writeFileSync(FAILED_QUERIES_PATH, "[]", "utf8");
+}
+
+app.post("/api/feedback", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { message, response, rating, threadId } = req.body;
+  if (!message || !rating) {
+    return res.status(400).json({ error: "message and rating are required" });
+  }
+  if (!["positive", "negative"].includes(rating)) {
+    return res.status(400).json({ error: "rating must be 'positive' or 'negative'" });
+  }
+
+  const entry = {
+    id: `feedback_${Date.now()}`,
+    userId: auth.payload.userId,
+    message,
+    response: response || "",
+    rating,
+    status: rating === "negative" ? "pending" : "approved",
+    threadId: threadId || null,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    ensureFailedQueriesFile();
+    const existing = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    existing.push(entry);
+    fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(existing, null, 2), "utf8");
+
+    // Do NOT add to RAG automatically. It must be approved by admin.
+
+    console.log(`[Feedback] ${rating} feedback from ${auth.payload.userId}: "${message.slice(0, 80)}..."`);
+    const suggestions = rating === "negative"
+        ? "Таны санал бүртгэгдлээ. Дараах зүйлсийг санал болгож байна:\n- **Файл оруулах**: Хэрэв өгөгдөл дутуу байвал CSV файлаа upload хийгээрэй\n- **Тодорхой асуулт**: Баганын нэр, огноогоо дурдаж асууна уу\n- **Агент солих**: 'SQL query бич' эсвэл 'борлуулалтын тайлан' гэх мэт чиглэл өгнө үү"
+        : "Санал өгсөнд баярлалаа!";
+    res.json({ success: true, message: suggestions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/feedback/pending - get pending feedback items
+app.get("/api/admin/feedback/pending", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
+
+  try {
+    ensureFailedQueriesFile();
+    const all = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    const pending = all.filter((f: any) => f.status === "pending");
+    res.json(pending);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/feedback/:id/approve - approve a feedback entry and add to RAG
+app.post("/api/admin/feedback/:id/approve", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
+
+  const { id } = req.params;
+
+  try {
+    ensureFailedQueriesFile();
+    const all = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    const entry = all.find((f: any) => f.id === id);
+    if (!entry) return res.status(404).json({ error: "Feedback entry not found" });
+
+    if (entry.status === "approved") {
+      return res.json({ success: true, message: "Feedback already approved" });
+    }
+
+    entry.status = "approved";
+    fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
+
+    if (entry.response) {
+      const ragText = `Failed Query: User asked "${entry.message}". The system responded with: "${entry.response}". This response was rated as incorrect.`;
+      await addDocumentToCatalog(entry.id, ragText, {
+        category: "previous_analysis",
+        department: "analytics",
+        author: entry.userId,
+        source_name: "User Feedback",
+      }, ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)]);
+    }
+
+    res.json({ success: true, message: "Feedback approved and added to RAG" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/feedback/:id/reject - reject a feedback entry (do not add to RAG)
+app.post("/api/admin/feedback/:id/reject", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+  if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
+
+  const { id } = req.params;
+
+  try {
+    ensureFailedQueriesFile();
+    const all = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    const entry = all.find((f: any) => f.id === id);
+    if (!entry) return res.status(404).json({ error: "Feedback entry not found" });
+
+    entry.status = "rejected";
+    fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
+
+    res.json({ success: true, message: "Feedback rejected" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Adjust KPI Targets
+// ─────────────────────────────────────────────────────────────
+app.post("/api/kpi/:metric/target", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { metric } = req.params;
+  const { target } = req.body;
+  
+  try {
+    const repo = await getRepository();
+    await repo.updateKpiTarget(metric as any, Number(target));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Report Export — PDF / Excel (JWT-scoped userId)
+// ─────────────────────────────────────────────────────────────
+
+console.log("[API] Registering export routes...");
+app.post("/api/report/export-pdf", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { startDate, endDate } = extractDateFilter(req);
+
+  try {
+    const pdfBuffer = await generateReportPdf(auth.payload.userId, startDate, endDate);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+console.log("[API] Registering XLSX export route...");
+app.post("/api/report/export-xlsx", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { startDate, endDate } = extractDateFilter(req);
+
+  try {
+    const xlsxBuffer = await generateReportXlsx(auth.payload.userId, startDate, endDate);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.xlsx"`);
+    res.send(xlsxBuffer);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const PORT = process.env.API_PORT || 3001;
+async function start() {
+  try {
+    await ensureProjectReady();
+  } catch (err) {
+    console.warn("[API] Data Lake initialization failed — running in limited mode:", (err as Error).message);
+  }
+  await setupKnowledgeBase();
+
+  requireJwtSecret();
+
+  app.listen(PORT, () => {
+    console.log(`\nAPI Server running at http://localhost:${PORT}`);
+  });
+}
+if (process.env.NODE_ENV !== "test") {
+  start().catch((err) => {
+    console.error("Failed to start API server:", err);
+    process.exit(1);
+  });
+}
+
+export { app };
