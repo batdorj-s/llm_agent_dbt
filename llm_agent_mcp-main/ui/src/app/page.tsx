@@ -622,10 +622,12 @@ export default function Home() {
                     </div>
 
                     {/* KPI GRID */}
-                    <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} computedMetrics={computedMetrics} isLoading={isDashboardLoading} />
+                    <div className="animate-fade-in-up" style={{ animationDelay: "0ms" }}>
+                      <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} computedMetrics={computedMetrics} salesHistory={salesHistory} isLoading={isDashboardLoading} />
+                    </div>
 
                     {/* CHARTS ROW */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in-up" style={{ animationDelay: "100ms" }}>
                       <div className="border border-border/80 rounded-xl p-4 bg-card min-h-[200px]">
                         <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-3">Борлуулалтын график</p>
                         {salesHistory.length > 0 ? (
@@ -659,7 +661,7 @@ export default function Home() {
                     </div>
 
                     {/* TABLE */}
-                    <div className="border border-border/80 rounded-xl p-4 bg-card">
+                    <div className="border border-border/80 rounded-xl p-4 bg-card animate-fade-in-up" style={{ animationDelay: "200ms" }}>
                       <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-3">Борлуулалтын дэлгэрэнгүй</p>
                       {salesHistory.length > 0 ? (
                         <div className="overflow-x-auto">
