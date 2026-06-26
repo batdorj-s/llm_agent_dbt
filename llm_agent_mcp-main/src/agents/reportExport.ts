@@ -71,6 +71,43 @@ export async function generateReportPdf(userId: string): Promise<Buffer> {
   y -= 10;
   line();
 
+  // ── Chart: Bar Chart ──
+  if (history.length > 0) {
+    text("REVENUE TREND", 12, { bold: true }); y -= 18;
+
+    const chartLeft = margin;
+    const chartWidth = width - margin * 2;
+    const chartHeight = 100;
+    const chartBottom = y;
+    const chartTop = y - chartHeight;
+
+    // Axis
+    page.drawLine({ start: { x: chartLeft, y: chartBottom }, end: { x: chartLeft + chartWidth, y: chartBottom }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
+
+    const maxVal = Math.max(...history.map(h => h.revenue));
+    const barCount = history.length;
+    const barGap = 4;
+    const barWidth = Math.min((chartWidth - barGap * (barCount + 1)) / barCount, 20);
+    const totalBarsWidth = barCount * barWidth + barGap * (barCount - 1);
+    const chartStartX = chartLeft + (chartWidth - totalBarsWidth) / 2;
+
+    for (let i = 0; i < history.length; i++) {
+      const h = history[i];
+      const barH = (h.revenue / maxVal) * chartHeight;
+      const x = chartStartX + i * (barWidth + barGap);
+      const yBar = chartBottom - barH;
+
+      page.drawRectangle({ x, y: yBar, width: barWidth, height: barH, color: rgb(0.23, 0.51, 0.96) });
+      // Label
+      const label = h.month.length > 3 ? h.month.slice(0, 3) : h.month;
+      page.drawText(label, { x: x - 1, y: chartBottom - chartHeight - 8, size: 6, font, color: rgb(0.4, 0.4, 0.4) });
+    }
+
+    y = chartBottom - chartHeight - 18;
+  }
+
+  line();
+
   // Sales History Table
   text("SALES HISTORY", 12, { bold: true }); y -= 18;
 

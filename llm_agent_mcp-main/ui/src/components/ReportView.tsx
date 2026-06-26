@@ -92,10 +92,13 @@ function ExportButton({ token, label, endpoint, icon }: { token: string; label: 
   );
 }
 
+type ReportTemplate = "summary" | "detailed";
+
 export const ReportView = ({ token }: { token: string }) => {
   const [data, setData] = useState<ReportData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [template, setTemplate] = useState<ReportTemplate>("detailed");
 
   useEffect(() => {
     if (!token) { setIsLoading(false); return; }
@@ -168,6 +171,16 @@ export const ReportView = ({ token }: { token: string }) => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex items-center border border-border rounded overflow-hidden text-[10px] font-bold">
+              <button onClick={() => setTemplate("summary")}
+                className={`px-2.5 py-1.5 uppercase tracking-wider transition-colors cursor-pointer ${template === "summary" ? "bg-foreground text-background" : "text-foreground/60 hover:text-foreground"}`}>
+                Товч
+              </button>
+              <button onClick={() => setTemplate("detailed")}
+                className={`px-2.5 py-1.5 uppercase tracking-wider transition-colors cursor-pointer ${template === "detailed" ? "bg-foreground text-background" : "text-foreground/60 hover:text-foreground"}`}>
+                Дэлгэрэнгүй
+              </button>
+            </div>
             <ExportButton token={token} label="PDF" endpoint="/api/report/export-pdf" icon={<Download className="w-3 h-3" />} />
             <ExportButton token={token} label="Excel" endpoint="/api/report/export-xlsx" icon={<FileSpreadsheet className="w-3 h-3" />} />
           </div>
@@ -208,7 +221,7 @@ export const ReportView = ({ token }: { token: string }) => {
         </div>
 
         {/* DETAIL SECTIONS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {(template === "detailed") && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* TOP CATEGORY */}
           <div className="border border-border/80 rounded-xl p-4 bg-card">
             <h2 className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider mb-3">Шилдэг категори</h2>
@@ -253,9 +266,9 @@ export const ReportView = ({ token }: { token: string }) => {
               <p className="text-xs text-foreground/30">Өсөлтийн өгөгдөл байхгүй.</p>
             )}
           </div>
-        </div>
+        </div>}
 
-        {/* SALES HISTORY TABLE */}
+        {template === "detailed" && (
         <div className="border border-border/80 rounded-xl bg-card overflow-hidden">
           <div className="p-4 border-b border-border/80">
             <h2 className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider">Борлуулалтын түүх</h2>
@@ -301,6 +314,7 @@ export const ReportView = ({ token }: { token: string }) => {
             </div>
           )}
         </div>
+        )}
 
         {/* FOOTER */}
         <div className="text-center text-[9px] text-foreground/30 py-4 border-t border-border/40">
