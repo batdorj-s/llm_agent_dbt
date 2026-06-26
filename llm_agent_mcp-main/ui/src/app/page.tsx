@@ -474,7 +474,7 @@ export default function Home() {
       ) : (
         <div className="relative flex-1 flex flex-col min-h-0">
           {activeTab === "ask" && (
-            <main className="flex-1 flex overflow-hidden min-h-0">
+            <main key="tab-ask" className="flex-1 flex overflow-hidden min-h-0 animate-fade-in-up">
               <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background relative">
                 {/* ROUTING INDICATOR */}
                 <div className="border-b border-border py-2.5 px-6 flex items-center justify-between bg-sidebar/50 transition-colors duration-200">
@@ -571,7 +571,7 @@ export default function Home() {
           )}
 
           {activeTab === "dashboard" && (
-            <main className="flex-1 flex overflow-hidden min-h-0 relative">
+            <main key="tab-dashboard" className="flex-1 flex overflow-hidden min-h-0 relative animate-fade-in-up">
               {/* Mobile sidebar overlay */}
               {sidebarOpen && (
                 <div className="md:hidden fixed inset-0 z-40 bg-black/30" onClick={() => setSidebarOpen(false)} />
@@ -699,7 +699,7 @@ export default function Home() {
           )}
 
           {activeTab === "report" && (
-            <main className="flex-1 flex overflow-hidden min-h-0">
+            <main key="tab-report" className="flex-1 flex overflow-hidden min-h-0 animate-fade-in-up">
               <ReportView token={token!} />
             </main>
           )}
