@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { BarChart2, Activity, TrendingUp, PieChart as PieChartIcon, LayoutDashboard, Upload, ThumbsUp, ThumbsDown } from "lucide-react";
+import { BarChart2, Activity, TrendingUp, PieChart as PieChartIcon, LayoutDashboard, Upload, ThumbsUp, ThumbsDown, FileText } from "lucide-react";
 
 import { Message, KpiData, SalesHistory, UploadedFile, ServerStatus } from "../components/types";
 import { Header } from "../components/Header";
@@ -90,6 +90,9 @@ export default function Home() {
 
   // ── Theme ──
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+
+  // ── Tab navigation ──
+  const [activeTab, setActiveTab] = useState<"ask" | "dashboard" | "report">("ask");
 
   // ── Refs ──
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -446,129 +449,173 @@ export default function Home() {
   };
 
   // ── Render ──
+  const hasDataset = uploadedFiles.length > 0;
+
   return (
     <div className="h-screen overflow-hidden bg-background text-foreground/80 font-sans antialiased text-xs flex flex-col transition-colors duration-200">
-      <Header serverStatus={serverStatus} isLoggedIn={isLoggedIn} user={user} theme={theme} onToggleTheme={toggleTheme} onLogout={handleLogout} />
+      <Header serverStatus={serverStatus} isLoggedIn={isLoggedIn} user={user} theme={theme}
+        onToggleTheme={toggleTheme} onLogout={handleLogout}
+        activeTab={activeTab} onTabChange={setActiveTab} />
 
       {!isLoggedIn ? (
         <LoginForm email={email} password={password} isAuthLoading={isAuthLoading}
           onEmailChange={setEmail} onPasswordChange={setPassword} onLogin={handleLogin} />
       ) : (
-        <main className="flex-1 flex overflow-hidden min-h-0">
-          {/* LEFT SIDEBAR */}
-          <section className="w-full md:w-[320px] shrink-0 border-r border-border bg-sidebar p-5 flex flex-col overflow-y-auto scrollbar-hide space-y-6 md:flex hidden transition-colors duration-200">
-            <DashboardPanel salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} />
-            <AdminPanel user={user}
-              adjustMetric={adjustMetric} newTargetValue={newTargetValue} isUpdatingTarget={isUpdatingTarget} salesUpdateSuccess={salesUpdateSuccess}
-              onAdjustMetricChange={setAdjustMetric} onNewTargetValueChange={setNewTargetValue} onUpdateKpiTarget={handleUpdateKpiTarget}
-              csvFile={csvFile} tableNameInput={tableNameInput} tableDescInput={tableDescInput}
-              isUploadingCsv={isUploadingCsv} csvUploadMessage={csvUploadMessage}
-              onCsvFileChange={setCsvFile} onTableNameInputChange={setTableNameInput} onTableDescInputChange={setTableDescInput} onUploadCsv={handleUploadCsv}
-              excelFile={excelFile} excelTableNameInput={excelTableNameInput} excelDescInput={excelDescInput}
-              isUploadingExcel={isUploadingExcel} excelUploadMessage={excelUploadMessage}
-              onExcelFileChange={setExcelFile} onExcelTableNameInputChange={setExcelTableNameInput} onExcelDescInputChange={setExcelDescInput} onUploadExcel={handleUploadExcel}
-              docFile={docFile} docDescInput={docDescInput} isUploadingDoc={isUploadingDoc} docUploadMessage={docUploadMessage}
-              onDocFileChange={setDocFile} onDocDescInputChange={setDocDescInput} onUploadDoc={handleUploadDoc}
-              uploadedFiles={uploadedFiles} onViewFile={handleViewFile} onDeleteFile={handleDeleteFile} />
-          </section>
-
-          {/* RIGHT PANELS */}
-          <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background relative">
-            {/* ROUTING INDICATOR */}
-            <div className="border-b border-border py-2.5 px-6 flex items-center justify-between bg-sidebar/50 transition-colors duration-200">
-              <div className="flex items-center gap-1.5 text-foreground/50 text-[10px] uppercase font-bold tracking-wider">
-                <span className={`w-1.5 h-1.5 rounded-full ${activeRoutingState !== "idle" && activeRoutingState !== "done" ? "bg-foreground animate-pulse" : "bg-foreground/30"}`} />
-                Шинжилгээний замнал
-              </div>
-              <div className="flex gap-4 items-center font-mono text-[9px]">
-                <span className={`${activeRoutingState === "routing" ? "text-foreground font-bold" : "text-foreground/40"}`}>Router</span>
-                <span className="text-foreground/30">→</span>
-                <span className={`${activeRoutingState === "finance" ? "text-foreground font-bold" : "text-foreground/40"}`}>FinanceAgent</span>
-                <span className="text-foreground/30">/</span>
-                <span className={`${activeRoutingState === "tech" ? "text-foreground font-bold" : "text-foreground/40"}`}>TechAgent</span>
-              </div>
-            </div>
-
-            {/* CHAT MESSAGES */}
-            <div className="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-6 flex flex-col justify-start">
-              {messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center my-auto gap-6">
-                  <div className="text-center text-foreground/40">
-                    <p className="font-semibold">Шинжилгээний хэлхээ идэвхтэй.</p>
-                    <p className="text-[10px] mt-1">Доорх саналуудаас сонгох эсвэл өөрөө асуултаа бичнэ үү.</p>
+        <>
+          {activeTab === "ask" && (
+            <main className="flex-1 flex overflow-hidden min-h-0">
+              <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background relative">
+                {/* ROUTING INDICATOR */}
+                <div className="border-b border-border py-2.5 px-6 flex items-center justify-between bg-sidebar/50 transition-colors duration-200">
+                  <div className="flex items-center gap-1.5 text-foreground/50 text-[10px] uppercase font-bold tracking-wider">
+                    <span className={`w-1.5 h-1.5 rounded-full ${activeRoutingState !== "idle" && activeRoutingState !== "done" ? "bg-foreground animate-pulse" : "bg-foreground/30"}`} />
+                    Шинжилгээний замнал
                   </div>
-                  <div className="flex flex-wrap gap-2 justify-center max-w-lg">
-                    {SUGGESTIONS_INITIAL.map((s, i) => (
-                      <button key={i} onClick={() => handleSendMessage(undefined, s.query)}
-                        className="px-3 py-1.5 text-xs bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/70 transition-all cursor-pointer animate-fade-in-up inline-flex items-center gap-1.5"
-                        style={{ animationDelay: `${i * 50}ms` }}>
-                        {s.icon}<span>{s.label}</span>
-                      </button>
-                    ))}
+                  <div className="flex gap-4 items-center font-mono text-[9px]">
+                    <span className={`${activeRoutingState === "routing" ? "text-foreground font-bold" : "text-foreground/40"}`}>Router</span>
+                    <span className="text-foreground/30">→</span>
+                    <span className={`${activeRoutingState === "finance" ? "text-foreground font-bold" : "text-foreground/40"}`}>FinanceAgent</span>
+                    <span className="text-foreground/30">/</span>
+                    <span className={`${activeRoutingState === "tech" ? "text-foreground font-bold" : "text-foreground/40"}`}>TechAgent</span>
                   </div>
                 </div>
-              ) : (
-                messages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} animate-fade-in-up`}>
-                    <div className="max-w-2xl w-full flex flex-col">
-                      {msg.sender === "user" ? (
-                        <div className="bg-foreground text-background border border-foreground/10 rounded-2xl px-4 py-2.5 text-xs max-w-[80%] self-end shadow-sm">{msg.text}</div>
-                      ) : (
-                        <div className="flex flex-col gap-1 border-l border-border pl-4 py-0.5">
-                          {msg.agentName && <span className="text-[9px] text-foreground/50 font-bold uppercase tracking-wider">{msg.agentName}</span>}
-                          <div className="text-foreground/90 text-xs">
-                            {formatMessageText(msg.text)}
-                            {msg.text === "" && (
-                              <div className="flex gap-1 items-center py-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-[bounce_1s_infinite]" />
-                                <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-[bounce_1s_infinite_0.2s]" />
-                                <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-[bounce_1s_infinite_0.4s]" />
+
+                {/* CHAT MESSAGES */}
+                <div className="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-6 flex flex-col justify-start">
+                  {messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center my-auto gap-6">
+                      <div className="text-center text-foreground/40">
+                        <p className="font-semibold">Шинжилгээний хэлхээ идэвхтэй.</p>
+                        <p className="text-[10px] mt-1">Доорх саналуудаас сонгох эсвэл өөрөө асуултаа бичнэ үү.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+                        {SUGGESTIONS_INITIAL.map((s, i) => (
+                          <button key={i} onClick={() => handleSendMessage(undefined, s.query)}
+                            className="px-3 py-1.5 text-xs bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/70 transition-all cursor-pointer animate-fade-in-up inline-flex items-center gap-1.5"
+                            style={{ animationDelay: `${i * 50}ms` }}>
+                            {s.icon}<span>{s.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    messages.map((msg) => (
+                      <div key={msg.id} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} animate-fade-in-up`}>
+                        <div className="max-w-2xl w-full flex flex-col">
+                          {msg.sender === "user" ? (
+                            <div className="bg-foreground text-background border border-foreground/10 rounded-2xl px-4 py-2.5 text-xs max-w-[80%] self-end shadow-sm">{msg.text}</div>
+                          ) : (
+                            <div className="flex flex-col gap-1 border-l border-border pl-4 py-0.5">
+                              {msg.agentName && <span className="text-[9px] text-foreground/50 font-bold uppercase tracking-wider">{msg.agentName}</span>}
+                              <div className="text-foreground/90 text-xs">
+                                {formatMessageText(msg.text)}
+                                {msg.text === "" && (
+                                  <div className="flex gap-1 items-center py-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-[bounce_1s_infinite]" />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-[bounce_1s_infinite_0.2s]" />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-[bounce_1s_infinite_0.4s]" />
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                          {msg.text && !isChatLoading && (
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <button onClick={() => handleFeedback(msg.id, 'positive')}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${feedbackState[msg.id] === 'positive' ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/30' : 'text-foreground/40 hover:text-emerald-500 hover:bg-emerald-500/5 border border-transparent'}`}
-                                title="Сайн хариуллаа" disabled={!!feedbackState[msg.id]}>
-                                <ThumbsUp className="w-3 h-3" />
-                              </button>
-                              <button onClick={() => handleFeedback(msg.id, 'negative')}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${feedbackState[msg.id] === 'negative' ? 'text-red-500 bg-red-500/10 border border-red-500/30' : 'text-foreground/40 hover:text-red-500 hover:bg-red-500/5 border border-transparent'}`}
-                                title="Буруу хариуллаа" disabled={!!feedbackState[msg.id]}>
-                                <ThumbsDown className="w-3 h-3" />
-                              </button>
-                              {feedbackSentMsgs[msg.id] && feedbackState[msg.id] && <span className="text-[9px] text-foreground/50 ml-1">{feedbackSentMsgs[msg.id]}</span>}
+                              {msg.text && !isChatLoading && (
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <button onClick={() => handleFeedback(msg.id, 'positive')}
+                                    className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${feedbackState[msg.id] === 'positive' ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/30' : 'text-foreground/40 hover:text-emerald-500 hover:bg-emerald-500/5 border border-transparent'}`}
+                                    title="Сайн хариуллаа" disabled={!!feedbackState[msg.id]}>
+                                    <ThumbsUp className="w-3 h-3" />
+                                  </button>
+                                  <button onClick={() => handleFeedback(msg.id, 'negative')}
+                                    className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${feedbackState[msg.id] === 'negative' ? 'text-red-500 bg-red-500/10 border border-red-500/30' : 'text-foreground/40 hover:text-red-500 hover:bg-red-500/5 border border-transparent'}`}
+                                    title="Буруу хариуллаа" disabled={!!feedbackState[msg.id]}>
+                                    <ThumbsDown className="w-3 h-3" />
+                                  </button>
+                                  {feedbackSentMsgs[msg.id] && feedbackState[msg.id] && <span className="text-[9px] text-foreground/50 ml-1">{feedbackSentMsgs[msg.id]}</span>}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
-                      )}
+                      </div>
+                    ))
+                  )}
+                  {messages.length > 0 && lastAgentType && FOLLOW_UP_SUGGESTIONS[lastAgentType] && !isChatLoading && (
+                    <div className="flex flex-wrap gap-2 justify-start max-w-2xl pt-2">
+                      {FOLLOW_UP_SUGGESTIONS[lastAgentType].map((s, i) => (
+                        <button key={i} onClick={() => handleSendMessage(undefined, s.query)}
+                          className="px-2.5 py-1 text-[10px] bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/50 transition-all cursor-pointer animate-fade-in-up"
+                          style={{ animationDelay: `${i * 50}ms` }}>{s.label}</button>
+                      ))}
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                <ChatInput input={input} isChatLoading={isChatLoading} streamEnabled={streamEnabled}
+                  isGraphicModeEnabled={isGraphicModeEnabled} threadId={threadId}
+                  onInputChange={setInput} onStreamEnabledChange={setStreamEnabled} onGraphicModeToggle={() => setIsGraphicModeEnabled(!isGraphicModeEnabled)}
+                  onSubmit={handleSendMessage} onCancel={handleCancelMessage} />
+
+                <PreviewDrawer previewData={previewData} previewColumns={previewColumns} previewTableName={previewTableName}
+                  previewDescription={previewDescription} previewContent={previewContent} previewHasDownload={previewHasDownload} previewFileId={previewFileId}
+                  onClose={closePreview} />
+              </section>
+            </main>
+          )}
+
+          {activeTab === "dashboard" && (
+            <main className="flex-1 flex overflow-hidden min-h-0">
+              <section className="w-full md:w-[320px] shrink-0 border-r border-border bg-sidebar p-5 flex flex-col overflow-y-auto scrollbar-hide space-y-6 md:flex hidden transition-colors duration-200">
+                <DashboardPanel salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} />
+                <AdminPanel user={user}
+                  adjustMetric={adjustMetric} newTargetValue={newTargetValue} isUpdatingTarget={isUpdatingTarget} salesUpdateSuccess={salesUpdateSuccess}
+                  onAdjustMetricChange={setAdjustMetric} onNewTargetValueChange={setNewTargetValue} onUpdateKpiTarget={handleUpdateKpiTarget}
+                  csvFile={csvFile} tableNameInput={tableNameInput} tableDescInput={tableDescInput}
+                  isUploadingCsv={isUploadingCsv} csvUploadMessage={csvUploadMessage}
+                  onCsvFileChange={setCsvFile} onTableNameInputChange={setTableNameInput} onTableDescInputChange={setTableDescInput} onUploadCsv={handleUploadCsv}
+                  excelFile={excelFile} excelTableNameInput={excelTableNameInput} excelDescInput={excelDescInput}
+                  isUploadingExcel={isUploadingExcel} excelUploadMessage={excelUploadMessage}
+                  onExcelFileChange={setExcelFile} onExcelTableNameInputChange={setExcelTableNameInput} onExcelDescInputChange={setExcelDescInput} onUploadExcel={handleUploadExcel}
+                  docFile={docFile} docDescInput={docDescInput} isUploadingDoc={isUploadingDoc} docUploadMessage={docUploadMessage}
+                  onDocFileChange={setDocFile} onDocDescInputChange={setDocDescInput} onUploadDoc={handleUploadDoc}
+                  uploadedFiles={uploadedFiles} onViewFile={handleViewFile} onDeleteFile={handleDeleteFile} />
+              </section>
+
+              <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background p-6">
+                {!hasDataset ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+                    <LayoutDashboard className="w-12 h-12 text-foreground/20" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground/60">Dashboard хоосон байна</p>
+                      <p className="text-[10px] text-foreground/40 mt-1">Dashboard харахын тулд эхлээд зүүн талын самбараар дата оруулна уу.</p>
                     </div>
                   </div>
-                ))
-              )}
-              {messages.length > 0 && lastAgentType && FOLLOW_UP_SUGGESTIONS[lastAgentType] && !isChatLoading && (
-                <div className="flex flex-wrap gap-2 justify-start max-w-2xl pt-2">
-                  {FOLLOW_UP_SUGGESTIONS[lastAgentType].map((s, i) => (
-                    <button key={i} onClick={() => handleSendMessage(undefined, s.query)}
-                      className="px-2.5 py-1 text-[10px] bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/50 transition-all cursor-pointer animate-fade-in-up"
-                      style={{ animationDelay: `${i * 50}ms` }}>{s.label}</button>
-                  ))}
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+                    <LayoutDashboard className="w-12 h-12 text-foreground/20" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground/60">Dashboard ачааллаж байна...</p>
+                      <p className="text-[10px] text-foreground/40 mt-1">КPI үзүүлэлт, графикууд удахгүй харагдана.</p>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </main>
+          )}
+
+          {activeTab === "report" && (
+            <main className="flex-1 flex overflow-hidden min-h-0">
+              <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background p-6">
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+                  <FileText className="w-12 h-12 text-foreground/20" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground/60">Тайлан бэлтгэж байна</p>
+                    <p className="text-[10px] text-foreground/40 mt-1">Энэ хэсэг удахгүй нэмэгдэнэ.</p>
+                  </div>
                 </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            <ChatInput input={input} isChatLoading={isChatLoading} streamEnabled={streamEnabled}
-              isGraphicModeEnabled={isGraphicModeEnabled} threadId={threadId}
-              onInputChange={setInput} onStreamEnabledChange={setStreamEnabled} onGraphicModeToggle={() => setIsGraphicModeEnabled(!isGraphicModeEnabled)}
-              onSubmit={handleSendMessage} onCancel={handleCancelMessage} />
-
-            <PreviewDrawer previewData={previewData} previewColumns={previewColumns} previewTableName={previewTableName}
-              previewDescription={previewDescription} previewContent={previewContent} previewHasDownload={previewHasDownload} previewFileId={previewFileId}
-              onClose={closePreview} />
-          </section>
-        </main>
+              </section>
+            </main>
+          )}
+        </>
       )}
     </div>
   );
