@@ -527,12 +527,13 @@ export async function detectForeignKeys(tableName: string, columns: string[]): P
                 const otherName = other.table_name.toLowerCase();
                 const otherCols: string[] = JSON.parse(other.columns_info);
                 
-                // Match patterns: user -> users, user -> user, users -> user
+                // Match patterns: user -> users, user -> user, users -> user, category -> categories
                 const matchesTable = otherName === baseName 
                     || otherName === `${baseName}s` 
                     || otherName === `${baseName}es`
                     || otherName.endsWith(`_${baseName}`)
-                    || baseName === otherName.replace(/s$/, '');
+                    || baseName === otherName.replace(/s$/, '')
+                    || (otherName.endsWith('ies') && baseName === otherName.replace(/ies$/, 'y'));
                 
                 if (matchesTable) {
                     // Check if target has an 'id' column
