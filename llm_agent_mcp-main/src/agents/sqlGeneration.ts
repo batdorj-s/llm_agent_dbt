@@ -2,28 +2,35 @@ import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/
 import { safeJsonParse, queryMentionsTable } from "../utils.js";
 import type { DataLakeCatalogEntry } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
+import { computeColumnStats } from "./statistics.js";
 
-export const MAX_SQL_RETRIES = 2;
-export const SQL_GEN_TIMEOUT_MS = 55000;
+export const MAX_SQL_RETRIES = 1;
+export const SQL_GEN_TIMEOUT_MS = 30000;
 
 export function isRateLimitError(err: unknown): boolean {
     const message = err instanceof Error ? err.message : String(err);
     return /rate limit|429|tokens per day|TPD|quota exceeded|quota.*limit/i.test(message);
 }
 
-export async function buildActiveSchemaContext(query: string, userId: string): Promise<string> {
-    const catalog = await getCatalog(userId);
+export async function buildActiveSchemaContext(
+  query: string,
+  userId: string,
+  cachedCatalog?: any[],
+  cachedActiveEntry?: any,
+  cachedSchema?: string
+): Promise<string> {
+    const catalog = cachedCatalog || await getCatalog(userId);
     if (!catalog || catalog.length === 0) return "(catalog unavailable)";
 
     const mentioned = catalog.find((e: any) =>
         queryMentionsTable(query, e.table_name)
     );
-    if (mentioned) return await buildSchemaDefinition(mentioned);
+    if (mentioned) return cachedSchema || await buildSchemaDefinition(mentioned);
 
-    const active = await getActiveCatalogEntry(userId);
-    if (active) return await buildSchemaDefinition(active);
+    const active = cachedActiveEntry || await getActiveCatalogEntry(userId);
+    if (active) return cachedSchema || await buildSchemaDefinition(active);
 
-    return await buildSchemaDefinition(catalog as any);
+    return cachedSchema || await buildSchemaDefinition(catalog as any);
 }
 
 export async function getActiveColumns(entry: Promise<DataLakeCatalogEntry | null>): Promise<string[]> {
@@ -238,30 +245,12 @@ export function computeResultStats(sandboxResult: string): string {
         for (const col of numericCols) {
             const vals = rows.map((r: any) => Number(r[col])).filter((v: number) => !isNaN(v));
             if (vals.length === 0) continue;
-            const n = vals.length;
-            const sorted = [...vals].sort((a, b) => a - b);
-            const sum = vals.reduce((a: number, b: number) => a + b, 0);
-            const mean = sum / n;
-            const min = sorted[0];
-            const max = sorted[n - 1];
-            const median = n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[Math.floor(n / 2)];
-            const variance = vals.reduce((sq: number, v: number) => sq + (v - mean) ** 2, 0) / n;
-            const std = Math.sqrt(variance);
-
-            const q1 = sorted[Math.floor(n * 0.25)];
-            const q3 = sorted[Math.floor(n * 0.75)];
-            const iqr = q3 - q1;
-
-            lines.push(`- ${col}: avg=${mean.toFixed(1)}, median=${median.toFixed(1)}, min=${min.toFixed(1)}, max=${max.toFixed(1)}, std=${std.toFixed(1)}, iqr=${iqr.toFixed(1)}, count=${n}`);
-
-            const threeSigmaOutliers = vals.filter((v: number) => Math.abs(v - mean) > 3 * std);
-            const iqrOutliers = vals.filter((v: number) => v < q1 - 1.5 * iqr || v > q3 + 1.5 * iqr);
-            const allOutliers = [...new Set([...threeSigmaOutliers, ...iqrOutliers])];
-
-            if (allOutliers.length > 0) {
-                const outlierStr = [...new Set(allOutliers.map((v: number) => v.toFixed(1)))].slice(0, 5).join(", ");
-                const pct = ((allOutliers.length / n) * 100).toFixed(1);
-                lines.push(`  Outliers in "${col}": ${outlierStr} (${allOutliers.length}/${n} = ${pct}% of rows, 3σ/IQR method)`);
+            const stats = computeColumnStats(vals);
+            if (!stats) continue;
+            lines.push(`- ${col}: avg=${stats.mean.toFixed(1)}, median=${stats.median.toFixed(1)}, min=${stats.min.toFixed(1)}, max=${stats.max.toFixed(1)}, std=${stats.std.toFixed(1)}, iqr=${stats.iqr.toFixed(1)}, count=${stats.count}`);
+            if (stats.outliers.length > 0) {
+                const outlierStr = [...new Set(stats.outliers.map((v: number) => v.toFixed(1)))].slice(0, 5).join(", ");
+                lines.push(`  Outliers in "${col}": ${outlierStr} (${stats.outliers.length}/${stats.count} = ${stats.outlierPct}% of rows, 3σ/IQR method)`);
             }
         }
         return lines.length > 1 ? lines.join("\n") : "";

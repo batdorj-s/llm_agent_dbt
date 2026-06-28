@@ -7,6 +7,7 @@ import { verifyToken } from "./auth.js";
 import { initTracing } from "./observability/tracer.js";
 import { AgentStateAnnotation, type UserRole } from "./agents/agentState.js";
 export type { UserRole, NextAgent, AgentState } from "./agents/agentState.js";
+import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "./db/data-lake.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -56,8 +57,12 @@ export async function runMultiAgent(query: string, userRole: UserRole, threadId:
     const tracing = initTracing();
     const config: Record<string, any> = { configurable: { thread_id: threadId } };
     if (tracing.handler) config.callbacks = [tracing.handler];
+    // Cache catalog once at request start
+    const catalog = await getCatalog(userId || "system").catch(() => []);
+    const activeEntry = await getActiveCatalogEntry(userId || "system").catch(() => null);
+    const schema = activeEntry ? await buildSchemaDefinition(activeEntry).catch(() => "") : "";
     const result = await multiAgentApp.invoke(
-        { messages: [{ role: "user", content: query }], userRole, visualRequest, userId },
+        { messages: [{ role: "user", content: query }], userRole, visualRequest, userId, cachedCatalog: catalog, cachedSchema: schema, cachedActiveEntry: activeEntry },
         config
     );
     const messages = (result as any).messages;
@@ -76,8 +81,11 @@ export async function runMultiAgentStream(
     const tracing = initTracing();
     const config: Record<string, any> = { configurable: { thread_id: threadId, onChunk } };
     if (tracing.handler) config.callbacks = [tracing.handler];
+    const catalog = await getCatalog(userId || "system").catch(() => []);
+    const activeEntry = await getActiveCatalogEntry(userId || "system").catch(() => null);
+    const schema = activeEntry ? await buildSchemaDefinition(activeEntry).catch(() => "") : "";
     await multiAgentApp.invoke(
-        { messages: [{ role: "user", content: query }], userRole, visualRequest, userId },
+        { messages: [{ role: "user", content: query }], userRole, visualRequest, userId, cachedCatalog: catalog, cachedSchema: schema, cachedActiveEntry: activeEntry },
         config
     );
 }

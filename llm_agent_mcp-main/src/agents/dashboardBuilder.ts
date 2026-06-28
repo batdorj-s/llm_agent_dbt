@@ -9,16 +9,18 @@ export async function buildDashboard(
     llm: any,
     query: string,
     userId: string,
-    onChunk?: (chunk: string) => void
+    onChunk?: (chunk: string) => void,
+    cachedCatalog?: any[],
+    cachedActiveEntry?: any
 ): Promise<Partial<AgentState>> {
     console.log("[Tech Agent] Dashboard request detected.");
     const dashPrefix = "(Tech Agent)\nDashboard зохиож байна...\n\n";
     if (onChunk) onChunk(dashPrefix);
 
-    const catalog = await getCatalog(userId);
+    const catalog = cachedCatalog || await getCatalog(userId);
     const lowerQuery = query.toLowerCase();
     const mentioned = catalog?.find((e: any) => queryMentionsTable(query, e.table_name));
-    const activeEntry = mentioned || await getActiveCatalogEntry(userId);
+    const activeEntry = mentioned || cachedActiveEntry || await getActiveCatalogEntry(userId);
     if (!activeEntry) {
         const fallback = `${dashPrefix}[АНХААР] Идэвхтэй хүснэгт олдсонгүй. Эхлээд зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
         if (onChunk) onChunk(fallback);

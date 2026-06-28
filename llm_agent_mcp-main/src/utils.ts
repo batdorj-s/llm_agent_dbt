@@ -103,3 +103,13 @@ export function queryMentionsTable(query: string, tableName: string): boolean {
     const pattern = `\\b${escapeRegex(tableName.toLowerCase())}\\b`;
     return new RegExp(pattern).test(query.toLowerCase());
 }
+
+export function extractCodeBlock(raw: string, language?: string): string {
+  if (language && raw.includes(`\`\`\`${language}`)) {
+    return raw.split(`\`\`\`${language}`)[1].split("```")[0].trim();
+  }
+  if (raw.includes("```")) {
+    return raw.split("```")[1].split("```")[0].trim();
+  }
+  return raw.trim();
+}

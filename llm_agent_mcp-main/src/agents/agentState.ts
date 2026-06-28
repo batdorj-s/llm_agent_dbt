@@ -14,6 +14,11 @@ export interface AgentState {
     userId?: string;
     nextAgent?: NextAgent;
     visualRequest?: boolean;
+    // Cached request-lifetime data to avoid redundant DB calls
+    cachedCatalog?: any[];
+    cachedSchema?: string;
+    cachedActiveEntry?: any;
+    sanitizedQuery?: string;
 }
 
 export const AgentStateAnnotation = Annotation.Root({
@@ -36,6 +41,22 @@ export const AgentStateAnnotation = Annotation.Root({
     visualRequest: Annotation<boolean>({
         reducer: (x, y) => y ?? x,
         default: () => false,
+    }),
+    cachedCatalog: Annotation<any[] | undefined>({
+        reducer: (x, y) => y ?? x,
+        default: () => undefined,
+    }),
+    cachedSchema: Annotation<string | undefined>({
+        reducer: (x, y) => y ?? x,
+        default: () => undefined,
+    }),
+    cachedActiveEntry: Annotation<any | undefined>({
+        reducer: (x, y) => y ?? x,
+        default: () => undefined,
+    }),
+    cachedSanitizedQuery: Annotation<string | undefined>({
+        reducer: (x, y) => y ?? x,
+        default: () => undefined,
     }),
 });
 

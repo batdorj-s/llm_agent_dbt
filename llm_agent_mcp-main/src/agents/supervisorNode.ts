@@ -91,13 +91,13 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
     const systemPrompt = prompts.supervisor;
     const onChunk = config?.configurable?.onChunk;
 
-    const catalog = await getCatalog(userId);
+    const catalog = state.cachedCatalog || await getCatalog(userId);
     const mentionsKnownTable = catalog.some((row: any) => queryMentionsTable(lastMessage, row.table_name));
 
     const immediateRoute = routeByKeywords(lastMessage, false, mentionsKnownTable);
     if (immediateRoute !== "END") {
         console.log(`[Supervisor] Immediate keyword route -> ${immediateRoute}`);
-        return { nextAgent: immediateRoute };
+        return { nextAgent: immediateRoute, sanitizedQuery: lastMessage };
     }
 
     const llm = await createLLM({ temperature: 0 });
@@ -111,10 +111,10 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
             console.log(`[Supervisor] LLM routed to -> ${result.route} (${result.reason})`);
 
             if (result.route === "END") {
-                const activeEntry = await getActiveCatalogEntry(userId);
-                if (activeEntry) {
-                    console.log(`[Supervisor] LLM routed to END but active dataset '${activeEntry.table_name}' found. Overriding to TechAgent.`);
-                    return { nextAgent: "TechAgent" };
+                const hasActive = !!state.cachedSchema || !!(await getActiveCatalogEntry(userId));
+                if (hasActive) {
+                    console.log(`[Supervisor] LLM routed to END but active dataset found. Overriding to TechAgent.`);
+                    return { nextAgent: "TechAgent", sanitizedQuery: lastMessage };
                 }
                 const endSystemPrompt = prompts.supervisor_end;
                 try {
@@ -130,7 +130,8 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
                     }
                     return {
                         nextAgent: "END",
-                        messages: [{ role: "assistant", content: fullText }]
+                        messages: [{ role: "assistant", content: fullText }],
+                        sanitizedQuery: lastMessage,
                     };
                 } catch (streamErr) {
                     const fallback = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Одоогоор хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.";
@@ -138,12 +139,13 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
                     if (onChunk) onChunk(fallback);
                     return {
                         nextAgent: "END",
-                        messages: [{ role: "assistant", content: fallback }]
+                        messages: [{ role: "assistant", content: fallback }],
+                        sanitizedQuery: lastMessage,
                     };
                 }
             }
 
-            return { nextAgent: result.route };
+            return { nextAgent: result.route, sanitizedQuery: lastMessage };
         } catch (err) {
             console.warn("[Supervisor] LLM routing failed, using keyword fallback:", (err as Error).message);
         }
@@ -151,7 +153,7 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
         console.log("[Supervisor] No LLM API key — using keyword routing fallback.");
     }
 
-    const activeEntry = await getActiveCatalogEntry(userId);
+    const activeEntry = state.cachedActiveEntry || await getActiveCatalogEntry(userId);
     let route: NextAgent = routeByKeywords(lastMessage, !!activeEntry, mentionsKnownTable);
     console.log(`[Supervisor] Keyword routed to -> ${route}`);
 
@@ -160,8 +162,9 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
         if (onChunk) onChunk(text);
         return {
             nextAgent: "END",
-            messages: [{ role: "assistant", content: text }]
+            messages: [{ role: "assistant", content: text }],
+            sanitizedQuery: lastMessage,
         };
     }
-    return { nextAgent: route };
+    return { nextAgent: route, sanitizedQuery: lastMessage };
 }

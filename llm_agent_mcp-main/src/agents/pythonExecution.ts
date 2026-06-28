@@ -1,7 +1,7 @@
 import { createLLM } from "../llm-provider.js";
 import { runPythonCode } from "../sandbox.js";
 import { type AgentState, withTimeout } from "./agentState.js";
-import { sanitizeUserInput } from "./sanitize.js";
+import { extractCodeBlock } from "../utils.js";
 
 export async function executeTechPythonAgent(
     llm: any,
@@ -9,7 +9,6 @@ export async function executeTechPythonAgent(
     onChunk?: (chunk: string) => void,
     userId: string = "anonymous",
 ): Promise<Partial<AgentState>> {
-    const query = sanitizeUserInput(rawQuery);
     console.log("[Tech Agent] Activated. Running Python via E2B sandbox...");
     const prefix = "(Tech Agent)\nPython код бэлдэж, E2B sandbox-д ажиллуулж байна...\n\n";
     if (onChunk) onChunk(prefix);
@@ -19,23 +18,16 @@ Use pandas if reading CSV files (superstore_sales.csv or retail_sales_dataset.cs
 IMPORTANT - Memory safety: NEVER load entire datasets into memory. ALWAYS use df.head(500) or df.sample(500) or pd.read_csv(nrows=1000) to limit data size. The sandbox has limited RAM.
 Return ONLY the Python code inside a markdown \`\`\`python block. No explanation outside the block.
 
-Task: ${query}`;
+Task: ${rawQuery}`;
 
     try {
         const codeGenResponse = await withTimeout(llm.invoke([
             { role: "system", content: pythonPrompt },
-            { role: "user", content: query },
+            { role: "user", content: rawQuery },
         ]), "Tech agent Python generation") as any;
 
         let rawCode = codeGenResponse.content as string;
-        let pythonCode = "";
-        if (rawCode.includes("```python")) {
-            pythonCode = rawCode.split("```python")[1].split("```")[0].trim();
-        } else if (rawCode.includes("```")) {
-            pythonCode = rawCode.split("```")[1].split("```")[0].trim();
-        } else {
-            pythonCode = rawCode.trim();
-        }
+        let pythonCode = extractCodeBlock(rawCode, "python");
 
         const codeBlock = `\`\`\`python\n${pythonCode}\n\`\`\`\n\n`;
         if (onChunk) onChunk(codeBlock);
@@ -47,7 +39,7 @@ Task: ${query}`;
         const explainPrompt = `Summarize the Python execution results for a business user in Mongolian. Be concise. Include "Тооцооны аргачлал:" section explaining how numbers were calculated.\n\nCode:\n${pythonCode}\n\nOutput:\n${output}`;
         const stream: any = await withTimeout(llm.stream([
             { role: "system", content: explainPrompt },
-            { role: "user", content: query },
+            { role: "user", content: rawQuery },
         ]), "Tech agent Python explanation");
 
         let accumulatedText = prefix + codeBlock + resultBlock + "\n";

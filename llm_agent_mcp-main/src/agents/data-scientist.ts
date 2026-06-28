@@ -6,29 +6,29 @@ import { sandboxLimiter } from "../rate-limiter.js";
 import { searchKnowledgeBase } from "../rag.js";
 import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "../rag.js";
 import { detectDateColumn, extractProfileFromSchemaDef } from "./dateColumnHelper.js";
-import { sanitizeUserInput } from "./sanitize.js";
 import { withTimeout } from "./agentState.js";
+import { computeAllStats } from "./statistics.js";
+import { extractCodeBlock } from "../utils.js";
 
 const LLM_TIMEOUT_MS = 40000;
 const PYTHON_GEN_TIMEOUT_MS = 55000;
 
 export async function dataScientistNode(state: any, config?: any): Promise<Partial<import("../multi-agent.js").AgentState>> {
     const onChunk = config?.configurable?.onChunk;
-    const lastMsg = state.messages[state.messages.length - 1];
-    const query = lastMsg ? sanitizeUserInput(lastMsg.content) : "";
+    const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
     const userId = state.userId || "system";
 
     const prefix = "(Data Scientist Agent)\nӨгөгдөлд шинжилгээ хийж байна...\n\n";
     if (onChunk) onChunk(prefix);
 
-    const activeEntry = await getActiveCatalogEntry(userId);
+    const activeEntry = state.cachedActiveEntry || await getActiveCatalogEntry(userId);
     if (!activeEntry) {
         const fallback = `${prefix}[АНХААР] Идэвхтэй хүснэгт олдсонгүй. Зүүн талын Upload хэсгээс CSV файл оруулна уу.`;
         if (onChunk) onChunk(fallback);
         return { messages: [{ role: "assistant", content: fallback }] };
     }
 
-    const schemaDef = await buildSchemaDefinition(activeEntry);
+    const schemaDef = state.cachedSchema || await buildSchemaDefinition(activeEntry);
     const tableName = activeEntry.table_name;
     let columnList: string[] = [];
     try {
@@ -43,24 +43,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
 
     let ragContext = "";
     try {
-        let filter;
-        if (llm) {
-            try {
-                filter = await selfQueryTransform(query, (prompt: string) =>
-                    llm.invoke([
-                        { role: "system", content: prompt },
-                        { role: "user", content: query }
-                    ]).then((r: any) => r.content as string)
-                );
-                console.log(`[DataScientist] Self-query filter: ${JSON.stringify(filter)}`);
-            } catch (sqErr) {
-                console.warn("[DataScientist] Self-query failed:", (sqErr as Error).message);
-            }
-        }
-
-        const ragData = filter
-            ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "DataScientistAgent", limit: 4, filter, userId: state.userId })
-            : await searchKnowledgeBase(query, "DataScientistAgent", 4, state.userId);
+        const ragData = await searchKnowledgeBase(query, "DataScientistAgent", 4, state.userId);
         const docs = ragData.documents?.[0] ?? [];
         if (docs.length > 0) {
             ragContext = "\n\n## Relevant Knowledge\n" + docs.join("\n\n---\n\n");
@@ -145,7 +128,14 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
         console.warn("[DataScientist] Data fetch failed:", (err as Error).message);
     }
 
-    const statsSummary = buildStatisticsSummary(sampleData, columnList);
+    const statsResult = computeAllStats(sampleData, numericCols, 0);
+    let statsSummary = `## Data Statistics (Pre-computed)\n${statsResult.lines.join("\n")}`;
+    if (statsResult.outlierLines.length > 0) {
+        statsSummary += "\n\n### Detected Outliers (>3σ or IQR)\n" + statsResult.outlierLines.join("\n");
+    }
+    if (statsResult.lines.length === 0) {
+        statsSummary = sampleData.length > 0 ? `${sampleData.length} rows loaded. No numeric columns detected for statistical summary.` : "No data available for statistics.";
+    }
     const pythonSystemPrompt = buildPythonPrompt(
         analysisType, tableName, columnList,
         dateCol, dateColType, numericCols, categoryCols,
@@ -181,14 +171,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
         }
 
         let rawCode = llmResult.content;
-        let pythonCode = "";
-        if (rawCode.includes("```python")) {
-            pythonCode = rawCode.split("```python")[1].split("```")[0].trim();
-        } else if (rawCode.includes("```")) {
-            pythonCode = rawCode.split("```")[1].split("```")[0].trim();
-        } else {
-            pythonCode = rawCode.trim();
-        }
+        let pythonCode = extractCodeBlock(rawCode, "python");
 
         const codeBlock = `\`\`\`python\n${pythonCode}\n\`\`\`\n\n`;
         if (onChunk) onChunk(codeBlock);
@@ -248,56 +231,6 @@ CRITICAL:
         if (onChunk) onChunk(fallback);
         return { messages: [{ role: "assistant", content: fallback }] };
     }
-}
-
-function buildStatisticsSummary(sampleData: any[], columns: string[]): string {
-    if (sampleData.length === 0) return "No data available for statistics.";
-
-    const numericCols = columns.filter(col => {
-        const vals = sampleData.map(r => Number(r[col])).filter(v => !isNaN(v));
-        return vals.length > 0.5 * sampleData.length;
-    });
-
-    if (numericCols.length === 0) return `${sampleData.length} rows loaded. No numeric columns detected for statistical summary.`;
-
-    const lines: string[] = [];
-    const outlierLines: string[] = [];
-
-    for (const col of numericCols) {
-        const vals = sampleData.map(r => Number(r[col])).filter(v => !isNaN(v));
-        if (vals.length === 0) continue;
-        const n = vals.length;
-        const sorted = [...vals].sort((a, b) => a - b);
-        const sum = vals.reduce((a, b) => a + b, 0);
-        const mean = sum / n;
-        const min = sorted[0];
-        const max = sorted[n - 1];
-        const median = n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[Math.floor(n / 2)];
-        const variance = vals.reduce((sq, v) => sq + (v - mean) ** 2, 0) / n;
-        const std = Math.sqrt(variance);
-
-        const q1 = sorted[Math.floor(n * 0.25)];
-        const q3 = sorted[Math.floor(n * 0.75)];
-        const iqr = q3 - q1;
-
-        lines.push(`- ${col}: count=${n}, mean=${mean.toFixed(2)}, median=${median.toFixed(2)}, std=${std.toFixed(2)}, min=${min.toFixed(2)}, max=${max.toFixed(2)}, q1=${q1.toFixed(2)}, q3=${q3.toFixed(2)}, iqr=${iqr.toFixed(2)}`);
-
-        const threeSigmaOutliers = vals.filter(v => Math.abs(v - mean) > 3 * std);
-        const iqrOutliers = vals.filter(v => v < q1 - 1.5 * iqr || v > q3 + 1.5 * iqr);
-        const allOutliers = [...new Set([...threeSigmaOutliers, ...iqrOutliers])];
-
-        if (allOutliers.length > 0) {
-            const outlierVals = [...new Set(allOutliers.map(v => v.toFixed(2)))].slice(0, 5).join(", ");
-            const pct = ((allOutliers.length / n) * 100).toFixed(1);
-            outlierLines.push(`  Outliers in "${col}": ${outlierVals} (${allOutliers.length}/${n} = ${pct}%, 3σ+IQR method)`);
-        }
-    }
-
-    let output = "## Data Statistics (Pre-computed)\n" + lines.join("\n");
-    if (outlierLines.length > 0) {
-        output += "\n\n### Detected Outliers (>3σ or IQR)\n" + outlierLines.join("\n");
-    }
-    return output;
 }
 
 function buildSamplingSql(tableName: string, columns: string[]): string {

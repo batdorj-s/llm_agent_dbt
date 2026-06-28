@@ -5,14 +5,12 @@ import { getCatalog } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
 import { techAgentNode } from "./techAgentNode.js";
-import { sanitizeUserInput } from "./sanitize.js";
 
 export async function financeAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
     console.log("[Finance Agent] Activated.");
     const onChunk = config?.configurable?.onChunk;
 
-    const lastMsg = state.messages[state.messages.length - 1];
-    const query = lastMsg ? sanitizeUserInput(lastMsg.content) : "sales targets";
+    const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
     const userId = state.userId || "system";
 
     const llm = await createLLM({ temperature: 0 });
@@ -59,7 +57,7 @@ export async function financeAgentNode(state: any, config?: any): Promise<Partia
         context = `${context}\n\n--- Live KPI Data (from database) ---\n${liveKpiContext}`;
     }
 
-    const catalog = await getCatalog(userId);
+    const catalog = state.cachedCatalog || await getCatalog(userId);
     if (catalog && catalog.length > 0) {
         const tableList = catalog.map((e: any) => `- ${e.table_name} (${e.description || "N/A"})`).join("\n");
         context = `${context}\n\n--- Available Tables in Data Lake ---\n${tableList}`;

@@ -3,6 +3,7 @@ import { getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js
 import { handleExecuteSql, isPythonQuery } from "../tools/enterprise-tools.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
+import { extractCodeBlock } from "../utils.js";
 import {
     MAX_SQL_RETRIES,
     SQL_GEN_TIMEOUT_MS,
@@ -16,13 +17,11 @@ import {
 } from "./sqlGeneration.js";
 import { executeTechPythonAgent } from "./pythonExecution.js";
 import { buildDashboard } from "./dashboardBuilder.js";
-import { sanitizeUserInput } from "./sanitize.js";
 
 export async function techAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
     const onChunk = config?.configurable?.onChunk;
 
-    const lastMsg = state.messages[state.messages.length - 1];
-    const query = lastMsg ? sanitizeUserInput(lastMsg.content) : "";
+    const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
     const userId = state.userId || "system";
 
     const llm = await createLLM({ temperature: 0 });
@@ -42,21 +41,21 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
 
     const lowerQuery = query.toLowerCase();
     if (lowerQuery.includes("dashboard") || lowerQuery.includes("ханалтын самбар") || lowerQuery.includes("хана") || lowerQuery.includes("widget") || lowerQuery.includes("вижет")) {
-        return await buildDashboard(llm, query, userId, onChunk);
+        return await buildDashboard(llm, query, userId, onChunk, state.cachedCatalog, state.cachedActiveEntry);
     }
 
     const prefix = "(Tech Agent)\nМэдээллийн сангаас дата шүүж байна... (MCP execute_sql → Data Lake)\n\n";
     if (onChunk) onChunk(prefix);
 
     console.log(`[Tech Agent] Fetching Data Lake catalog schema...`);
-    const schemaContext = await buildActiveSchemaContext(query, userId);
+    const schemaContext = await buildActiveSchemaContext(query, userId, state.cachedCatalog, state.cachedActiveEntry, state.cachedSchema);
     try {
         console.log(`[Tech Agent] Active schema context:\n${schemaContext}`);
     } catch (err) {
         console.error("[Tech Agent] Schema lookup failed:", err);
     }
 
-    const activeEntry = await getActiveCatalogEntry(userId);
+    const activeEntry = state.cachedActiveEntry || await getActiveCatalogEntry(userId);
     const deterministicSql = await buildDeterministicTechSql(query, activeEntry);
     if (deterministicSql && activeEntry) {
         try {
@@ -119,14 +118,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             }
 
             const rawCode = (codeGenResponse as any).content as string;
-            let currentSql = "";
-            if (rawCode.includes("```sql")) {
-                currentSql = rawCode.split("```sql")[1].split("```")[0].trim();
-            } else if (rawCode.includes("```")) {
-                currentSql = rawCode.split("```")[1].split("```")[0].trim();
-            } else {
-                currentSql = rawCode.trim();
-            }
+            let currentSql = extractCodeBlock(rawCode, "sql");
 
             if (currentSql === sqlCode && attempts > 1) {
                 feedback = "Error: The generated SQL is identical to the previous failing one. Please try a different approach or verify the column names.";
