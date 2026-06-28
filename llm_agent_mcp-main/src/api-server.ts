@@ -881,6 +881,7 @@ app.post("/api/admin/feedback/:id/approve", async (req, res) => {
         department: "analytics",
         author: entry.userId,
         source_name: "User Feedback",
+        shared: true,
       }, ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)]);
     }
 

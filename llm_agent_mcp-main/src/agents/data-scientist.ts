@@ -59,8 +59,8 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
         }
 
         const ragData = filter
-            ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "DataScientistAgent", limit: 2, filter, userId: state.userId })
-            : await searchKnowledgeBase(query, "DataScientistAgent", 2, state.userId);
+            ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "DataScientistAgent", limit: 4, filter, userId: state.userId })
+            : await searchKnowledgeBase(query, "DataScientistAgent", 4, state.userId);
         const docs = ragData.documents?.[0] ?? [];
         if (docs.length > 0) {
             ragContext = "\n\n## Relevant Knowledge\n" + docs.join("\n\n---\n\n");

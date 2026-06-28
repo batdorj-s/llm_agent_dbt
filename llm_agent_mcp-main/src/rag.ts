@@ -3,6 +3,10 @@ dotenv.config();
 import fs from "fs";
 import path from "path";
 
+// Self-query cache: avoid redundant LLM calls across agents
+const selfQueryCache = new Map<string, { result: SelfQueryFilter; expiresAt: number }>();
+const SELF_QUERY_CACHE_TTL_MS = 60_000; // 1 minute
+
 export interface RagDocument {
   id: string;
   text: string;
@@ -12,6 +16,9 @@ export interface RagDocument {
     author?: string;
     created_at?: string;
     source_name?: string;
+    parent_doc_id?: string;
+    chunk_index?: number;
+    shared?: boolean;
   };
   keywords: string[];
 }
@@ -88,10 +95,10 @@ function inMemorySearch(query: string, limit: number, categories?: string[], use
 
   let docs = knowledgeDocuments;
   if (userId) {
-    docs = docs.filter(d => !d.metadata.author || d.metadata.author === "admin" || d.metadata.author === "system" || d.metadata.author === userId);
+    docs = docs.filter(d => d.metadata.shared || !d.metadata.author || d.metadata.author === "admin" || d.metadata.author === "system" || d.metadata.author === userId);
   } else {
     // If no userId is specified, only return system/admin documents for security
-    docs = docs.filter(d => !d.metadata.author || d.metadata.author === "admin" || d.metadata.author === "system");
+    docs = docs.filter(d => d.metadata.shared || !d.metadata.author || d.metadata.author === "admin" || d.metadata.author === "system");
   }
   if (categories && categories.length > 0) {
     docs = docs.filter(d => categories.includes(d.metadata.category));
@@ -138,6 +145,68 @@ function formatWithSource(docs: RagDocument[]): string {
     const dept = doc.metadata.department ? `(${doc.metadata.department})` : "";
     return `${source}${dept ? " " + dept : ""}\n${doc.text}`;
   }).join("\n\n---\n\n");
+}
+
+/**
+ * Estimate token count for mixed Mongolian/English text (~4 chars per token).
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Split text into chunks with overlap.
+ * Splits on newlines/paragraphs when possible, falls back to character boundary.
+ */
+export function chunkText(
+  text: string,
+  chunkSize: number = 512,
+  overlap: number = 64
+): string[] {
+  if (text.length <= chunkSize * 4) return [text];
+
+  const chunks: string[] = [];
+  const paragraphs = text.split(/\n\s*\n/);
+  let current = "";
+
+  for (const para of paragraphs) {
+    const paraTokens = estimateTokens(para);
+    const currentTokens = estimateTokens(current);
+
+    if (currentTokens + paraTokens <= chunkSize && current.length > 0) {
+      current += "\n\n" + para;
+    } else if (currentTokens + paraTokens > chunkSize && current.length > 0) {
+      chunks.push(current.trim());
+      // overlap: take last ~overlap tokens worth of text
+      const overlapChars = overlap * 4;
+      current = current.length > overlapChars
+        ? current.slice(-overlapChars) + "\n\n" + para
+        : para;
+    } else {
+      // Paragraph itself exceeds chunkSize — split by sentences
+      if (paraTokens > chunkSize) {
+        if (current.trim()) chunks.push(current.trim());
+        const sentences = para.split(/(?<=[.?!])\s+/);
+        current = "";
+        for (const sentence of sentences) {
+          if (estimateTokens(current + " " + sentence) > chunkSize && current.length > 0) {
+            chunks.push(current.trim());
+            current = sentence;
+          } else {
+            current += (current ? " " : "") + sentence;
+          }
+        }
+      } else {
+        current = para;
+      }
+    }
+  }
+
+  if (current.trim()) {
+    chunks.push(current.trim());
+  }
+
+  return chunks;
 }
 
 let chromaClient: any = null;
@@ -195,6 +264,7 @@ export async function setupKnowledgeBase() {
                 author: entry.userId || "system",
                 created_at: entry.timestamp || new Date().toISOString(),
                 source_name: "User Feedback",
+                shared: true,
               },
               keywords: ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)],
             });
@@ -232,7 +302,7 @@ export async function setupKnowledgeBase() {
 export async function searchKnowledgeBase(
   query: string,
   agentRole: string = "FinanceAgent",
-  limit: number = 3,
+  limit: number = 5,
   userId?: string
 ): Promise<{ documents: string[][]; metadatas: any[][] }> {
   return searchKnowledgeBaseWithFilter({ query, agentRole, limit, userId });
@@ -249,7 +319,7 @@ export async function searchKnowledgeBaseWithFilter(
 ): Promise<{ documents: string[][]; metadatas: any[][] }> {
   const { query, agentRole, limit, filter, userId } = {
     agentRole: "FinanceAgent",
-    limit: 3,
+    limit: 5,
     ...params
   };
   console.log(`[RAG] Agent="${agentRole}" searching: "${query}"${filter ? ` | self-query: ${JSON.stringify(filter)}` : ""}${userId ? ` | user: ${userId}` : ""}`);
@@ -275,6 +345,7 @@ export async function searchKnowledgeBaseWithFilter(
       if (userId) {
         conditions.push({
           "$or": [
+            { shared: true },
             { author: "admin" },
             { author: "system" },
             { author: userId }
@@ -283,6 +354,7 @@ export async function searchKnowledgeBaseWithFilter(
       } else {
         conditions.push({
           "$or": [
+            { shared: true },
             { author: "admin" },
             { author: "system" }
           ]
@@ -292,23 +364,34 @@ export async function searchKnowledgeBaseWithFilter(
 
       const results = await col.query({
         queryTexts: [query],
-        nResults: limit * 2,
+        nResults: limit * 3,
         where: chromaWhere,
       });
       console.log(`[RAG] ChromaDB returned ${results.documents[0]?.length || 0} results`);
       if (results.documents[0]?.length > 0) {
         let matched: any[] = [];
+        const queryWords = query.toLowerCase().split(/\W+/).filter(Boolean);
         results.documents[0].forEach((text: string, i: number) => {
           const meta = results.metadatas[0][i] || {};
           const author = meta.author;
-          const allowed = userId
+          const shared = meta.shared === true;
+          const allowed = shared || (userId
             ? (!author || author === "admin" || author === "system" || author === userId)
-            : (!author || author === "admin" || author === "system");
+            : (!author || author === "admin" || author === "system"));
           if (allowed) {
-            matched.push({ text, meta });
+            // Hybrid score: 0.7 * vector (distance) + 0.3 * keyword relevance
+            const distance = results.distances?.[0]?.[i] ?? 0.5;
+            const vectorScore = 1 - distance; // cosine distance → similarity (higher = better)
+            const keywordScore = queryWords.reduce((acc, word) => {
+              if (meta.keywords?.includes?.(word)) return acc + 0.3;
+              if (text.toLowerCase().includes(word)) return acc + 0.1;
+              return acc;
+            }, 0);
+            matched.push({ text, meta, score: 0.7 * vectorScore + 0.3 * Math.min(keywordScore, 1) });
           }
         });
-        
+
+        matched.sort((a, b) => b.score - a.score);
         matched = matched.slice(0, limit);
 
         if (matched.length > 0) {
@@ -356,17 +439,25 @@ export async function searchKnowledgeBaseWithFilter(
 
 /**
  * Self-Querying: Uses LLM to extract structured metadata filters from a natural language query.
- * Pass an LLM `.invoke()` function as `llmInvoke`.
+ * Results are cached for 60s to avoid redundant calls across agents.
  */
 export async function selfQueryTransform(
   query: string,
   llmInvoke: (prompt: string) => Promise<string>
 ): Promise<SelfQueryFilter> {
+  // Check cache first
+  const cacheKey = query.trim().toLowerCase();
+  const cached = selfQueryCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    console.log(`[RAG] Self-query cache hit for "${cacheKey}"`);
+    return cached.result;
+  }
+
   const systemPrompt = `Extract search filters from the user's query. Return ONLY a JSON object with these fields:
 - "query": the core search query (remove date/year references, keep the main subject)
 - "categories": array of relevant categories from: finance, technical, business_policy, data_catalog, previous_analysis
 - "departments": array of relevant departments if mentioned (e.g. sales, engineering, analytics, security, retention)
-- "year": 4-digit year if a specific year is mentioned (e.g. 2024, 2025)
+- "year": 4-digit year if a specific year is mentioned, or null
 
 Examples:
 Input: "2024 оны маркетингийн тайланг харуул"
@@ -379,20 +470,34 @@ Input: "Борлуулалтын KPI ямар байна"
 Output: {"query":"sales KPI","categories":["finance"],"departments":["sales"],"year":null}
 
 If unsure, return: {"query":"${query.replace(/"/g, "'")}","categories":[],"departments":[],"year":null}
-Respond with ONLY the JSON. No markdown, no explanation.`;
+Respond with ONLY valid JSON. No markdown, no explanation, no code fences.`;
 
   try {
     const response = await llmInvoke(systemPrompt);
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        query: parsed.query || query,
-        categories: Array.isArray(parsed.categories) ? parsed.categories : [],
-        departments: Array.isArray(parsed.departments) ? parsed.departments : [],
-        year: typeof parsed.year === "number" ? parsed.year : undefined,
-      };
+    // Try direct JSON parse first, then regex fallback
+    let parsed: any;
+    try {
+      parsed = JSON.parse(response.trim());
+    } catch {
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No JSON found in response");
+      }
     }
+
+    const result: SelfQueryFilter = {
+      query: parsed.query || query,
+      categories: Array.isArray(parsed.categories) ? parsed.categories : [],
+      departments: Array.isArray(parsed.departments) ? parsed.departments : [],
+      year: typeof parsed.year === "number" ? parsed.year : undefined,
+    };
+
+    // Cache the result
+    selfQueryCache.set(cacheKey, { result, expiresAt: Date.now() + SELF_QUERY_CACHE_TTL_MS });
+
+    return result;
   } catch (err) {
     console.warn("[RAG] Self-query transform failed:", (err as Error).message);
   }
@@ -434,34 +539,54 @@ export async function addDocumentToCatalog(
     department?: string;
     author?: string;
     source_name?: string;
+    shared?: boolean;
   },
-  keywords: string[]
+  keywords: string[],
+  options?: { chunkSize?: number; skipChunking?: boolean }
 ) {
-  const doc: RagDocument = {
-    id,
-    text,
+  const tokenCount = estimateTokens(text);
+  if (tokenCount > 8000) {
+    console.warn(`[RAG] Document ${id} exceeds 8000 tokens (est. ${tokenCount}). Consider chunking.
+`);
+  }
+
+  const shouldChunk = !options?.skipChunking && tokenCount > (options?.chunkSize || 512) * 4;
+
+  const chunks = shouldChunk
+    ? chunkText(text, options?.chunkSize || 512, 64)
+    : [text];
+
+  const docs: RagDocument[] = chunks.map((chunk, i) => ({
+    id: chunks.length > 1 ? `${id}_chunk${i}` : id,
+    text: chunk,
     metadata: {
       category: metadata.category,
       department: metadata.department || "general",
       author: metadata.author || "system",
       created_at: new Date().toISOString(),
       source_name: metadata.source_name || `Upload: ${id}`,
+      parent_doc_id: chunks.length > 1 ? id : undefined,
+      chunk_index: chunks.length > 1 ? i : undefined,
+      shared: metadata.shared,
     },
     keywords,
-  };
+  }));
 
-  knowledgeDocuments.push(doc);
-  console.log(`[RAG] Added document: ${id} (${metadata.category})`);
+  for (const doc of docs) {
+    knowledgeDocuments.push(doc);
+  }
+
+  console.log(`[RAG] Added ${docs.length} document(s): ${id} (${metadata.category})`);
 
   const col = await getChromaCollection();
   if (col) {
     try {
       await col.add({
-        ids: [id],
-        documents: [text],
-        metadatas: [{ ...doc.metadata, category: doc.metadata.category }],
+        ids: docs.map(d => d.id),
+        documents: docs.map(d => d.text),
+        metadatas: docs.map(d => ({ ...d.metadata, category: d.metadata.category })),
       });
-      console.log(`[RAG] Successfully added ${id} to ChromaDB [OK]`);
+      console.log(`[RAG] Successfully added ${docs.length} chunk(s) to ChromaDB [OK]`);
     } catch (err: any) {
       console.error(`[RAG] Failed to add ${id} to ChromaDB:`, err.message);
     }
