@@ -1,78 +1,17 @@
 version: 2
 models:
   - name: stg_sales
-    description: Cleaned sales data sourced from d.
+    description: Cleaned sales data sourced from test_upload_1782625938503.
     columns:
       - name: date
-        description: Column from d.date.
-      - name: year
-        description: Column from d.year.
-      - name: month
-        description: Column from d.month.
-      - name: month_name
-        description: Column from d.month_name.
-      - name: week
-        description: Column from d.week.
-      - name: day_of_week
-        description: Column from d.day_of_week.
-      - name: post_hour
-        description: Column from d.post_hour.
-      - name: season
-        description: Column from d.season.
-      - name: is_holiday
-        description: Column from d.is_holiday.
-      - name: is_holiday_text
-        description: Column from d.is_holiday_text.
-      - name: is_weekend
-        description: Column from d.is_weekend.
-      - name: is_weekend_text
-        description: Column from d.is_weekend_text.
-      - name: country
-        description: Column from d.country.
-      - name: market_tier
-        description: Column from d.market_tier.
-      - name: account
-        description: Column from d.account.
-      - name: account_type
-        description: Column from d.account_type.
-      - name: platform
-        description: Column from d.platform.
-      - name: placement
-        description: Column from d.placement.
-      - name: funnel_stage
-        description: Column from d.funnel_stage.
-      - name: objective
-        description: Column from d.objective.
-      - name: theme
-        description: Column from d.theme.
-      - name: campaign_id
-        description: Column from d.campaign_id.
-      - name: campaign_name
-        description: Column from d.campaign_name.
-      - name: ad_group_id
-        description: Column from d.ad_group_id.
-      - name: ad_group_name
-        description: Column from d.ad_group_name.
-      - name: ad_id
-        description: Column from d.ad_id.
-      - name: ad_name
-        description: Column from d.ad_name.
-      - name: spend
-        description: Column from d.spend.
-      - name: impressions
-        description: Column from d.impressions.
-      - name: reach
-        description: Column from d.reach.
-      - name: frequency
-        description: Column from d.frequency.
-      - name: clicks
-        description: Column from d.clicks.
-      - name: conversions
-        description: Column from d.conversions.
-      - name: revenue
-        description: Column from d.revenue.
-      - name: video_views
-        description: Column from d.video_views.
+        description: Column from test_upload_1782625938503.date.
+      - name: amount
+        description: Column from test_upload_1782625938503.amount.
+      - name: customer_id
+        description: Column from test_upload_1782625938503.customer_id.
+        tests:
+          - unique
+          - not_null
     tests:
       - assert_true:
           expression: sales >= 0
