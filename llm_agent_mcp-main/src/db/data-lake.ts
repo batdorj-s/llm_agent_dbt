@@ -183,6 +183,22 @@ export async function initDataLake(): Promise<void> {
                 )
             `);
 
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS sql_gen_log (
+                    id SERIAL PRIMARY KEY,
+                    user_id TEXT,
+                    query TEXT,
+                    outcome TEXT NOT NULL,
+                    attempts INTEGER DEFAULT 1,
+                    table_name TEXT,
+                    error TEXT,
+                    duration_ms INTEGER,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_created_at ON sql_gen_log (created_at DESC)`);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_outcome ON sql_gen_log (outcome)`);
+
             const existing = await pool.query("SELECT metric_name FROM kpi_targets");
             if (existing.rows.length === 0) {
                 await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["sales", 500000, "USD"]);

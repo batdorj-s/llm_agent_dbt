@@ -1,8 +1,37 @@
-import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
+import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition, getPool } from "../db/data-lake.js";
 import { safeJsonParse, queryMentionsTable, findClosestColumn } from "../utils.js";
 import type { DataLakeCatalogEntry } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { computeColumnStats } from "./statistics.js";
+
+export type SqlOutcome =
+  | "deterministic_success"
+  | "llm_attempt_1_success"
+  | "llm_attempt_2_success"
+  | "schema_error"
+  | "rate_limit"
+  | "fallback_success"
+  | "total_failure";
+
+export async function logSqlOutcome(params: {
+  userId?: string;
+  query: string;
+  outcome: SqlOutcome;
+  attempts?: number;
+  tableName?: string;
+  error?: string;
+  durationMs?: number;
+}): Promise<void> {
+  try {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO sql_gen_log (user_id, query, outcome, attempts, table_name, error, duration_ms) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [params.userId ?? null, params.query.slice(0, 500), params.outcome, params.attempts ?? 1, params.tableName ?? null, params.error ?? null, params.durationMs ?? null]
+    );
+  } catch (err) {
+    console.warn("[SqlGenLog] Failed to log outcome:", (err as Error).message);
+  }
+}
 
 export const MAX_SQL_RETRIES = 2;
 export const SQL_GEN_TIMEOUT_MS = 45000;

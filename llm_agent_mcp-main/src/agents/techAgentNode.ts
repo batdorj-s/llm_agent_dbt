@@ -14,6 +14,7 @@ import {
     buildFallbackQuery,
     computeResultStats,
     generateVisualTag,
+    logSqlOutcome,
 } from "./sqlGeneration.js";
 import { executeTechPythonAgent } from "./pythonExecution.js";
 import { buildDashboard } from "./dashboardBuilder.js";
@@ -65,6 +66,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             const normalizedResults = Array.isArray(results) ? results : [results];
             const directResponse = formatDeterministicTechResponse(query, deterministicSql, normalizedResults);
             if (onChunk) onChunk("\n\n" + directResponse);
+            void logSqlOutcome({ userId, query, outcome: "deterministic_success", tableName: activeEntry?.table_name });
             return {
                 messages: [{ content: `${prefix}\n${directResponse}`, role: "assistant" }]
             };
@@ -137,6 +139,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
                 if (schemaError) {
                     console.log("[Tech Agent] Schema validation error detected — stopping retries.");
                     accumulatedText += `\n[ЗӨВЛӨМЖ] Дээрх алдааны шалтгаан: SQL query-д schema-д байхгүй багана/хүснэгт ашигласан.\n`;
+                    void logSqlOutcome({ userId, query, outcome: "schema_error", attempts, tableName: activeEntry?.table_name, error: feedback });
                     break;
                 }
                 continue;
@@ -162,10 +165,12 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             accumulatedText += errorEntry;
             if (isRateLimitError(err)) {
                 console.warn("[Tech Agent] LLM rate limit hit, stopping retries early.");
+                void logSqlOutcome({ userId, query, outcome: "rate_limit", attempts, tableName: activeEntry?.table_name, error: err.message });
                 break;
             }
             if (/багана байхгүй|хүснэгт.*байхгүй|Хүснэгт '/i.test(err.message)) {
                 console.log("[Tech Agent] Schema validation error in catch — stopping retries.");
+                void logSqlOutcome({ userId, query, outcome: "schema_error", attempts, tableName: activeEntry?.table_name, error: err.message });
                 break;
             }
         }
@@ -182,6 +187,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
                         sandboxResult = JSON.stringify(fbData);
                         sqlCode = fallbackQuery;
                         isSuccess = true;
+                        void logSqlOutcome({ userId, query, outcome: "fallback_success", attempts, tableName: activeEntry?.table_name });
                         const note = `\n### Fallback\n*Тусгай query амжилтгүй, өгөгдлийн сангийн түүвэр мэдээллээр хариулж байна.*\n\n`;
                         if (onChunk) onChunk(note);
                         accumulatedText += note;
@@ -192,12 +198,18 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             }
         }
         if (!isSuccess) {
+            void logSqlOutcome({ userId, query, outcome: "total_failure", attempts, tableName: activeEntry?.table_name, error: "All SQL generation paths failed" });
             const fallback = `${accumulatedText}\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Хэрэв та баганын нэр эсвэл хүснэгтийн нэр зааж өгвөл би илүү нарийвчлалтай хариулж чадна.`;
             if (onChunk) onChunk("\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.");
             return {
                 messages: [{ role: "assistant", content: fallback }]
             };
         }
+    }
+
+    if (isSuccess && attempts > 0) {
+        const outcome: import("./sqlGeneration.js").SqlOutcome = attempts === 1 ? "llm_attempt_1_success" : "llm_attempt_2_success";
+        void logSqlOutcome({ userId, query, outcome, attempts, tableName: activeEntry?.table_name });
     }
 
     const dataStats = computeResultStats(sandboxResult);
