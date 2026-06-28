@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type QueryFn = (text: string, params?: unknown[]) => { rows: unknown[] };
 
@@ -13,9 +13,10 @@ function createMockPool(queries: Record<string, { rows: unknown[] }>) {
 }
 
 describe("computeMetrics — tenant isolation", () => {
-  it("scopes data_lake_catalog query by visibility = 'shared' OR owner_id = $1", async () => {
+  beforeEach(() => { vi.resetModules(); });
+  it("scopes data_lake_catalog query by owner_id = $1 after checking uploaded_files", async () => {
     const mockPool = createMockPool({
-      "data_lake_catalog": { rows: [] },
+      "uploaded_files": { rows: [{ id: "my_table" }] },
     });
 
     vi.doMock("../db/data-lake.js", () => ({
@@ -27,33 +28,56 @@ describe("computeMetrics — tenant isolation", () => {
 
     expect(result).toBeNull();
 
+    const uploadedCall = mockPool.query.mock.calls.find(
+      (call: unknown[]) => (call[0] as string).includes("uploaded_files")
+    ) as unknown[] | undefined;
+    expect(uploadedCall).toBeDefined();
+    const sql = uploadedCall![0] as string;
+    const params = uploadedCall![1] as unknown[];
+
+    expect(sql).toContain("owner_id = $1");
+    expect(sql).toContain("type = 'dataset'");
+    expect(params).toContain("user-test-123");
+
     const catalogCall = mockPool.query.mock.calls.find(
       (call: unknown[]) => (call[0] as string).includes("data_lake_catalog")
     ) as unknown[] | undefined;
     expect(catalogCall).toBeDefined();
-    const sql = catalogCall![0] as string;
-    const params = catalogCall![1] as unknown[];
+    const catalogSql = catalogCall![0] as string;
+    const catalogParams = catalogCall![1] as unknown[];
 
-    expect(sql).toContain("visibility = 'shared' OR owner_id = $1");
-    expect(params).toContain("user-test-123");
+    expect(catalogSql).toContain("owner_id = $1");
+    expect(catalogParams).toContain("user-test-123");
   });
 
-  it("returns null when no table is accessible for the given userId", async () => {
-    const mockPool = createMockPool({
-      "data_lake_catalog": { rows: [] },
+  it("returns null when user has no uploaded files", async () => {
+    const querySpy = vi.fn((text: string) => {
+        if (text.includes("uploaded_files")) return { rows: [] };
+        return { rows: [] };
     });
+    const mockPool = { query: querySpy };
 
     vi.doMock("../db/data-lake.js", () => ({
-      getPool: vi.fn().mockReturnValue(mockPool),
+        getPool: vi.fn().mockReturnValue(mockPool),
     }));
 
     const { computeMetrics } = await import("../agents/reportMetrics.js");
     const result = await computeMetrics("nonexistent-user");
     expect(result).toBeNull();
+
+    const uploadedCall = querySpy.mock.calls.find(
+        (call: unknown[]) => (call[0] as string).includes("uploaded_files")
+    ) as unknown[] | undefined;
+    expect(uploadedCall).toBeDefined();
+    expect(uploadedCall![0] as string).toContain("owner_id = $1");
+    expect(uploadedCall![0] as string).toContain("LIMIT 1");
   });
 
   it("uses detectDateColumn sqlCast instead of inline REPLACE logic", async () => {
     const queryFn: QueryFn = (text: string, params?: unknown[]) => {
+      if (text.includes("uploaded_files")) {
+        return { rows: [{ id: "sales_table" }] };
+      }
       if (text.includes("data_lake_catalog")) {
         return { rows: [{ table_name: "sales_table", columns_info: JSON.stringify(["order_date", "amount", "quantity"]) }] };
       }

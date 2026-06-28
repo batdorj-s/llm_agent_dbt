@@ -19,9 +19,15 @@ async function getActiveTableInfo(userId: string): Promise<{
   columnTypes: Record<string, string>;
 } | null> {
   try {
+    const fileCheck = await getPool().query(
+      `SELECT id FROM uploaded_files WHERE type = 'dataset' AND owner_id = $1 LIMIT 1`,
+      [userId]
+    );
+    if (fileCheck.rows.length === 0) return null;
+
     const catalogResult = await getPool().query(
       `SELECT table_name, columns_info FROM data_lake_catalog
-       WHERE visibility = 'shared' OR owner_id = $1
+       WHERE owner_id = $1
        ORDER BY created_at DESC LIMIT 1`,
       [userId]
     );

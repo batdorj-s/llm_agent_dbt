@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
-import { initDataLake, isPgAvailable } from "../db/data-lake.js";
+import { initDataLake, isPgAvailable, getPool } from "../db/data-lake.js";
 import type { Express } from "express";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@admin.com";
@@ -9,6 +9,7 @@ const ADMIN_PASS = process.env.ADMIN_PASSWORD || "bataa0818";
 describe("Dashboard API endpoints", () => {
     let app: Express;
     let adminToken: string;
+    let adminUserId: string;
 
     beforeAll(async () => {
         await initDataLake();
@@ -21,6 +22,48 @@ describe("Dashboard API endpoints", () => {
             .post("/api/auth/login")
             .send({ email: ADMIN_EMAIL, password: ADMIN_PASS });
         adminToken = adminRes.body.token;
+        adminUserId = adminRes.body.user?.id;
+
+        // Seed a real test table so computeMetrics finds user-owned data
+        if (adminUserId) {
+            const existing = await getPool().query(
+                `SELECT id FROM uploaded_files WHERE type = 'dataset' AND owner_id = $1 LIMIT 1`,
+                [adminUserId]
+            );
+            if (existing.rows.length === 0) {
+                await getPool().query(`DROP TABLE IF EXISTS "metrics_test_table"`);
+                await getPool().query(`
+                    CREATE TABLE "metrics_test_table" (
+                        order_date TEXT,
+                        sales NUMERIC,
+                        quantity NUMERIC,
+                        category TEXT
+                    )
+                `);
+                await getPool().query(`
+                    INSERT INTO "metrics_test_table" VALUES
+                        ('2024-01-15', 1000, 2, 'Technology'),
+                        ('2024-02-20', 1500, 3, 'Furniture'),
+                        ('2024-03-10', 800, 1, 'Technology')
+                `);
+                await getPool().query(`
+                    INSERT INTO data_lake_catalog (table_name, columns_info, owner_id, visibility, created_at)
+                    VALUES ('metrics_test_table', '["order_date","sales","quantity","category"]', $1, 'shared', NOW())
+                `, [adminUserId]);
+                await getPool().query(`
+                    INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)
+                    VALUES ('metrics_test_table', 'metrics_test_table', 'dataset', 'Test dataset for metrics', $1, 'shared', NOW())
+                `, [adminUserId]);
+            }
+        }
+    });
+
+    afterAll(async () => {
+        if (isPgAvailable()) {
+            await getPool().query(`DROP TABLE IF EXISTS "metrics_test_table" CASCADE`);
+            await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = 'metrics_test_table'`);
+            await getPool().query(`DELETE FROM uploaded_files WHERE id = 'metrics_test_table'`);
+        }
     });
 
     describe("GET /api/kpi/:metric", () => {
