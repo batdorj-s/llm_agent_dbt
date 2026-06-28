@@ -1,5 +1,5 @@
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
-import { safeJsonParse, queryMentionsTable } from "../utils.js";
+import { safeJsonParse, queryMentionsTable, findClosestColumn } from "../utils.js";
 import type { DataLakeCatalogEntry } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { computeColumnStats } from "./statistics.js";
@@ -190,6 +190,8 @@ export function buildFallbackQuery(query: string, entry?: any): string | null {
     const incomeCol = findConceptColumn(columns, "income", tableName)
         || columns.find(c => /gross_income/i.test(c))
         || columns.find(c => /income/i.test(c))
+        || findClosestColumn(columns, "income")
+        || findClosestColumn(columns, "gross_income")
         || null;
 
     const isOutlierQuery = /outlier|гажуудал|хэт өндөр|хэт бага|аномали|anomaly|етгээд|стандарт хазайлт|standard deviation|z-score|3σ/i.test(lowerQuery);
@@ -218,8 +220,14 @@ export function buildFallbackQuery(query: string, entry?: any): string | null {
         ].join("\n");
     }
 
-    const numericCol = columns.find(c => /gross_income|sales|revenue|amount|profit|unit_price|total/i.test(c));
-    const dateCol = columns.find(c => /date|time/i.test(c));
+    const numericCol = columns.find(c => /gross_income|sales|revenue|amount|profit|unit_price|total/i.test(c))
+        || findClosestColumn(columns, "sales")
+        || findClosestColumn(columns, "revenue")
+        || findClosestColumn(columns, "amount")
+        || findClosestColumn(columns, "profit");
+    const dateCol = columns.find(c => /date|time/i.test(c))
+        || findClosestColumn(columns, "date")
+        || findClosestColumn(columns, "time");
     if (dateCol && numericCol) {
         return `SELECT "${dateCol}" AS label, SUM("${numericCol}") AS value FROM "${tableName}" GROUP BY label ORDER BY label DESC LIMIT 10;`;
     }

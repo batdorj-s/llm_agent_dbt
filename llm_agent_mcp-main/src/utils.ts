@@ -113,3 +113,41 @@ export function extractCodeBlock(raw: string, language?: string): string {
   }
   return raw.trim();
 }
+
+function getBigrams(str: string): Set<string> {
+  const bigrams = new Set<string>();
+  for (let i = 0; i < str.length - 1; i++) {
+    bigrams.add(str.substring(i, i + 2));
+  }
+  return bigrams;
+}
+
+export function diceSimilarity(a: string, b: string): number {
+  const bigramsA = getBigrams(a.toLowerCase());
+  const bigramsB = getBigrams(b.toLowerCase());
+  if (bigramsA.size === 0 && bigramsB.size === 0) return 1;
+  let intersection = 0;
+  for (const bg of bigramsA) {
+    if (bigramsB.has(bg)) intersection++;
+  }
+  return (2 * intersection) / (bigramsA.size + bigramsB.size);
+}
+
+const FUZZY_THRESHOLD = 0.4;
+
+export function findClosestColumn(
+  columns: string[],
+  target: string,
+  threshold: number = FUZZY_THRESHOLD
+): string | null {
+  let bestCol: string | null = null;
+  let bestScore = threshold;
+  for (const col of columns) {
+    const score = diceSimilarity(col, target);
+    if (score > bestScore) {
+      bestScore = score;
+      bestCol = col;
+    }
+  }
+  return bestCol;
+}
