@@ -56,13 +56,13 @@ describe("Dashboard API endpoints", () => {
             expect(res.body).toHaveProperty("name", "churn_rate");
         });
 
-        it("returns 404 for unknown metric", async () => {
+        it("returns 400 for unknown metric", async () => {
             if (!app || !adminToken) return;
             const res = await request(app)
                 .get("/api/kpi/nonexistent_metric")
                 .set("Authorization", `Bearer ${adminToken}`);
 
-            expect(res.status).toBe(404);
+            expect(res.status).toBe(400);
         });
 
         it("returns 401 with no token", async () => {

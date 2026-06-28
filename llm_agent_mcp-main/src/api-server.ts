@@ -6,7 +6,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { createToken, requireJwtSecret, verifyBearerHeader, verifyToken, requireRole, roleAtLeast } from "./auth.js";
-import { agentLimiter } from "./rate-limiter.js";
+import { agentLimiter, authLimiter } from "./rate-limiter.js";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
 import { setupKnowledgeBase } from "./rag.js";
@@ -36,7 +36,26 @@ const UPLOAD_DIR = "uploads/";
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
-const upload = multer({ dest: UPLOAD_DIR });
+
+const ALLOWED_MIMES = new Set([
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/csv",
+]);
+
+const upload = multer({
+  dest: UPLOAD_DIR,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIMES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed: Excel, PDF, DOCX, CSV`));
+    }
+  },
+});
 
 // ─────────────────────────────────────────────────────────────
 // Health / Status
@@ -63,11 +82,17 @@ app.post("/api/auth/login", async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password required" });
   }
-  if (password.length < 4) {
-    return res.status(400).json({ error: "Password must be at least 4 characters" });
+  if (password.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters" });
   }
-  if (!email.includes("@")) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: "Invalid email format" });
+  }
+
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  const rl = authLimiter.check(ip);
+  if (!rl.allowed) {
+    return res.status(429).json({ error: rl.message });
   }
 
   try {
@@ -103,8 +128,17 @@ app.post("/api/auth/register", async (req, res) => {
   if (!email || !password || !name) {
     return res.status(400).json({ error: "email, password, and name are required" });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: "Password must be at least 6 characters" });
+  if (password.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters" });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: "Invalid email format" });
+  }
+
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  const rl = authLimiter.check(ip);
+  if (!rl.allowed) {
+    return res.status(429).json({ error: rl.message });
   }
 
   const userRole: UserRole = role === "analyst" ? "analyst" : role === "admin" ? "admin" : "viewer";
@@ -208,6 +242,11 @@ app.get("/api/kpi/:metric", async (req, res) => {
   }
 
   const { metric } = req.params;
+  const VALID_METRICS = ["sales", "users", "churn_rate"];
+  if (!VALID_METRICS.includes(metric)) {
+    return res.status(400).json({ error: `Invalid metric '${metric}'. Must be one of: ${VALID_METRICS.join(", ")}` });
+  }
+
   const repo = await getRepository();
   const dateFilter = extractDateFilter(req);
 
@@ -354,7 +393,9 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
         if (catalogResult.rows.length > 0) {
           columns = JSON.parse(catalogResult.rows[0].columns_info as string);
         }
-      } catch {}
+      } catch (e) {
+        console.error("[API] Failed to parse columns_info for preview:", e);
+      }
       if (columns.length === 0 && previewResult.rows.length > 0) {
         columns = Object.keys(previewResult.rows[0]);
       }
@@ -882,6 +923,11 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
   }
 
   const { metric } = req.params;
+  const VALID_METRICS = ["sales", "users", "churn_rate"];
+  if (!VALID_METRICS.includes(metric)) {
+    return res.status(400).json({ error: `Invalid metric '${metric}'. Must be one of: ${VALID_METRICS.join(", ")}` });
+  }
+
   const { target } = req.body;
   
   try {
@@ -891,6 +937,23 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Centralized error handler middleware
+// ─────────────────────────────────────────────────────────────
+app.use((err: any, _req: any, res: any, _next: any) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "File too large. Maximum size is 10MB." });
+    }
+    return res.status(400).json({ error: `Upload error: ${err.message}` });
+  }
+  if (err.message?.startsWith("Unsupported file type")) {
+    return res.status(415).json({ error: err.message });
+  }
+  console.error("[API] Unhandled error:", err);
+  res.status(500).json({ error: "Internal server error" });
 });
 
 const PORT = process.env.API_PORT || 3001;

@@ -27,7 +27,9 @@ export async function buildDashboard(
 
     const schema = await buildSchemaDefinition(activeEntry);
     let columnList: string[] = [];
-    try { columnList = JSON.parse(activeEntry.columns_info) as string[]; } catch {}
+    try { columnList = JSON.parse(activeEntry.columns_info) as string[]; } catch (e) {
+        console.error("[DashboardBuilder] Failed to parse columns_info:", e);
+    }
     const semanticGroups = buildSemanticGroups(columnList);
     const semanticGroupsText = formatSemanticGroups(semanticGroups);
     const dashboardPrompt = (prompts.dashboard_designer as string)

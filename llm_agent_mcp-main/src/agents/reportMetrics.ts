@@ -1,6 +1,7 @@
 import { getPool } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { detectDateColumn } from "./dateColumnHelper.js";
+import { sanitizeColumnName } from "./sanitize.js";
 
 export interface ComputedMetrics {
   aov: number;
@@ -93,7 +94,9 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
         dateParams
       );
       aov = Number(result.rows[0]?.aov || 0);
-    } catch {}
+    } catch (err) {
+      console.error("[Metrics] AOV query failed:", err);
+    }
   }
 
   if (salesCol && dateCast) {
@@ -123,7 +126,9 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
         FROM periods
       `, filterParams);
       growthRate = Number(result.rows[0]?.growth || 0);
-    } catch {}
+    } catch (err) {
+      console.error("[Metrics] Growth rate query failed:", err);
+    }
   }
 
   if (catCol && salesCol) {
@@ -140,7 +145,9 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
         topCategory = String(result.rows[0].category);
         topCategoryValue = Number(result.rows[0].total || 0);
       }
-    } catch {}
+    } catch (err) {
+      console.error("[Metrics] Top category query failed:", err);
+    }
   }
 
   return {

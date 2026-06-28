@@ -20,6 +20,7 @@
  */
 
 import dotenv from "dotenv";
+import { withTimeout } from "./agents/agentState.js";
 dotenv.config();
 
 export type LLMProvider = "gemini" | "groq" | "anthropic" | "openai" | "none";
@@ -268,17 +269,6 @@ export async function invokeWithFallback(
 
     console.error(`[LLM] All providers failed. Last error: ${lastError?.message}`);
     return null;
-}
-
-/**
- * Simple promise timeout wrapper.
- */
-async function withTimeout<T>(promise: Promise<T>, label: string, ms: number): Promise<T> {
-    let timer: ReturnType<typeof setTimeout>;
-    const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    });
-    return Promise.race([promise.finally(() => clearTimeout(timer!)), timeout]);
 }
 
 /**

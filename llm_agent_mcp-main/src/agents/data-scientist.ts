@@ -7,6 +7,7 @@ import { searchKnowledgeBase } from "../rag.js";
 import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "../rag.js";
 import { detectDateColumn, extractProfileFromSchemaDef } from "./dateColumnHelper.js";
 import { sanitizeUserInput } from "./sanitize.js";
+import { withTimeout } from "./agentState.js";
 
 const LLM_TIMEOUT_MS = 40000;
 const PYTHON_GEN_TIMEOUT_MS = 55000;
@@ -32,7 +33,9 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     let columnList: string[] = [];
     try {
         columnList = JSON.parse(activeEntry.columns_info) as string[];
-    } catch { }
+    } catch (e) {
+        console.error("[DataScientist] Failed to parse columns_info:", e);
+    }
 
     console.log(`[DataScientist] Active table: ${tableName}, columns: ${columnList.join(", ")}`);
 
@@ -515,16 +518,4 @@ plt.close()
 9. After saving the chart, print the text "##CHART_SAVED##" on its own line so the system knows the chart was generated.
 10. Return ONLY the Python code inside a markdown \`\`\`python block. No explanation outside the block.
 11. ${analysisType === "forecast" ? `The data is PRE-AGGREGATED by ${dateCol || "period"} (${totalRows} rows). Use it directly for time-series forecasting. If you need more granular data, note that this is already the full aggregated dataset.` : `The data contains ${totalRows} sampled rows from the full table — sufficient for analysis.`}`;
-}
-
-function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number = LLM_TIMEOUT_MS): Promise<T> {
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<T>((_, reject) => {
-        timeoutHandle = setTimeout(() => {
-            reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-    });
-    return Promise.race([promise, timeoutPromise]).finally(() => {
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-    });
 }

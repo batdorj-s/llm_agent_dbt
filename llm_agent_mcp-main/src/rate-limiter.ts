@@ -124,3 +124,6 @@ export const sandboxLimiter = new RateLimiter({ maxRequests: 5, windowMs: 60_000
 
 /** MCP tool calls: 30 per minute per user */
 export const mcpLimiter = new RateLimiter({ maxRequests: 30, windowMs: 60_000 });
+
+/** Auth (login/register): 5 per minute per IP */
+export const authLimiter = new RateLimiter({ maxRequests: 5, windowMs: 60_000 });

@@ -1,6 +1,8 @@
 /**
  * Sanitize user input for prompt injection protection.
  * Strips known prompt override patterns and truncates excessively long input.
+ *
+ * Column name sanitizer for SQL identifier protection.
  */
 
 const INJECTION_PATTERNS = [
@@ -23,4 +25,20 @@ export function sanitizeUserInput(input: string): string {
     cleaned = cleaned.replace(pattern, "[redacted]");
   }
   return cleaned;
+}
+
+const COLUMN_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+/**
+ * Validate a column name for safe use in SQL identifiers.
+ * Returns the column name if valid, or undefined if it contains unsafe characters.
+ * This is a defense-in-depth measure — column names are already sanitized
+ * at CSV import time via normalizeColumnName().
+ */
+export function sanitizeColumnName(name: string): string | undefined {
+  if (!name || typeof name !== "string") return undefined;
+  if (name.length > 128) return undefined; // max PG identifier length
+  const trimmed = name.trim();
+  if (!COLUMN_NAME_RE.test(trimmed)) return undefined;
+  return trimmed;
 }

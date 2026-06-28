@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
 import { traceToolCall } from "./observability/tracer.js";
+import { withTimeout } from "./agents/agentState.js";
 
 
 dotenv.config();
@@ -14,16 +15,6 @@ const SANDBOX_TIMEOUT_MS = 20_000;
 const SANDBOX_CREATE_TIMEOUT_MS = 60_000;
 const SANDBOX_MAX_OUTPUT_CHARS = 10_000;
 const TEMP_DIR = "/var/folders/9z/_bgsb1152n9g37m6xn9h8thc0000gn/T/opencode";
-
-function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number): Promise<T> {
-    let handle: ReturnType<typeof setTimeout>;
-    const timeout = new Promise<T>((_, reject) => {
-        handle = setTimeout(() => {
-            reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
-        }, timeoutMs);
-    });
-    return Promise.race([promise, timeout]).finally(() => clearTimeout(handle!));
-}
 
 function preparePythonCode(code: string): string {
     const safeLines = [
@@ -125,7 +116,16 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
     if (!hasKey) {
         const allowLocal = process.env.ALLOW_LOCAL_PYTHON === "true";
         if (allowLocal) {
-            console.warn("[WARN] ALLOW_LOCAL_PYTHON=true — executing on host machine (INSECURE).");
+          if (process.env.NODE_ENV === "production") {
+            console.warn("[WARN] ALLOW_LOCAL_PYTHON=true but NODE_ENV=production — refusing host execution.");
+            return [
+              "(Python execution unavailable — E2B_API_KEY not configured)",
+              "----------------------------------------------",
+              "Host-local Python execution is disabled in production mode.",
+              "Set E2B_API_KEY in .env to enable sandboxed Python execution.",
+            ].join("\n");
+          }
+          console.warn("[WARN] ALLOW_LOCAL_PYTHON=true — executing on host machine (INSECURE).");
             const safeCode = skipMemorySafe ? code : preparePythonCode(code);
             return await runPythonLocally(safeCode, timeoutMs);
         }

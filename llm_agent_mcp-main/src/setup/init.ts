@@ -11,6 +11,7 @@ import { initDataLake, getCatalog } from "../db/data-lake.js";
 dotenv.config();
 
 const ROOT = process.cwd();
+const DBT_PROJECT_DIR = process.env.DBT_PROJECT_DIR || path.join(ROOT, "dbt");
 const REQUIRED_CSVS = ["superstore_sales.csv", "retail_sales_dataset.csv"] as const;
 
 // Resolve dbt path: env var > known hermes venv > PATH fallback
@@ -32,7 +33,7 @@ function resolveDbtPath(): string {
 const DBT_EXE = resolveDbtPath();
 
 function runDbt(args: string): void {
-  execSync(`"${DBT_EXE}" ${args}`, { cwd: path.join(ROOT, "dbt"), stdio: "inherit" });
+  execSync(`"${DBT_EXE}" ${args}`, { cwd: DBT_PROJECT_DIR, stdio: "inherit" });
 }
 
 export function dbtAvailable(): boolean {
@@ -90,7 +91,7 @@ export function runDbtTest(vars: string): string {
   if (!dbtAvailable()) return "dbt not available";
   try {
     return execSync(`"${DBT_EXE}" test --vars '${vars}' --profiles-dir .`, {
-      cwd: path.join(ROOT, "dbt"),
+      cwd: DBT_PROJECT_DIR,
       encoding: "utf8",
       stdio: "pipe",
     });
