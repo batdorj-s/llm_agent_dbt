@@ -44,7 +44,7 @@ export class SupabaseKpiRepository implements IKpiRepository {
     this.supabase = supabase;
   }
 
-  async getKpi(metric: KpiMetric["name"], _dateFilter?: DateFilter): Promise<KpiMetric | null> {
+  async getKpi(metric: KpiMetric["name"], _dateFilter?: DateFilter, _userId?: string): Promise<KpiMetric | null> {
     const { data, error } = await this.supabase
       .from("kpi_metrics")
       .select("name, current, target, unit, updated_at")
@@ -65,7 +65,7 @@ export class SupabaseKpiRepository implements IKpiRepository {
     };
   }
 
-  async getSalesHistory(limit: number, _dateFilter?: DateFilter): Promise<SalesRecord[]> {
+  async getSalesHistory(limit: number, _dateFilter?: DateFilter, _userId?: string): Promise<SalesRecord[]> {
     const { data, error } = await this.supabase
       .from("sales_history")
       .select("month, revenue")

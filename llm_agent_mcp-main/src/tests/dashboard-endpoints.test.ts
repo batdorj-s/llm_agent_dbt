@@ -37,18 +37,19 @@ describe("Dashboard API endpoints", () => {
                         order_date TEXT,
                         sales NUMERIC,
                         quantity NUMERIC,
-                        category TEXT
+                        category TEXT,
+                        customer_id TEXT
                     )
                 `);
                 await getPool().query(`
                     INSERT INTO "metrics_test_table" VALUES
-                        ('2024-01-15', 1000, 2, 'Technology'),
-                        ('2024-02-20', 1500, 3, 'Furniture'),
-                        ('2024-03-10', 800, 1, 'Technology')
+                        ('2024-01-15', 1000, 2, 'Technology', 'C001'),
+                        ('2024-02-20', 1500, 3, 'Furniture', 'C002'),
+                        ('2024-03-10', 800, 1, 'Technology', 'C003')
                 `);
                 await getPool().query(`
                     INSERT INTO data_lake_catalog (table_name, columns_info, owner_id, visibility, created_at)
-                    VALUES ('metrics_test_table', '["order_date","sales","quantity","category"]', $1, 'shared', NOW())
+                    VALUES ('metrics_test_table', '["order_date","sales","quantity","category","customer_id"]', $1, 'shared', NOW())
                 `, [adminUserId]);
                 await getPool().query(`
                     INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)

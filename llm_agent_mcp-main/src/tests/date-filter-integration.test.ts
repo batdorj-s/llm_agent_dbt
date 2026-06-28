@@ -6,9 +6,12 @@ import type { Express } from "express";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@admin.com";
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || "bataa0818";
 
+const TEST_TABLE = "date_filter_test_table";
+
 describe("Date filter integration — backend", () => {
     let app: Express;
     let adminToken: string;
+    let adminUserId: string;
 
     beforeAll(async () => {
         await initDataLake();
@@ -21,6 +24,41 @@ describe("Date filter integration — backend", () => {
             .post("/api/auth/login")
             .send({ email: ADMIN_EMAIL, password: ADMIN_PASS });
         adminToken = adminRes.body.token;
+        adminUserId = adminRes.body.user?.id;
+
+        if (adminUserId) {
+            await getPool().query(`DROP TABLE IF EXISTS "${TEST_TABLE}"`);
+            await getPool().query(`
+                CREATE TABLE "${TEST_TABLE}" (
+                    order_date TEXT,
+                    sales NUMERIC,
+                    quantity NUMERIC,
+                    category TEXT,
+                    customer_id TEXT
+                )
+            `);
+            await getPool().query(`
+                INSERT INTO "${TEST_TABLE}" VALUES
+                    ('2024-01-15', 1000, 2, 'Technology', 'C001'),
+                    ('2024-02-20', 1500, 3, 'Furniture', 'C002')
+            `);
+            await getPool().query(`
+                INSERT INTO data_lake_catalog (table_name, columns_info, owner_id, visibility, created_at)
+                VALUES ($1, '["order_date","sales","quantity","category","customer_id"]', $2, 'shared', NOW())
+            `, [TEST_TABLE, adminUserId]);
+            await getPool().query(`
+                INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)
+                VALUES ($1, $1, 'dataset', 'Date filter test table', $2, 'shared', NOW())
+            `, [TEST_TABLE, adminUserId]);
+        }
+    });
+
+    afterAll(async () => {
+        if (isPgAvailable()) {
+            await getPool().query(`DROP TABLE IF EXISTS "${TEST_TABLE}" CASCADE`).catch(() => {});
+            await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [TEST_TABLE]).catch(() => {});
+            await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [TEST_TABLE]).catch(() => {});
+        }
     });
 
     describe("GET /api/kpi/:metric with date params", () => {

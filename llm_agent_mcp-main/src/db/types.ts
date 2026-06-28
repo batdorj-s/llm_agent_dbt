@@ -21,7 +21,7 @@ export interface DateFilter {
 }
 
 export interface IKpiRepository {
-  getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter): Promise<KpiMetric | null>;
-  getSalesHistory(limit: number, dateFilter?: DateFilter): Promise<SalesRecord[]>;
+  getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter, userId?: string): Promise<KpiMetric | null>;
+  getSalesHistory(limit: number, dateFilter?: DateFilter, userId?: string): Promise<SalesRecord[]>;
   updateKpiTarget(metric: KpiMetric["name"], target: number): Promise<void>;
 }

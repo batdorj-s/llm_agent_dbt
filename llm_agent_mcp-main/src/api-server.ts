@@ -251,7 +251,7 @@ app.get("/api/kpi/:metric", async (req, res) => {
   const dateFilter = extractDateFilter(req);
 
   try {
-    const data = await repo.getKpi(metric as any, dateFilter);
+    const data = await repo.getKpi(metric as any, dateFilter, auth.payload.userId);
     if (!data) return res.status(404).json({ error: `Metric '${metric}' not found` });
     res.json(data);
   } catch (err: any) {
@@ -268,7 +268,7 @@ app.get("/api/kpi-history", async (req, res) => {
   const limit = req.query.limit ? Number(req.query.limit) : 6;
   const repo = await getRepository();
   const dateFilter = extractDateFilter(req);
-  const history = await repo.getSalesHistory(limit, dateFilter);
+  const history = await repo.getSalesHistory(limit, dateFilter, auth.payload.userId);
   res.json(history);
 });
 

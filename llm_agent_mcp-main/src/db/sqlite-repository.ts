@@ -21,11 +21,11 @@ export class SQLiteKpiRepository implements IKpiRepository {
         // Data Lake tables (kpi_targets, etc.) are initialized by initDataLake()
     }
 
-    async getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter): Promise<KpiMetric | null> {
-        return this.getKpiFallback(metric, dateFilter);
+    async getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter, userId?: string): Promise<KpiMetric | null> {
+        return this.getKpiFallback(metric, dateFilter, userId);
     }
 
-    private async getKpiFallback(metric: KpiMetric["name"], dateFilter?: DateFilter): Promise<KpiMetric | null> {
+    private async getKpiFallback(metric: KpiMetric["name"], dateFilter?: DateFilter, userId?: string): Promise<KpiMetric | null> {
         try {
             await initDataLake();
 
@@ -36,7 +36,7 @@ export class SQLiteKpiRepository implements IKpiRepository {
             const targetRow = targetResult.rows[0] as any;
             if (!targetRow) return null;
 
-            const tableInfo = await this.getActiveTableInfo();
+            const tableInfo = await this.getActiveTableInfo(userId);
             if (!tableInfo) return null;
 
             let current = 0;
@@ -74,9 +74,20 @@ export class SQLiteKpiRepository implements IKpiRepository {
         }
     }
 
-    private async getActiveTableInfo(): Promise<{ tableName: string; salesCol: string; userCol: string; dateCol: string } | null> {
+    private async getActiveTableInfo(userId?: string): Promise<{ tableName: string; salesCol: string; userCol: string; dateCol: string } | null> {
+        if (userId) {
+            const fileCheck = await getPool().query(
+                `SELECT id FROM uploaded_files WHERE type = 'dataset' AND owner_id = $1 LIMIT 1`,
+                [userId]
+            );
+            if (fileCheck.rows.length === 0) return null;
+        }
+
         const catalogResult = await getPool().query(
-            `SELECT * FROM data_lake_catalog ORDER BY created_at DESC`
+            userId
+                ? `SELECT * FROM data_lake_catalog WHERE owner_id = $1 ORDER BY created_at DESC`
+                : `SELECT * FROM data_lake_catalog ORDER BY created_at DESC`,
+            userId ? [userId] : []
         );
         if (catalogResult.rows.length === 0) return null;
 
@@ -125,13 +136,13 @@ export class SQLiteKpiRepository implements IKpiRepository {
         return null;
     }
 
-    async getSalesHistory(limit: number, dateFilter?: DateFilter): Promise<SalesRecord[]> {
-        return this.getSalesHistoryFallback(limit, dateFilter);
+    async getSalesHistory(limit: number, dateFilter?: DateFilter, userId?: string): Promise<SalesRecord[]> {
+        return this.getSalesHistoryFallback(limit, dateFilter, userId);
     }
 
-    private async getSalesHistoryFallback(limit: number, dateFilter?: DateFilter): Promise<SalesRecord[]> {
+    private async getSalesHistoryFallback(limit: number, dateFilter?: DateFilter, userId?: string): Promise<SalesRecord[]> {
         try {
-            const tableInfo = await this.getActiveTableInfo();
+            const tableInfo = await this.getActiveTableInfo(userId);
             if (!tableInfo) return [];
 
             await initDataLake();
