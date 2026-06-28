@@ -43,7 +43,23 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
 
     let ragContext = "";
     try {
-        const ragData = await searchKnowledgeBase(query, "DataScientistAgent", 4, state.userId);
+        let filter;
+        if (llm) {
+            try {
+                filter = await selfQueryTransform(query, (prompt: string) =>
+                    llm.invoke([
+                        { role: "system", content: prompt },
+                        { role: "user", content: query }
+                    ]).then((r: any) => r.content as string)
+                );
+                console.log(`[DataScientist] Self-query filter: ${JSON.stringify(filter)}`);
+            } catch (sqErr) {
+                console.warn("[DataScientist] Self-query failed:", (sqErr as Error).message);
+            }
+        }
+        const ragData = filter
+            ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "DataScientistAgent", limit: 4, filter, userId: state.userId })
+            : await searchKnowledgeBase(query, "DataScientistAgent", 4, state.userId);
         const docs = ragData.documents?.[0] ?? [];
         if (docs.length > 0) {
             ragContext = "\n\n## Relevant Knowledge\n" + docs.join("\n\n---\n\n");

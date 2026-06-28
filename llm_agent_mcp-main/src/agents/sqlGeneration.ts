@@ -4,8 +4,8 @@ import type { DataLakeCatalogEntry } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { computeColumnStats } from "./statistics.js";
 
-export const MAX_SQL_RETRIES = 1;
-export const SQL_GEN_TIMEOUT_MS = 30000;
+export const MAX_SQL_RETRIES = 2;
+export const SQL_GEN_TIMEOUT_MS = 45000;
 
 export function isRateLimitError(err: unknown): boolean {
     const message = err instanceof Error ? err.message : String(err);

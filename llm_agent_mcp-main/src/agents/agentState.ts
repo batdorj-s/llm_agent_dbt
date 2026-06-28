@@ -54,7 +54,7 @@ export const AgentStateAnnotation = Annotation.Root({
         reducer: (x, y) => y ?? x,
         default: () => undefined,
     }),
-    cachedSanitizedQuery: Annotation<string | undefined>({
+    sanitizedQuery: Annotation<string | undefined>({
         reducer: (x, y) => y ?? x,
         default: () => undefined,
     }),
