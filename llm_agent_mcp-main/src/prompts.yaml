@@ -103,18 +103,31 @@ tech_agent_sql_gen: |
        - Grouped comparison: SELECT CASE WHEN condition THEN 'High' ELSE 'Low' END AS group, AVG(col) FROM table GROUP BY group
        - Income/Spend percentage: SELECT AVG(spend / NULLIF(income, 0)) * 100 AS avg_pct FROM table
    17. COMPLETE FILTERING — CRITICAL: If the user explicitly mentions multiple categorical columns (e.g. "region and city", "category and segment"), ALL of them MUST appear in the WHERE clause or GROUP BY. Never analyze only one dimension when the user asks about multiple.
-       For example: user asks "region болон city" — do NOT filter only by region. Use both columns.
-   18. TYPE SAFETY: Never use SUM(), AVG(), or other numeric aggregates on a column that contains text/string values.
-       Check the sample values in the schema — if a column has text values (e.g. "Yes"/"No" or "Consumer"/"Corporate"), do not use numeric aggregates on it.
-       Use COUNT() or GROUP BY for categorical columns instead.
-   19. USE EXISTING COLUMNS — NEVER DERIVE PROXY COLUMNS: If the user asks about a categorical column (e.g. status, type, category) and it EXISTS in the schema below, use it DIRECTLY.
-       Do NOT derive, simulate, approximate, or infer its values from other columns.
-       Exception: Only if the column genuinely does not exist in any table, respond with Rule 15's error message.
-    20. GROUP COMPARISON METHODOLOGY: When comparing groups with different population sizes (e.g. Group A has 800 members, Group B has 400):
-       - Use AVG() not SUM() for monetary metrics. SUM exaggerates larger groups.
-       - Always include group counts (e.g. "А бүлэг: 800 хүн, дундаж 590₮").
-       - If group sizes differ by >20%, explicitly note this: "(А бүлэг 800 хүн, Б бүлэг 400 — 100%-иар их)"
-    21. TYPE-SAFE DATE OPERATIONS: Before using date functions like DATE_TRUNC() or EXTRACT(),
+        For example: user asks "region болон city" — do NOT filter only by region. Use both columns.
+    18. TYPE SAFETY: Never use SUM(), AVG(), or other numeric aggregates on a column that contains text/string values.
+        Check the sample values in the schema — if a column has text values (e.g. "Yes"/"No" or "Consumer"/"Corporate"), do not use numeric aggregates on it.
+        Use COUNT() or GROUP BY for categorical columns instead.
+    19. USE SAMPLE VALUES FOR CATEGORICAL FILTERS — CRITICAL: The schema below includes "Sample values" for each column. When filtering categorical columns (status, type, category, segment, etc.), you MUST use these sample values to construct correct WHERE clauses.
+        - If schema shows: `status (TEXT, 3 distinct) → Sample values: ['completed', 'pending', 'cancelled']`
+        - User asks: "Амжилттай борлуулалтуудыг ол" (Find successful sales)
+        - CORRECT: `WHERE "status" ILIKE '%completed%'` (uses actual sample value)
+        - WRONG: `WHERE "status" = 'Success'` (guessed value not in data)
+        - WRONG: `WHERE "status" = 'completed'` (exact match, misses variations)
+        ALWAYS use ILIKE with % wildcards around the sample value. NEVER guess categorical values — use what's in the schema samples.
+    20. USE KNOWN RELATIONSHIPS FOR JOINS — CRITICAL: If the schema below includes "Known Relationships" (e.g. `sales.user_id → users.id`), you MUST use them to write correct JOIN queries.
+        - If relationship `sales.user_id → users.id` is declared:
+          ✓ `SELECT * FROM "sales" JOIN "users" ON "sales"."user_id" = "users"."id"`  — CORRECT
+          ✗ Guessing column names like "sales.userid" or "users.user_id" — WRONG
+        - When the user asks to combine data across tables, ALWAYS check the declared relationships before guessing join conditions.
+        - If no relationship is declared between the tables mentioned, you may need to use pattern matching (ILIKE, date range) instead of a direct FK join.
+    21. USE EXISTING COLUMNS — NEVER DERIVE PROXY COLUMNS: If the user asks about a categorical column (e.g. status, type, category) and it EXISTS in the schema below, use it DIRECTLY.
+        Do NOT derive, simulate, approximate, or infer its values from other columns.
+        Exception: Only if the column genuinely does not exist in any table, respond with Rule 15's error message.
+    22. GROUP COMPARISON METHODOLOGY: When comparing groups with different population sizes (e.g. Group A has 800 members, Group B has 400):
+        - Use AVG() not SUM() for monetary metrics. SUM exaggerates larger groups.
+        - Always include group counts (e.g. "А бүлэг: 800 хүн, дундаж 590₮").
+        - If group sizes differ by >20%, explicitly note this: "(А бүлэг 800 хүн, Б бүлэг 400 — 100%-иар их)"
+    23. TYPE-SAFE DATE OPERATIONS: Before using date functions like DATE_TRUNC() or EXTRACT(),
         ALWAYS check the column type from the schema definition (shown in parentheses after the column name).
         - If the column type is "INT" (integer), it is an Excel serial date number.
           Convert using: '1899-12-30'::date + "date_col"::integer
@@ -122,14 +135,14 @@ tech_agent_sql_gen: |
         - If the column type is "TEXT", use TO_DATE("date_col", 'YYYY-MM-DD').
         - Only use DATE_TRUNC / EXTRACT / ::date directly if the column type is "DATE" or "TIMESTAMP".
         - NEVER write "date_col"::date or "date_col"::timestamp on an INT column — it will crash.
-    22. AGGREGATION — SUM not COUNT for monetary metrics:
+    24. AGGREGATION — SUM not COUNT for monetary metrics:
         When the user asks about sales, income, revenue, profit, spending, gross_income, or any money-related metric,
         your SQL MUST use SUM("column_name") not COUNT(*).
         Use COUNT(*) only when the user explicitly asks for "number of transactions", "count",
         "хэдэн гүйлгээ", "нийт тоо", "хэдэн удаа", or "хэдэн ширхэг".
         Example: SELECT "type", SUM("gross_income") AS value FROM "s" GROUP BY "type"  — CORRECT
         Example: SELECT "type", COUNT(*) AS value FROM "s" GROUP BY "type"           — WRONG (counts rows, not income)
-    23. MONGOLIAN-ENGLISH COLUMN NAME MAPPING (CRITICAL):
+    25. MONGOLIAN-ENGLISH COLUMN NAME MAPPING (CRITICAL):
         When a user asks in Mongolian, map common Mongolian business terms to actual column names:
         - "үнэлгээ" / "үнэлгээний" → "rating" column
         - "салбар" / "салбарын" → "branch" column

@@ -1,14 +1,14 @@
 version: 2
 models:
   - name: stg_sales
-    description: Cleaned sales data sourced from test_upload_1782625938503.
+    description: Cleaned sales data sourced from test_upload_1782635191069.
     columns:
       - name: date
-        description: Column from test_upload_1782625938503.date.
+        description: Column from test_upload_1782635191069.date.
       - name: amount
-        description: Column from test_upload_1782625938503.amount.
+        description: Column from test_upload_1782635191069.amount.
       - name: customer_id
-        description: Column from test_upload_1782625938503.customer_id.
+        description: Column from test_upload_1782635191069.customer_id.
         tests:
           - unique
           - not_null

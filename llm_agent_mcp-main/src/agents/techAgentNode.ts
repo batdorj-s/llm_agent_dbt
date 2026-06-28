@@ -3,7 +3,7 @@ import { getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js
 import { handleExecuteSql, isPythonQuery } from "../tools/enterprise-tools.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
-import { extractCodeBlock } from "../utils.js";
+import { extractCodeBlock, safeJsonParse } from "../utils.js";
 import {
     MAX_SQL_RETRIES,
     SQL_GEN_TIMEOUT_MS,
@@ -153,6 +153,15 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             const hasError = sandboxResult.startsWith("SQL Execution Error:");
 
             if (!hasError) {
+                // Self-healing: check if SQL executed but returned no data
+                const parsedResults = safeJsonParse(sandboxResult, []);
+                const isEmptyResult = Array.isArray(parsedResults.data) && parsedResults.data.length === 0;
+                
+                if (isEmptyResult && attempts < MAX_SQL_RETRIES) {
+                    feedback = "The SQL executed successfully but returned 0 rows (empty result). Possible causes: (1) categorical filter value mismatch — check the sample values in the schema and use ILIKE with partial matching instead of exact match (=), (2) date column type may be INT (Excel serial) or TEXT when you assumed DATE/TIMESTAMP — check column types in schema, (3) data may use different capitalization or format. Try using ILIKE with % wildcards, verify date column type conversion, and add fallback conditions.";
+                    console.log("[Tech Agent] Empty result detected, retrying with self-healing feedback...");
+                    continue;
+                }
                 isSuccess = true;
                 break;
             } else {

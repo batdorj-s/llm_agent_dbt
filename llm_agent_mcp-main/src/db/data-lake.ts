@@ -25,6 +25,7 @@ export type DataLakeCatalogEntry = {
     created_at: string;
     columns_info: string;
     description: string | null;
+    column_profiles?: Record<string, any>;
 };
 
 export function normalizeColumnName(columnName: string): string {
@@ -104,7 +105,8 @@ export async function initDataLake(): Promise<void> {
                     visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'shared')),
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     columns_info TEXT,
-                    description TEXT
+                    description TEXT,
+                    column_profiles JSONB DEFAULT '{}'
                 )
             `);
 
@@ -134,6 +136,7 @@ export async function initDataLake(): Promise<void> {
             try {
                 await pool.query(`ALTER TABLE data_lake_catalog ADD COLUMN IF NOT EXISTS owner_id TEXT`);
                 await pool.query(`ALTER TABLE data_lake_catalog ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'private'`);
+                await pool.query(`ALTER TABLE data_lake_catalog ADD COLUMN IF NOT EXISTS column_profiles JSONB DEFAULT '{}'`);
                 await pool.query(`ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS semantic_groups JSONB DEFAULT NULL`);
                 await pool.query(`ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ DEFAULT NULL`);
                 await pool.query(`ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS owner_id TEXT`);
@@ -174,6 +177,20 @@ export async function initDataLake(): Promise<void> {
             } catch (indexErr) {
                 console.warn("[Data Lake] Index creation error (non-fatal):", (indexErr as Error).message);
             }
+
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS table_relationships (
+                    id SERIAL PRIMARY KEY,
+                    source_table TEXT NOT NULL,
+                    source_column TEXT NOT NULL,
+                    target_table TEXT NOT NULL,
+                    target_column TEXT NOT NULL,
+                    confidence REAL DEFAULT 0.5,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE(source_table, source_column, target_table, target_column)
+                )
+            `);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_table_relationships_source ON table_relationships (source_table)`);
 
             await pool.query(`
                 CREATE TABLE IF NOT EXISTS kpi_targets (
@@ -437,21 +454,36 @@ export async function buildSchemaDefinition(entries: DataLakeCatalogEntry | Data
     const parts: string[] = [];
     for (const entry of tables) {
         const columns = JSON.parse(entry.columns_info) as string[];
-        const [samples, profile] = await Promise.all([
-            getColumnSamples(entry.table_name, columns),
-            getColumnProfile(entry.table_name, columns),
-        ]);
+        // Use cached column_profiles from catalog if available
+        const cachedProfiles = entry.column_profiles || {};
+        let profile = cachedProfiles;
+        let samples: Record<string, string[]> = {};
+        
+        // If no cached profiles, fall back to live queries
+        if (Object.keys(cachedProfiles).length === 0) {
+            const [liveSamples, liveProfile] = await Promise.all([
+                getColumnSamples(entry.table_name, columns),
+                getColumnProfile(entry.table_name, columns),
+            ]);
+            samples = liveSamples;
+            profile = liveProfile;
+        } else {
+            // Fetch only samples for cached profiles (faster)
+            samples = await getColumnSamples(entry.table_name, columns);
+        }
+        
         const lines: string[] = [
             `Table: ${entry.table_name}`,
             entry.description ? `Description: ${entry.description}` : "Description: N/A",
-            `Total distinct values per column:`,
+            `Columns:`,
         ];
         for (const column of columns) {
             const p = profile[column];
             if (p) {
                 const typeLabel = p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type;
                 const rangeInfo = p.min !== undefined && p.max !== undefined ? ` [${p.min}..${p.max}]` : "";
-                lines.push(`- ${column} (${typeLabel}, ${p.distinct} distinct${rangeInfo})`);
+                const distinctInfo = p.distinct !== undefined ? `, ${p.distinct} distinct` : "";
+                lines.push(`- ${column} (${typeLabel}${distinctInfo}${rangeInfo})`);
             }
             const vals = samples[column];
             if (vals && vals.length > 0) {
@@ -463,9 +495,83 @@ export async function buildSchemaDefinition(entries: DataLakeCatalogEntry | Data
         if (semanticGroupsText !== "No semantic groups detected.") {
             lines.push(`\nSemantic Groups:\n${semanticGroupsText}`);
         }
+        
+        // Add known relationships
+        const relationships = await getRelationships(entry.table_name);
+        if (relationships.length > 0) {
+            lines.push(`\nKnown Relationships:\n${relationships.join("\n")}`);
+        }
+        
         parts.push(lines.join("\n"));
     }
     return parts.join("\n\n");
+}
+
+export async function detectForeignKeys(tableName: string, columns: string[]): Promise<void> {
+    if (!_pgAvailable || !pool) return;
+    try {
+        const catalogResult = await pool.query(`SELECT table_name, columns_info FROM data_lake_catalog WHERE table_name != $1`, [tableName]);
+        const otherTables = catalogResult.rows as Array<{ table_name: string; columns_info: string }>;
+        if (otherTables.length === 0) return;
+
+        for (const col of columns) {
+            const lowerCol = col.toLowerCase();
+            // Check if column ends with _id (e.g., user_id, customer_id, product_id)
+            const idMatch = lowerCol.match(/^(.+)_id$/);
+            if (!idMatch) continue;
+
+            const baseName = idMatch[1]; // e.g., "user" from "user_id"
+            
+            // Try to find a matching table: exact match, plural, or singular
+            for (const other of otherTables) {
+                const otherName = other.table_name.toLowerCase();
+                const otherCols: string[] = JSON.parse(other.columns_info);
+                
+                // Match patterns: user -> users, user -> user, users -> user
+                const matchesTable = otherName === baseName 
+                    || otherName === `${baseName}s` 
+                    || otherName === `${baseName}es`
+                    || otherName.endsWith(`_${baseName}`)
+                    || baseName === otherName.replace(/s$/, '');
+                
+                if (matchesTable) {
+                    // Check if target has an 'id' column
+                    const hasIdCol = otherCols.some(c => c.toLowerCase() === 'id');
+                    // Or check if target has a column matching the FK
+                    const matchingCol = hasIdCol ? 'id' : otherCols.find(c => c.toLowerCase() === `${baseName}_id`);
+                    
+                    if (matchingCol) {
+                        await pool.query(`
+                            INSERT INTO table_relationships (source_table, source_column, target_table, target_column, confidence)
+                            VALUES ($1, $2, $3, $4, $5)
+                            ON CONFLICT (source_table, source_column, target_table, target_column) DO NOTHING
+                        `, [tableName, col, other.table_name, matchingCol, 0.7]);
+                        console.log(`[Data Lake] Detected FK: ${tableName}.${col} → ${other.table_name}.${matchingCol}`);
+                    }
+                }
+            }
+        }
+    } catch (err) {
+        console.warn(`[Data Lake] FK detection error for ${tableName}:`, (err as Error).message);
+    }
+}
+
+export async function getRelationships(tableName: string): Promise<string[]> {
+    if (!_pgAvailable || !pool) return [];
+    try {
+        const result = await pool.query(`
+            SELECT source_table, source_column, target_table, target_column 
+            FROM table_relationships 
+            WHERE source_table = $1 OR target_table = $1
+            ORDER BY confidence DESC
+        `, [tableName]);
+        
+        return result.rows.map((r: any) => 
+            `${r.source_table}.${r.source_column} → ${r.target_table}.${r.target_column}`
+        );
+    } catch {
+        return [];
+    }
 }
 
 function getCteNames(query: string): Set<string> {

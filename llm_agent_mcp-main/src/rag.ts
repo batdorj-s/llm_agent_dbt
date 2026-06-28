@@ -80,6 +80,57 @@ export let knowledgeDocuments: RagDocument[] = [
     metadata: { category: "technical", department: "engineering", author: "admin", created_at: "2026-01-01", source_name: "Sandbox Guide" },
     keywords: ["python", "sandbox", "e2b", "pandas", "matplotlib", "plot", "analysis"]
   },
+  // ─────────────────────────────────────────────────────────────
+  // Business Glossary — Mongolian Business Term Definitions
+  // ─────────────────────────────────────────────────────────────
+  {
+    id: "glossary_net_profit",
+    text: "Business Definition: 'Цэвэр ашиг' (Net Profit) = Нийт орлого (Total Revenue) - Нийт зардал (Total Cost) - Татвар (Tax). Formula: Цэвэр ашиг = revenue - cost - tax. If the dataset has columns like revenue/income, cost/expense, tax columns, net profit can be calculated with: SUM(revenue) - SUM(cost) - SUM(tax).",
+    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
+    keywords: ["цэвэр ашиг", "net profit", "ашиг", "profit", "net income", "формула", "formula", "тооцоо"]
+  },
+  {
+    id: "glossary_revenue",
+    text: "Business Definition: 'Орлого' эсвэл 'Борлуулалтын орлого' (Revenue/Sales) — бараа, үйлчилгээ борлуулснаас олсон нийт мөнгөн дүн. Column mappings: sales, revenue, amount, gross_income, total_income, transaction_amount. SUM дээр бодно. Average Order Value (AOV) = Total Revenue / Total Orders.",
+    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
+    keywords: ["орлого", "revenue", "борлуулалт", "sales", "income", "ашиг", "орлогын"]
+  },
+  {
+    id: "glossary_cost",
+    text: "Business Definition: 'Зардал' (Cost/Expense) — бүтээгдэхүүн үйлдвэрлэх, үйлчилгээ үзүүлэхэд гарсан нийт зардал. Column mappings: cost, expense, cogs, cost_of_goods_sold, operating_cost. Цэвэр ашгийг бодоход: revenue - cost - tax.",
+    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
+    keywords: ["зардал", "cost", "expense", "cogs", "зарлагын", "шитгэх"]
+  },
+  {
+    id: "glossary_profit_margin",
+    text: "Business Definition: 'Ашгийн хувь' (Profit Margin) = (Цэвэр ашиг / Нийт орлого) * 100. Formula in SQL: (SUM(revenue) - SUM(cost)) / NULLIF(SUM(revenue), 0) * 100. Хэрэв ашгийн хувийг хувиар харуулна. 30% margin гэдэг нь орлогын 30% нь ашиг гэсэн үг.",
+    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
+    keywords: ["ашгийн хувь", "profit margin", "margin", "ашиг", "хувь", "percentage", "маржин"]
+  },
+  {
+    id: "glossary_aov",
+    text: "Business Definition: 'Дундаж захиалгын үнэ' (Average Order Value — AOV) = Нийт борлуулалт / Нийт захиалгын тоо. AOV = SUM(sales) / COUNT(order_id). AOV нь харилцагчийн нэг удаагийн худалдан авалтын дундаж дүнг харуулна. AOV өндөр байх тусам харилцагчид илүү үнэтэй бүтээгдэхүүн худалдаж авдаг гэсэн үг.",
+    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
+    keywords: ["aov", "average order value", "дундаж", "захиалга", "order", "дундаж үнэ"]
+  },
+  {
+    id: "glossary_customer_segment",
+    text: "Business Definition: 'Харилцагчийн сегмент' (Customer Segment) — харилцагчдыг худалдан авалтын давтамж, зардсан дүнгээр ангилах. Premium: өндөр зарлагатай (>500$), Regular: дунд (100-500$), Budget: бага (<100$). Column mappings in data: segment, customer_segment, tier, class, group, type.",
+    metadata: { category: "business_policy", department: "sales", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
+    keywords: ["сегмент", "segment", "харилцагч", "customer", "ангилал", "premium", "regular", "budget"]
+  },
+  {
+    id: "glossary_growth_rate",
+    text: "Business Definition: 'Өсөлтийн хувь' (Growth Rate) = (Энэ үеийн утга - Өмнөх үеийн утга) / Өмнөх үеийн утга * 100. Formula: (current_value - previous_value) / previous_value * 100. Monthly Growth Rate = (Энэ сарын борлуулалт - Өмнөх сарын борлуулалт) / Өмнөх сарын борлуулалт * 100. SQL: WITH monthly AS (SELECT DATE_TRUNC('month', order_date) AS month, SUM(sales) AS sales FROM table GROUP BY month) SELECT month, sales, LAG(sales) OVER (ORDER BY month) AS prev_sales, (sales - LAG(sales) OVER (ORDER BY month)) / NULLIF(LAG(sales) OVER (ORDER BY month), 0) * 100 AS growth_rate FROM monthly ORDER BY month.",
+    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
+    keywords: ["өсөлт", "growth", "growth rate", "өсөлтийн хувь", "хандлага", "trend", "increase", "өөрчлөлт"]
+  },
+  {
+    id: "glossary_churn",
+    text: "Business Definition: 'Харилцагчийн алдагдал' (Churn) — тухайн хугацаанд үйлчилгээгээ зогсоосон/худалдан авалт хийхээ больсон харилцагчдын эзлэх хувь. Churn Rate = (Алдагдсан харилцагчид / Нийт харилцагчид) * 100. Хэрэв 6 сарын хугацаанд худалдан авалт хийгээгүй бол тухайн харилцагчийг 'churned' гэж үзнэ. Зорилтот түвшин: 2% -иас доош.",
+    metadata: { category: "business_policy", department: "retention", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
+    keywords: ["churn", "churn rate", "алдагдал", "харилцагч", "retention", "тасралт", "үйлчилгээ"]
+  },
 ];
 
 export const mockDocuments = knowledgeDocuments;

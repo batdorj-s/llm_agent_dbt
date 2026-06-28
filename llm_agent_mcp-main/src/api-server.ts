@@ -14,7 +14,7 @@ import { ensureProjectReady, runDbtForTable, runDbtTest } from "./setup/init.js"
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, authenticateUser, createUser } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, detectForeignKeys, authenticateUser, createUser } from "./db/data-lake.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { computeMetrics } from "./agents/reportMetrics.js";
@@ -506,6 +506,13 @@ app.post("/api/admin/upload-csv", async (req, res) => {
         getColumnSamples(sanitizedTableName, cols, 5),
         getColumnProfile(sanitizedTableName, cols),
       ]);
+      
+      // Store column profiles in catalog for LLM context
+      await getPool().query(
+        `UPDATE data_lake_catalog SET column_profiles = $1 WHERE table_name = $2`,
+        [JSON.stringify(profile), sanitizedTableName]
+      );
+      
       const sampleText = cols.map(c => {
         const p = profile[c];
         const typeLabel = p?.type ? (p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type) : "TEXT";
@@ -530,6 +537,13 @@ app.post("/api/admin/upload-csv", async (req, res) => {
     );
 
     await clearConversationMemory();
+
+    // Auto-detect foreign key relationships with existing tables
+    if (cols.length > 0) {
+      await detectForeignKeys(sanitizedTableName, cols).catch(err =>
+        console.warn("[Upload] FK detection failed:", (err as Error).message)
+      );
+    }
 
     // Hybrid dbt: if table has standard KPI columns, run dbt pipeline
     if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
@@ -654,6 +668,13 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
         getColumnSamples(sanitizedTableName, cols, 5),
         getColumnProfile(sanitizedTableName, cols),
       ]);
+      
+      // Store column profiles in catalog for LLM context
+      await getPool().query(
+        `UPDATE data_lake_catalog SET column_profiles = $1 WHERE table_name = $2`,
+        [JSON.stringify(profile), sanitizedTableName]
+      );
+      
       const sampleText = cols.map(c => {
         const p = profile[c];
         const typeLabel = p?.type ? (p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type) : "TEXT";
@@ -678,6 +699,13 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
     );
 
     await clearConversationMemory();
+
+    // Auto-detect foreign key relationships with existing tables
+    if (cols.length > 0) {
+      await detectForeignKeys(sanitizedTableName, cols).catch(err =>
+        console.warn("[Upload] FK detection failed:", (err as Error).message)
+      );
+    }
 
     if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
         && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
