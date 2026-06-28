@@ -361,6 +361,15 @@ app.delete("/api/admin/files/:id", async (req, res) => {
       const tableName = file.id || file.filename;
       await getPool().query(`DROP TABLE IF EXISTS "${tableName}" CASCADE`);
       await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [tableName]);
+      await removeDocumentsByPrefix(`uploaded_${tableName}_`);
+      await removeDocumentsByPrefix(`dbt_warning_${tableName}`);
+      await clearConversationMemory();
+    }
+    if (file.type === "document") {
+      const safeFilename = `${id}_${(file.filename as string).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      try { fs.unlinkSync(path.join(DOCUMENTS_DIR, safeFilename)); } catch {}
+      try { fs.unlinkSync(path.join(DOCUMENTS_DIR, `${id}.txt`)); } catch {}
+      await removeDocumentsByPrefix(`${id}_`);
       await clearConversationMemory();
     }
     await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [id]);
