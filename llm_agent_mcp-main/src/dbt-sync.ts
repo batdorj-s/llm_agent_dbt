@@ -160,3 +160,152 @@ export function syncDbtModelsToRag(): RagDocument[] {
   console.log(`[dbt-sync] Generated ${docs.length} RAG documents from dbt manifest`);
   return docs;
 }
+
+interface DbtRunResult {
+  results: Array<{
+    unique_id: string;
+    status: "pass" | "fail" | "error";
+    failures: number;
+    message?: string;
+    compiled_code?: string;
+    execution_time?: number;
+  }>;
+}
+
+interface DbtTestNode {
+  name: string;
+  resource_type: string;
+  test_metadata?: {
+    name: string;
+    kwargs: Record<string, string>;
+    namespace?: string;
+  };
+  column_name?: string;
+  depends_on?: { nodes?: string[] };
+  description?: string;
+  compiled_code?: string;
+}
+
+function loadRunResults(): DbtRunResult | null {
+  const resultsPath = path.join(DBT_TARGET_DIR, "run_results.json");
+  if (!fs.existsSync(resultsPath)) {
+    console.warn("[dbt-sync] run_results.json not found — run 'dbt test' first");
+    return null;
+  }
+  try {
+    const raw = fs.readFileSync(resultsPath, "utf-8");
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn("[dbt-sync] Failed to parse run_results.json:", (err as Error).message);
+    return null;
+  }
+}
+
+function modelNameFromDependsOn(dependsOn: string[] | undefined): string | null {
+  if (!dependsOn) return null;
+  for (const dep of dependsOn) {
+    if (dep.startsWith("model.")) {
+      return dep.split(".").pop() || null;
+    }
+  }
+  return null;
+}
+
+export function syncDbtTestResultsToRag(): RagDocument[] {
+  const docs: RagDocument[] = [];
+  const manifest = loadManifest();
+  const runResults = loadRunResults();
+
+  if (!runResults) return docs;
+
+  const testNodes = manifest
+    ? (Object.values(manifest.nodes).filter(
+        (n): n is DbtTestNode => n.resource_type === "test"
+      ) as DbtTestNode[])
+    : [];
+
+  const testNodeMap = new Map<string, DbtTestNode>();
+  for (const node of testNodes) {
+    testNodeMap.set(`test.${node.name}`, node);
+    testNodeMap.set(`test.data_transformations.${node.name}`, node);
+  }
+
+  let passed = 0;
+  let failed = 0;
+
+  for (const result of runResults.results) {
+    const uid = result.unique_id;
+    const status = result.status;
+
+    if (status === "pass") {
+      passed++;
+      continue;
+    }
+
+    failed++;
+
+    const testNode = testNodes.find((n) => uid.includes(n.name));
+    const modelName = testNode
+      ? modelNameFromDependsOn(testNode.depends_on?.nodes)
+      : null;
+
+    const testName = testNode?.name || uid.split(".").pop() || uid;
+    const testType = testNode?.test_metadata?.name || "test";
+    const expression = testNode?.test_metadata?.kwargs?.expression;
+    const columnName = testNode?.column_name;
+
+    const lines: string[] = [
+      `[DBT WARNING] Data quality test failed: ${testName}`,
+      `Test type: ${testType}`,
+      modelName ? `Affected model: ${modelName}` : "",
+      columnName ? `Column: ${columnName}` : "",
+      expression ? `Expression: ${expression}` : "",
+      result.message ? `Error: ${result.message}` : "",
+      `Status: ${status} (${result.failures} failures)`,
+    ].filter(Boolean);
+
+    docs.push({
+      id: `dbt_warning_${testName}`,
+      text: lines.join("\n"),
+      metadata: {
+        category: "previous_analysis",
+        department: "analytics",
+        source_name: "dbt Test Results",
+        author: "dbt",
+        created_at: new Date().toISOString(),
+        shared: true,
+      },
+      keywords: [
+        "dbt_warning",
+        "data quality",
+        "test failure",
+        testType,
+        testName,
+        ...(modelName ? [modelName] : []),
+        ...(columnName ? [columnName] : []),
+      ],
+    });
+  }
+
+  docs.push({
+    id: `dbt_test_summary`,
+    text: `dbt Test Summary: ${passed + failed} total, ${passed} passed, ${failed} failed.`,
+    metadata: {
+      category: "previous_analysis",
+      department: "analytics",
+      source_name: "dbt Test Results",
+      author: "dbt",
+      created_at: new Date().toISOString(),
+      shared: true,
+    },
+    keywords: ["dbt_warning", "data quality", "test summary", passed > 0 ? "tests_passed" : "", failed > 0 ? "tests_failed" : ""].filter(Boolean),
+  });
+
+  if (failed > 0) {
+    console.log(`[dbt-sync] WARNING: ${failed}/${passed + failed} dbt tests FAILED — generated ${docs.length} RAG warning documents`);
+  } else {
+    console.log(`[dbt-sync] All ${passed} dbt tests passed — generated summary document`);
+  }
+
+  return docs;
+}
