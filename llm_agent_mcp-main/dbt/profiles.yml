@@ -7,6 +7,6 @@ datalake_transformations:
       host: 127.0.0.1
       port: 5432
       user: postgres
-      password: bataa200699133770
+      password: "{{ env_var('DBT_PASSWORD') }}"
       dbname: postgres
       schema: public
