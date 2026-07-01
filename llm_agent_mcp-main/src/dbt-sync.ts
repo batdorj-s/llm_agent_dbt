@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import yaml from "yaml";
 import type { RagDocument } from "./rag.js";
 
 const DBT_TARGET_DIR = path.join(process.cwd(), "dbt", "target");
@@ -305,6 +306,85 @@ export function syncDbtTestResultsToRag(): RagDocument[] {
     console.log(`[dbt-sync] WARNING: ${failed}/${passed + failed} dbt tests FAILED — generated ${docs.length} RAG warning documents`);
   } else {
     console.log(`[dbt-sync] All ${passed} dbt tests passed — generated summary document`);
+  }
+
+  return docs;
+}
+
+const METRICS_YAML_PATH = path.join(process.cwd(), "docs", "dbt-metrics.yaml");
+
+interface DbtMetric {
+  name: string;
+  label?: string;
+  description?: string;
+  model?: string;
+  calculation_method?: string;
+  expression?: string;
+  synonyms?: string[];
+  column_mappings?: Array<{ column: string; tables: string[] }>;
+}
+
+interface MetricsYaml {
+  metrics?: DbtMetric[];
+}
+
+export function syncDbtMetricsToRag(): RagDocument[] {
+  const docs: RagDocument[] = [];
+
+  if (!fs.existsSync(METRICS_YAML_PATH)) {
+    console.warn("[dbt-sync] metrics.yml not found — define business metrics first");
+    return docs;
+  }
+
+  try {
+    const raw = fs.readFileSync(METRICS_YAML_PATH, "utf-8");
+    const parsed = yaml.parse(raw) as MetricsYaml;
+
+    if (!parsed?.metrics || !Array.isArray(parsed.metrics)) {
+      console.warn("[dbt-sync] No metrics defined in metrics.yml");
+      return docs;
+    }
+
+    for (const metric of parsed.metrics) {
+      const modelRef = metric.model ? metric.model.replace("ref('", "").replace("')", "") : "unknown";
+
+      const lines = [
+        `Metric: ${metric.name}`,
+        metric.label ? `Label (MN): ${metric.label}` : "",
+        metric.description ? `Description: ${metric.description}` : "",
+        `Calculation: ${metric.calculation_method || "unknown"} of ${metric.expression || "N/A"}`,
+        `Source Model: ${modelRef}`,
+        metric.synonyms?.length ? `Business Keywords: ${metric.synonyms.join(", ")}` : "",
+      ].filter(Boolean);
+
+      const text = lines.join("\n");
+
+      const keywords = [
+        "dbt_metric",
+        metric.name,
+        ...(metric.synonyms || []),
+        ...(metric.label ? [metric.label] : []),
+        modelRef,
+      ];
+
+      docs.push({
+        id: `dbt_metric_${metric.name}`,
+        text,
+        metadata: {
+          category: "business_policy",
+          department: "analytics",
+          source_name: "dbt Metrics Layer",
+          author: "dbt",
+          created_at: new Date().toISOString(),
+          shared: true,
+        },
+        keywords,
+      });
+    }
+
+    console.log(`[dbt-sync] Generated ${docs.length} RAG documents from dbt metrics layer`);
+  } catch (err) {
+    console.warn("[dbt-sync] Failed to load metrics.yml:", (err as Error).message);
   }
 
   return docs;

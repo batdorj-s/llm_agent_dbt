@@ -3,7 +3,7 @@ dotenv.config();
 import fs from "fs";
 import path from "path";
 import yaml from "yaml";
-import { syncDbtModelsToRag, syncDbtTestResultsToRag } from "./dbt-sync.js";
+import { syncDbtModelsToRag, syncDbtTestResultsToRag, syncDbtMetricsToRag } from "./dbt-sync.js";
 
 // Self-query cache: avoid redundant LLM calls across agents
 const selfQueryCache = new Map<string, { result: SelfQueryFilter; expiresAt: number }>();
@@ -232,6 +232,10 @@ export async function setupKnowledgeBase() {
   // Load dbt test results — failed tests become dbt_warning documents
   const dbtTestDocs = syncDbtTestResultsToRag();
   knowledgeDocuments.push(...dbtTestDocs);
+
+  // Load dbt metrics layer — business metric definitions with column synonyms
+  const dbtMetricDocs = syncDbtMetricsToRag();
+  knowledgeDocuments.push(...dbtMetricDocs);
 
   // Load approved feedback from failed_queries.json
   try {

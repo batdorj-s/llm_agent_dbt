@@ -1,0 +1,107 @@
+version: 2
+
+metrics:
+  - name: total_sales
+    label: Нийт борлуулалт
+    description: "Total revenue from all sales transactions. Aggregate of sales amount across all orders."
+    model: ref('kpi_sales')
+    calculation_method: sum
+    expression: total_sales
+    synonyms:
+      - борлуулалт
+      - орлого
+      - sales
+      - revenue
+      - нийт борлуулалт
+      - нийт орлого
+    column_mappings:
+      - column: sales
+        tables: [superstore_sales, retail_sales]
+      - column: revenue
+        tables: [superstore_sales]
+      - column: amount
+        tables: [retail_sales]
+      - column: total_sales
+        tables: [kpi_sales]
+
+  - name: total_profit
+    label: Нийт ашиг
+    description: "Total profit from all sales transactions. Revenue minus cost."
+    model: ref('kpi_sales')
+    calculation_method: sum
+    expression: total_profit
+    synonyms:
+      - ашиг
+      - profit
+      - нийт ашиг
+      - цэвэр ашиг
+    column_mappings:
+      - column: profit
+        tables: [superstore_sales]
+      - column: total_profit
+        tables: [kpi_sales]
+
+  - name: profit_margin
+    label: Ашгийн хувь
+    description: "Profit margin percentage. Calculated as (profit / sales) * 100."
+    model: ref('int_sales_enriched')
+    calculation_method: average
+    expression: profit_margin_pct
+    synonyms:
+      - ашгийн хувь
+      - margin
+      - profit margin
+      - маржин
+    column_mappings:
+      - column: profit_margin_pct
+        tables: [int_sales_enriched, kpi_sales]
+
+  - name: order_count
+    label: Захиалгын тоо
+    description: "Total number of orders/transactions."
+    model: ref('kpi_sales')
+    calculation_method: count
+    expression: order_count
+    synonyms:
+      - захиалга
+      - order
+      - гүйлгээ
+      - transaction
+      - захиалгын тоо
+    column_mappings:
+      - column: order_id
+        tables: [superstore_sales]
+      - column: order_count
+        tables: [kpi_sales]
+
+  - name: customer_count
+    label: Харилцагчийн тоо
+    description: "Total number of unique customers."
+    model: ref('kpi_sales')
+    calculation_method: count_distinct
+    expression: customer_count
+    synonyms:
+      - харилцагч
+      - customer
+      - хэрэглэгч
+      - user
+      - харилцагчийн тоо
+    column_mappings:
+      - column: customer_id
+        tables: [superstore_sales, stg_sales, user_metrics]
+      - column: customer_count
+        tables: [kpi_sales]
+
+  - name: total_spend_per_customer
+    label: Харилцагчийн нийт зарлага
+    description: "Total amount spent by a customer across all orders."
+    model: ref('user_metrics')
+    calculation_method: sum
+    expression: total_spend
+    synonyms:
+      - харилцагчийн зарлага
+      - customer spend
+      - total spend
+    column_mappings:
+      - column: total_spend
+        tables: [user_metrics]

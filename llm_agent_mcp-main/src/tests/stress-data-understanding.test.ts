@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Stress Tests: Data Understanding Enhancements (Phases 1-4)
@@ -225,6 +225,12 @@ describe("Phase 2 — Schema Context: getRelationships interface", () => {
 // Phase 3: Semantic RAG — Business Glossary
 // ────────────────────────────────────────────────────────────────────────────
 describe("Phase 3 — Semantic RAG: Business Glossary", () => {
+    beforeAll(async () => {
+        const rag = await import("../rag.js");
+        // Reset and load full KB so search tests are self-contained
+        rag.knowledgeDocuments.length = 0;
+        await rag.setupKnowledgeBase();
+    });
     it("STRESS: 'Цэвэр ашиг' returns net profit content", async () => {
         const { searchKnowledgeBase } = await import("../rag.js");
         const result = await searchKnowledgeBase("Цэвэр ашиг гэж юу вэ?", "FinanceAgent", 5);
