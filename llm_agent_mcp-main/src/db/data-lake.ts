@@ -389,19 +389,27 @@ export async function getColumnSamples(
     columns: string[],
     limit: number = 3
 ): Promise<Record<string, string[]>> {
-    if (!pool || !_pgAvailable) return {};
+    if (!pool || !_pgAvailable || columns.length === 0) return {};
     try {
+        if (columns.length === 1) {
+            const col = columns[0];
+            const result = await pool.query(
+                `SELECT DISTINCT "${col}" AS val FROM "${tableName}" WHERE "${col}" IS NOT NULL AND "${col}" != '' LIMIT $1`,
+                [limit]
+            );
+            return { [col]: result.rows.map((r: any) => String(r.val)).filter(Boolean) };
+        }
+        // Batch: select rows as JSON, unroll column-by-column in one query
+        const result = await pool.query(
+            `SELECT key, jsonb_agg(DISTINCT val) FILTER (WHERE val IS NOT NULL AND val::text != '') AS vals
+             FROM (SELECT row_to_json(t) AS r FROM "${tableName}" LIMIT 100) data,
+             jsonb_each_text(r::jsonb) AS cols(key, val)
+             GROUP BY key`
+        );
         const samples: Record<string, string[]> = {};
         for (const col of columns) {
-            try {
-                const result = await pool.query(
-                    `SELECT DISTINCT "${col}" AS val FROM "${tableName}" WHERE "${col}" IS NOT NULL AND "${col}" != '' LIMIT $1`,
-                    [limit]
-                );
-                samples[col] = result.rows.map((r: any) => String(r.val)).filter(Boolean);
-            } catch {
-                samples[col] = [];
-            }
+            const row = result.rows.find((r: any) => r.key === col);
+            samples[col] = row ? (row.vals as string[]).filter(Boolean).slice(0, limit) : [];
         }
         return samples;
     } catch {
@@ -413,35 +421,53 @@ export async function getColumnProfile(
     tableName: string,
     columns: string[]
 ): Promise<Record<string, { type: string; min?: string; max?: string; distinct: number }>> {
-    if (!pool || !_pgAvailable) return {};
+    if (!pool || !_pgAvailable || columns.length === 0) return {};
     try {
-        const profile: Record<string, { type: string; min?: string; max?: string; distinct: number }> = {};
-        for (const col of columns) {
-            try {
-                const typeResult = await pool.query(
-                    `SELECT data_type FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`,
-                    [tableName, col]
-                );
-                const dataType = typeResult.rows[0]?.data_type || "unknown";
-                const isNumeric = /int|numeric|decimal|real|float|double/i.test(dataType);
-                let minVal: string | undefined;
-                let maxVal: string | undefined;
-                if (isNumeric) {
-                    const rangeResult = await pool.query(
-                        `SELECT MIN("${col}") AS min_val, MAX("${col}") AS max_val FROM "${tableName}"`
-                    );
-                    minVal = rangeResult.rows[0]?.min_val != null ? String(rangeResult.rows[0].min_val) : undefined;
-                    maxVal = rangeResult.rows[0]?.max_val != null ? String(rangeResult.rows[0].max_val) : undefined;
-                }
-                const distinctResult = await pool.query(
-                    `SELECT COUNT(DISTINCT "${col}") AS cnt FROM "${tableName}"`
-                );
-                const distinct = Number(distinctResult.rows[0]?.cnt) || 0;
-                profile[col] = { type: dataType, min: minVal, max: maxVal, distinct };
-            } catch {
-                profile[col] = { type: "unknown", distinct: 0 };
-            }
+        // 1. Batch: get all column types in one query
+        const typeResult = await pool.query(
+            `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1`,
+            [tableName]
+        );
+        const typeMap: Record<string, string> = {};
+        for (const row of typeResult.rows) {
+            typeMap[row.column_name] = row.data_type;
         }
+
+        // 2. Batch: get distinct counts for all columns in one query
+        const distinctExprs = columns.map((c, i) => `COUNT(DISTINCT "${c}") AS d${i}`);
+        const distinctResult = await pool.query(
+            `SELECT ${distinctExprs.join(", ")} FROM "${tableName}"`
+        );
+        const distinctRow = distinctResult.rows[0] || {};
+
+        // 3. Batch: get min/max for all numeric columns in one query
+        const numericCols = columns.filter(c => /int|numeric|decimal|real|float|double/i.test(typeMap[c] || ""));
+        const numericExprs: string[] = [];
+        numericCols.forEach((c, i) => {
+            numericExprs.push(`MIN("${c}")::text AS nmin${i}`, `MAX("${c}")::text AS nmax${i}`);
+        });
+        let rangeRow: Record<string, any> = {};
+        if (numericExprs.length > 0) {
+            const rangeResult = await pool.query(
+                `SELECT ${numericExprs.join(", ")} FROM "${tableName}"`
+            );
+            rangeRow = rangeResult.rows[0] || {};
+        }
+
+        // 4. Assemble profile
+        const profile: Record<string, { type: string; min?: string; max?: string; distinct: number }> = {};
+        columns.forEach((col, i) => {
+            const dataType = typeMap[col] || "unknown";
+            const distinct = Number(distinctRow[`d${i}`]) || 0;
+            const numIdx = numericCols.indexOf(col);
+            let minVal: string | undefined;
+            let maxVal: string | undefined;
+            if (numIdx >= 0) {
+                minVal = rangeRow[`nmin${numIdx}`] != null ? String(rangeRow[`nmin${numIdx}`]) : undefined;
+                maxVal = rangeRow[`nmax${numIdx}`] != null ? String(rangeRow[`nmax${numIdx}`]) : undefined;
+            }
+            profile[col] = { type: dataType, min: minVal, max: maxVal, distinct };
+        });
         return profile;
     } catch {
         return {};

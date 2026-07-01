@@ -31,6 +31,25 @@ const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
 app.use(express.json({ limit: "50mb" }));
 
+// Request ID middleware
+app.use((req, _res, next) => {
+    const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    (req as any).reqId = reqId;
+    next();
+});
+
+function log(level: "info" | "warn" | "error", msg: string, req?: any, meta?: Record<string, unknown>) {
+    const entry: Record<string, unknown> = {
+        t: new Date().toISOString(),
+        lvl: level,
+        msg,
+        reqId: req?.reqId || "-",
+    };
+    if (meta) Object.assign(entry, meta);
+    const fn = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+    fn(JSON.stringify(entry));
+}
+
 // Configure Multer for file uploads
 const UPLOAD_DIR = "uploads/";
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -471,105 +490,88 @@ function buildColumnMapping(cols: string[]): Record<string, string | null> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Admin: Upload CSV Dataset
+// Shared post-seed logic for CSV and Excel upload handlers
 // ─────────────────────────────────────────────────────────────
-app.post("/api/admin/upload-csv", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
-  const { userId, role } = auth.payload;
-  const { filename, csvContent, tableName, description } = req.body;
-  if (!filename || !csvContent || !tableName || !description) {
-    return res.status(400).json({ error: "filename, csvContent, tableName, and description are required" });
-  }
-
-  const sanitizedTableName = tableName.trim().replace(/[^a-zA-Z0-9_]/g, "");
-  const tempFilePath = path.join("/tmp", `csv_${Date.now()}_${filename}`);
-
-  try {
-    fs.writeFileSync(tempFilePath, csvContent, "utf8");
-    await seedCsv(tempFilePath, sanitizedTableName, userId, description, true, "private");
-    console.log(`[Upload] CSV seeding done for '${sanitizedTableName}'`);
-
+async function processUploadedTable(
+    sanitizedTableName: string,
+    description: string,
+    userId: string,
+    originalFilename: string,
+): Promise<{
+    preview: Record<string, unknown>[];
+    columns: string[];
+    dbtStatus: string;
+}> {
     const catalog = await getCatalog(userId);
     const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
 
     let cols: string[] = [];
     if (tableInfo) {
-      cols = JSON.parse(tableInfo.columns_info) as string[];
+        cols = JSON.parse(tableInfo.columns_info) as string[];
 
-      // Schema Evolution: remove stale RAG entries for this table before re-indexing
-      await removeDocumentsByPrefix(`uploaded_${sanitizedTableName}_`);
+        await removeDocumentsByPrefix(`uploaded_${sanitizedTableName}_`);
 
-      const [samples, profile] = await Promise.all([
-        getColumnSamples(sanitizedTableName, cols, 5),
-        getColumnProfile(sanitizedTableName, cols),
-      ]);
-      
-      // Store column profiles in catalog for LLM context
-      await getPool().query(
-        `UPDATE data_lake_catalog SET column_profiles = $1 WHERE table_name = $2`,
-        [JSON.stringify(profile), sanitizedTableName]
-      );
-      
-      const sampleText = cols.map(c => {
-        const p = profile[c];
-        const typeLabel = p?.type ? (p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type) : "TEXT";
-        const rangeInfo = p?.min !== undefined && p?.max !== undefined ? ` [${p.min}..${p.max}]` : "";
-        const vals = samples[c];
-        return vals && vals.length > 0 ? `"${c}" (${typeLabel}${rangeInfo}, e.g. ${vals.join(", ")})` : `"${c}" (${typeLabel}${rangeInfo})`;
-      }).join(", ");
-      const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}.`;
-      await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, {
-        category: "data_catalog",
-        department: "analytics",
-        author: userId || "unknown",
-        source_name: `Upload: ${sanitizedTableName}`,
-      }, [sanitizedTableName]);
+        const [samples, profile] = await Promise.all([
+            getColumnSamples(sanitizedTableName, cols, 5),
+            getColumnProfile(sanitizedTableName, cols),
+        ]);
 
-      // Auto-compute KPIs from uploaded table data and add as RAG documents
-      const kpiLines = await computeTableKpis(sanitizedTableName, cols, profile);
-      for (let i = 0; i < kpiLines.length; i++) {
-        await addDocumentToCatalog(`kpi_${sanitizedTableName}_${i}`, kpiLines[i], {
-          category: "business_policy",
-          department: "analytics",
-          author: userId || "unknown",
-          source_name: `Auto-KPI: ${sanitizedTableName}`,
-        }, [sanitizedTableName, "kpi", `kpi_${i}`]);
-      }
-      if (kpiLines.length > 0) {
-        console.log(`[Upload] Auto-computed ${kpiLines.length} KPIs for '${sanitizedTableName}'`);
-      }
+        await getPool().query(
+            `UPDATE data_lake_catalog SET column_profiles = $1 WHERE table_name = $2`,
+            [JSON.stringify(profile), sanitizedTableName]
+        );
+
+        const sampleText = cols.map(c => {
+            const p = profile[c];
+            const typeLabel = p?.type ? (p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type) : "TEXT";
+            const rangeInfo = p?.min !== undefined && p?.max !== undefined ? ` [${p.min}..${p.max}]` : "";
+            const vals = samples[c];
+            return vals && vals.length > 0 ? `"${c}" (${typeLabel}${rangeInfo}, e.g. ${vals.join(", ")})` : `"${c}" (${typeLabel}${rangeInfo})`;
+        }).join(", ");
+        const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}.`;
+        await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, {
+            category: "data_catalog",
+            department: "analytics",
+            author: userId || "unknown",
+            source_name: `Upload: ${sanitizedTableName}`,
+        }, [sanitizedTableName]);
+
+        const kpiLines = await computeTableKpis(sanitizedTableName, cols, profile);
+        for (let i = 0; i < kpiLines.length; i++) {
+            await addDocumentToCatalog(`kpi_${sanitizedTableName}_${i}`, kpiLines[i], {
+                category: "business_policy",
+                department: "analytics",
+                author: userId || "unknown",
+                source_name: `Auto-KPI: ${sanitizedTableName}`,
+            }, [sanitizedTableName, "kpi", `kpi_${i}`]);
+        }
+        if (kpiLines.length > 0) {
+            console.log(`[Upload] Auto-computed ${kpiLines.length} KPIs for '${sanitizedTableName}'`);
+        }
     }
 
     const semanticGroups = buildSemanticGroups(cols);
     await getPool().query(
-      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
-       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
-      [sanitizedTableName, sanitizedTableName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString(), userId]
+        `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
+         ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
+        [sanitizedTableName, originalFilename, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString(), userId]
     );
 
     await clearConversationMemory();
 
-    // Auto-detect foreign key relationships with existing tables
     if (cols.length > 0) {
-      await detectForeignKeys(sanitizedTableName, cols).catch(err =>
-        console.warn("[Upload] FK detection failed:", (err as Error).message)
-      );
+        await detectForeignKeys(sanitizedTableName, cols).catch(err =>
+            console.warn("[Upload] FK detection failed:", (err as Error).message)
+        );
     }
 
-    // Hybrid dbt: if table has standard KPI columns, run dbt pipeline
     let dbtStatus = "skipped";
     if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
         && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
-
         const mapping = buildColumnMapping(cols);
         try {
             runDbtForTable(sanitizedTableName, cols, mapping);
             await generateSchemaYml(sanitizedTableName, cols);
-
             const testOutput = runDbtTest(JSON.stringify({ input_table: sanitizedTableName, ...mapping }));
             const hasFailures = /FAILED|ERROR/i.test(testOutput);
             if (hasFailures) {
@@ -594,24 +596,58 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 
     let preview: Record<string, unknown>[] = [];
     try {
-      const previewResult = await getPool().query(`SELECT * FROM "${sanitizedTableName}" LIMIT 20`);
-      preview = previewResult.rows;
+        const previewResult = await getPool().query(`SELECT * FROM "${sanitizedTableName}" LIMIT 20`);
+        preview = previewResult.rows;
     } catch (previewErr) {
-      console.warn("[Upload] Preview fetch failed:", (previewErr as Error).message);
+        console.warn("[Upload] Preview fetch failed:", (previewErr as Error).message);
     }
+
+    return {
+        preview,
+        columns: cols.length > 0 ? cols : (preview.length > 0 ? Object.keys(preview[0]) : []),
+        dbtStatus,
+    };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Admin: Upload CSV Dataset
+// ─────────────────────────────────────────────────────────────
+app.post("/api/admin/upload-csv", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { userId, role } = auth.payload;
+  const { filename, csvContent, tableName, description } = req.body;
+  if (!filename || !csvContent || !tableName || !description) {
+    return res.status(400).json({ error: "filename, csvContent, tableName, and description are required" });
+  }
+
+  const sanitizedTableName = tableName.trim().replace(/[^a-zA-Z0-9_]/g, "");
+  const tempFilePath = path.join("/tmp", `csv_${Date.now()}_${filename}`);
+
+  try {
+    await fs.promises.writeFile(tempFilePath, csvContent, "utf8");
+    await seedCsv(tempFilePath, sanitizedTableName, userId, description, true, "private");
+    console.log(`[Upload] CSV seeding done for '${sanitizedTableName}'`);
+
+    const { preview, columns: resultCols, dbtStatus } = await processUploadedTable(
+        sanitizedTableName, description, userId, sanitizedTableName
+    );
 
     res.json({
       success: true,
       message: `Table '${sanitizedTableName}' successfully imported.${dbtStatus !== "skipped" ? ` dbt: ${dbtStatus}` : ""}`,
       preview,
-      columns: cols.length > 0 ? cols : (preview.length > 0 ? Object.keys(preview[0]) : []),
+      columns: resultCols,
       dbtStatus,
     });
   } catch (err: any) {
-    console.error("[API] CSV Upload Error:", err);
+    log("error", `CSV Upload Error: ${err.message}`, req);
     res.status(500).json({ error: err.message });
   } finally {
-    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    fs.promises.unlink(tempFilePath).catch(() => {});
   }
 });
 
@@ -637,7 +673,7 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
   const extension = path.extname(originalName).toLowerCase();
 
   if (extension !== ".xlsx" && extension !== ".xls") {
-    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    fs.promises.unlink(tempPath).catch(() => {});
     return res.status(400).json({ error: "Only .xlsx and .xls files are supported." });
   }
 
@@ -675,118 +711,23 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
     fs.writeFileSync(csvTempPath, csvContent, "utf8");
     await seedCsv(csvTempPath, sanitizedTableName, userId, description, true, "private");
 
-    const catalog = await getCatalog(userId);
-    const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
-
-    let cols: string[] = [];
-    if (tableInfo) {
-      cols = JSON.parse(tableInfo.columns_info) as string[];
-
-      await removeDocumentsByPrefix(`uploaded_${sanitizedTableName}_`);
-
-      const [samples, profile] = await Promise.all([
-        getColumnSamples(sanitizedTableName, cols, 5),
-        getColumnProfile(sanitizedTableName, cols),
-      ]);
-      
-      // Store column profiles in catalog for LLM context
-      await getPool().query(
-        `UPDATE data_lake_catalog SET column_profiles = $1 WHERE table_name = $2`,
-        [JSON.stringify(profile), sanitizedTableName]
-      );
-      
-      const sampleText = cols.map(c => {
-        const p = profile[c];
-        const typeLabel = p?.type ? (p.type === "integer" ? "INT" : p.type === "numeric" ? "DEC" : p.type) : "TEXT";
-        const rangeInfo = p?.min !== undefined && p?.max !== undefined ? ` [${p.min}..${p.max}]` : "";
-        const vals = samples[c];
-        return vals && vals.length > 0 ? `"${c}" (${typeLabel}${rangeInfo}, e.g. ${vals.join(", ")})` : `"${c}" (${typeLabel}${rangeInfo})`;
-      }).join(", ");
-      const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}.`;
-      await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, {
-        category: "data_catalog",
-        department: "analytics",
-        author: userId || "unknown",
-        source_name: `Upload: ${sanitizedTableName}`,
-      }, [sanitizedTableName]);
-
-      // Auto-compute KPIs from uploaded table data and add as RAG documents
-      const xlKpiLines = await computeTableKpis(sanitizedTableName, cols, profile);
-      for (let i = 0; i < xlKpiLines.length; i++) {
-        await addDocumentToCatalog(`kpi_${sanitizedTableName}_${i}`, xlKpiLines[i], {
-          category: "business_policy",
-          department: "analytics",
-          author: userId || "unknown",
-          source_name: `Auto-KPI: ${sanitizedTableName}`,
-        }, [sanitizedTableName, "kpi", `kpi_${i}`]);
-      }
-      if (xlKpiLines.length > 0) {
-        console.log(`[Upload] Auto-computed ${xlKpiLines.length} KPIs for '${sanitizedTableName}'`);
-      }
-    }
-
-    const semanticGroups = buildSemanticGroups(cols);
-    await getPool().query(
-      `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
-       ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, semantic_groups=EXCLUDED.semantic_groups, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
-      [sanitizedTableName, originalName, "dataset", description, JSON.stringify(semanticGroups), new Date().toISOString(), userId]
+    const { preview, columns: resultCols, dbtStatus: xlDbtStatus } = await processUploadedTable(
+        sanitizedTableName, description, userId, originalName
     );
-
-    await clearConversationMemory();
-
-    // Auto-detect foreign key relationships with existing tables
-    if (cols.length > 0) {
-      await detectForeignKeys(sanitizedTableName, cols).catch(err =>
-        console.warn("[Upload] FK detection failed:", (err as Error).message)
-      );
-    }
-
-    let xlDbtStatus = "skipped";
-    if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
-        && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
-      const mapping = buildColumnMapping(cols);
-      try {
-        runDbtForTable(sanitizedTableName, cols, mapping);
-        await generateSchemaYml(sanitizedTableName, cols);
-        const testOutput = runDbtTest(JSON.stringify({ input_table: sanitizedTableName, ...mapping }));
-        const hasFailures = /FAILED|ERROR/i.test(testOutput);
-        if (hasFailures) {
-          xlDbtStatus = "tests_failed";
-          const warningText = `[АНХААР] DATA QUALITY WARNING for table '${sanitizedTableName}': dbt tests detected issues. Agents should verify data before reporting.`;
-          await addDocumentToCatalog(`dbt_warning_${sanitizedTableName}`, warningText, {
-            category: "data_catalog", department: "analytics", author: "system", source_name: "Data Quality Gate",
-          }, [sanitizedTableName, "dbt_warning", "data_quality"]);
-        } else {
-          xlDbtStatus = "ok";
-          console.log(`[Upload] dbt tests PASSED for '${sanitizedTableName}' [OK]`);
-        }
-      } catch (err) {
-        xlDbtStatus = "error";
-        console.warn(`[Upload] dbt pipeline error:`, (err as Error).message);
-      }
-    }
-
-    let preview: Record<string, unknown>[] = [];
-    try {
-      const previewResult = await getPool().query(`SELECT * FROM "${sanitizedTableName}" LIMIT 20`);
-      preview = previewResult.rows;
-    } catch (previewErr) {
-      console.warn("[Upload] Preview fetch failed:", (previewErr as Error).message);
-    }
 
     res.json({
       success: true,
       message: `Table '${sanitizedTableName}' successfully imported from Excel.${xlDbtStatus !== "skipped" ? ` dbt: ${xlDbtStatus}` : ""}`,
       preview,
-      columns: cols.length > 0 ? cols : (preview.length > 0 ? Object.keys(preview[0]) : []),
+      columns: resultCols,
       dbtStatus: xlDbtStatus,
     });
   } catch (err: any) {
     console.error("[API] Excel Upload Error:", err);
     res.status(500).json({ error: err.message });
   } finally {
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    if (csvTempPath && fs.existsSync(csvTempPath)) fs.unlinkSync(csvTempPath);
+    if (req.file) fs.promises.unlink(req.file.path).catch(() => {});
+    if (csvTempPath) fs.promises.unlink(csvTempPath).catch(() => {});
   }
 });
 
@@ -801,7 +742,7 @@ if (!fs.existsSync(DOCUMENTS_DIR)) {
 app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
   const auth = verifyBearerHeader(req.headers.authorization);
   if (!auth.success || !auth.payload) {
-    if (req.file) fs.unlinkSync(req.file.path);
+    if (req.file) fs.promises.unlink(req.file.path).catch(() => {});
     return res.status(401).json({ error: auth.error });
   }
 
@@ -821,7 +762,7 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     const extension = path.extname(originalName).toLowerCase();
 
     if (extension === ".pdf") {
-      const dataBuffer = fs.readFileSync(tempPath);
+      const dataBuffer = await fs.promises.readFile(tempPath);
       const parser = new PDFParse({ data: dataBuffer });
       const result = await parser.getText();
       extractedText = result.text;
@@ -833,9 +774,9 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     }
 
     // Save original file permanently
-    fs.renameSync(tempPath, savedPath);
+    await fs.promises.rename(tempPath, savedPath);
     // Save extracted text
-    fs.writeFileSync(textPath, extractedText, "utf8");
+    await fs.promises.writeFile(textPath, extractedText, "utf8");
 
     await addDocumentToCatalog(
         docId,
@@ -854,7 +795,7 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     res.json({ success: true, message: `Document '${originalName}' indexed.` });
   } catch (err: any) {
     console.error("[API] Doc Upload Error:", err);
-    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    fs.promises.unlink(tempPath).catch(() => {});
     res.status(500).json({ error: err.message });
   }
 });
@@ -864,10 +805,19 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 const FAILED_QUERIES_PATH = path.join(process.cwd(), "logs", "failed_queries.json");
 
-function ensureFailedQueriesFile(): void {
+async function ensureFailedQueriesFile(): Promise<void> {
   const dir = path.dirname(FAILED_QUERIES_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(FAILED_QUERIES_PATH)) fs.writeFileSync(FAILED_QUERIES_PATH, "[]", "utf8");
+  await fs.promises.mkdir(dir, { recursive: true }).catch(() => {});
+  try { await fs.promises.access(FAILED_QUERIES_PATH); }
+  catch { await fs.promises.writeFile(FAILED_QUERIES_PATH, "[]", "utf8"); }
+}
+
+async function readFailedQueries(): Promise<any[]> {
+  await ensureFailedQueriesFile();
+  try {
+    const raw = await fs.promises.readFile(FAILED_QUERIES_PATH, "utf8");
+    return JSON.parse(raw);
+  } catch { return []; }
 }
 
 app.post("/api/feedback", async (req, res) => {
@@ -896,10 +846,10 @@ app.post("/api/feedback", async (req, res) => {
   };
 
   try {
-    ensureFailedQueriesFile();
-    const existing = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    await ensureFailedQueriesFile();
+    const existing = await readFailedQueries();
     existing.push(entry);
-    fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(existing, null, 2), "utf8");
+    await fs.promises.writeFile(FAILED_QUERIES_PATH, JSON.stringify(existing, null, 2), "utf8");
 
     // Do NOT add to RAG automatically. It must be approved by admin.
 
@@ -920,8 +870,7 @@ app.get("/api/admin/feedback/pending", async (req, res) => {
   if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
 
   try {
-    ensureFailedQueriesFile();
-    const all = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    const all = await readFailedQueries();
     const pending = all.filter((f: any) => f.status === "pending");
     res.json(pending);
   } catch (err: any) {
@@ -938,8 +887,7 @@ app.post("/api/admin/feedback/:id/approve", async (req, res) => {
   const { id } = req.params;
 
   try {
-    ensureFailedQueriesFile();
-    const all = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    const all = await readFailedQueries();
     const entry = all.find((f: any) => f.id === id);
     if (!entry) return res.status(404).json({ error: "Feedback entry not found" });
 
@@ -948,7 +896,7 @@ app.post("/api/admin/feedback/:id/approve", async (req, res) => {
     }
 
     entry.status = "approved";
-    fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
+    await fs.promises.writeFile(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
 
     const correctAnswer = req.body.correctAnswer || "";
     if (entry.response) {
@@ -977,13 +925,12 @@ app.post("/api/admin/feedback/:id/reject", async (req, res) => {
   const { id } = req.params;
 
   try {
-    ensureFailedQueriesFile();
-    const all = JSON.parse(fs.readFileSync(FAILED_QUERIES_PATH, "utf8"));
+    const all = await readFailedQueries();
     const entry = all.find((f: any) => f.id === id);
     if (!entry) return res.status(404).json({ error: "Feedback entry not found" });
 
     entry.status = "rejected";
-    fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
+    await fs.promises.writeFile(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
 
     res.json({ success: true, message: "Feedback rejected" });
   } catch (err: any) {
