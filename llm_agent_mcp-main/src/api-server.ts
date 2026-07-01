@@ -14,7 +14,7 @@ import { ensureProjectReady, runDbtForTable, runDbtTest } from "./setup/init.js"
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, detectForeignKeys, authenticateUser, createUser } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser } from "./db/data-lake.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { computeMetrics } from "./agents/reportMetrics.js";
@@ -491,6 +491,7 @@ app.post("/api/admin/upload-csv", async (req, res) => {
   try {
     fs.writeFileSync(tempFilePath, csvContent, "utf8");
     await seedCsv(tempFilePath, sanitizedTableName, userId, description, true, "private");
+    console.log(`[Upload] CSV seeding done for '${sanitizedTableName}'`);
 
     const catalog = await getCatalog(userId);
     const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
@@ -527,6 +528,20 @@ app.post("/api/admin/upload-csv", async (req, res) => {
         author: userId || "unknown",
         source_name: `Upload: ${sanitizedTableName}`,
       }, [sanitizedTableName]);
+
+      // Auto-compute KPIs from uploaded table data and add as RAG documents
+      const kpiLines = await computeTableKpis(sanitizedTableName, cols, profile);
+      for (let i = 0; i < kpiLines.length; i++) {
+        await addDocumentToCatalog(`kpi_${sanitizedTableName}_${i}`, kpiLines[i], {
+          category: "business_policy",
+          department: "analytics",
+          author: userId || "unknown",
+          source_name: `Auto-KPI: ${sanitizedTableName}`,
+        }, [sanitizedTableName, "kpi", `kpi_${i}`]);
+      }
+      if (kpiLines.length > 0) {
+        console.log(`[Upload] Auto-computed ${kpiLines.length} KPIs for '${sanitizedTableName}'`);
+      }
     }
 
     const semanticGroups = buildSemanticGroups(cols);
@@ -546,6 +561,7 @@ app.post("/api/admin/upload-csv", async (req, res) => {
     }
 
     // Hybrid dbt: if table has standard KPI columns, run dbt pipeline
+    let dbtStatus = "skipped";
     if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
         && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
 
@@ -557,6 +573,7 @@ app.post("/api/admin/upload-csv", async (req, res) => {
             const testOutput = runDbtTest(JSON.stringify({ input_table: sanitizedTableName, ...mapping }));
             const hasFailures = /FAILED|ERROR/i.test(testOutput);
             if (hasFailures) {
+                dbtStatus = "tests_failed";
                 const warningText = `[АНХААР] DATA QUALITY WARNING for table '${sanitizedTableName}': dbt tests detected issues. Agents should verify data before reporting.`;
                 await addDocumentToCatalog(`dbt_warning_${sanitizedTableName}`, warningText, {
                     category: "data_catalog",
@@ -566,9 +583,11 @@ app.post("/api/admin/upload-csv", async (req, res) => {
                 }, [sanitizedTableName, "dbt_warning", "data_quality"]);
                 console.warn(`[Upload] dbt tests FAILED for '${sanitizedTableName}' — RAG warning added`);
             } else {
+                dbtStatus = "ok";
                 console.log(`[Upload] dbt tests PASSED for '${sanitizedTableName}' [OK]`);
             }
         } catch (err) {
+            dbtStatus = "error";
             console.warn(`[Upload] dbt pipeline error for '${sanitizedTableName}':`, (err as Error).message);
         }
     }
@@ -583,9 +602,10 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 
     res.json({
       success: true,
-      message: `Table '${sanitizedTableName}' successfully imported.`,
+      message: `Table '${sanitizedTableName}' successfully imported.${dbtStatus !== "skipped" ? ` dbt: ${dbtStatus}` : ""}`,
       preview,
       columns: cols.length > 0 ? cols : (preview.length > 0 ? Object.keys(preview[0]) : []),
+      dbtStatus,
     });
   } catch (err: any) {
     console.error("[API] CSV Upload Error:", err);
@@ -689,6 +709,20 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
         author: userId || "unknown",
         source_name: `Upload: ${sanitizedTableName}`,
       }, [sanitizedTableName]);
+
+      // Auto-compute KPIs from uploaded table data and add as RAG documents
+      const xlKpiLines = await computeTableKpis(sanitizedTableName, cols, profile);
+      for (let i = 0; i < xlKpiLines.length; i++) {
+        await addDocumentToCatalog(`kpi_${sanitizedTableName}_${i}`, xlKpiLines[i], {
+          category: "business_policy",
+          department: "analytics",
+          author: userId || "unknown",
+          source_name: `Auto-KPI: ${sanitizedTableName}`,
+        }, [sanitizedTableName, "kpi", `kpi_${i}`]);
+      }
+      if (xlKpiLines.length > 0) {
+        console.log(`[Upload] Auto-computed ${xlKpiLines.length} KPIs for '${sanitizedTableName}'`);
+      }
     }
 
     const semanticGroups = buildSemanticGroups(cols);
@@ -707,6 +741,7 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
       );
     }
 
+    let xlDbtStatus = "skipped";
     if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
         && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
       const mapping = buildColumnMapping(cols);
@@ -716,14 +751,17 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
         const testOutput = runDbtTest(JSON.stringify({ input_table: sanitizedTableName, ...mapping }));
         const hasFailures = /FAILED|ERROR/i.test(testOutput);
         if (hasFailures) {
+          xlDbtStatus = "tests_failed";
           const warningText = `[АНХААР] DATA QUALITY WARNING for table '${sanitizedTableName}': dbt tests detected issues. Agents should verify data before reporting.`;
           await addDocumentToCatalog(`dbt_warning_${sanitizedTableName}`, warningText, {
             category: "data_catalog", department: "analytics", author: "system", source_name: "Data Quality Gate",
           }, [sanitizedTableName, "dbt_warning", "data_quality"]);
         } else {
+          xlDbtStatus = "ok";
           console.log(`[Upload] dbt tests PASSED for '${sanitizedTableName}' [OK]`);
         }
       } catch (err) {
+        xlDbtStatus = "error";
         console.warn(`[Upload] dbt pipeline error:`, (err as Error).message);
       }
     }
@@ -738,9 +776,10 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
 
     res.json({
       success: true,
-      message: `Table '${sanitizedTableName}' successfully imported from Excel.`,
+      message: `Table '${sanitizedTableName}' successfully imported from Excel.${xlDbtStatus !== "skipped" ? ` dbt: ${xlDbtStatus}` : ""}`,
       preview,
       columns: cols.length > 0 ? cols : (preview.length > 0 ? Object.keys(preview[0]) : []),
+      dbtStatus: xlDbtStatus,
     });
   } catch (err: any) {
     console.error("[API] Excel Upload Error:", err);
@@ -911,8 +950,9 @@ app.post("/api/admin/feedback/:id/approve", async (req, res) => {
     entry.status = "approved";
     fs.writeFileSync(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
 
+    const correctAnswer = req.body.correctAnswer || "";
     if (entry.response) {
-      const ragText = `Failed Query: User asked "${entry.message}". The system responded with: "${entry.response}". This response was rated as incorrect.`;
+      const ragText = `Failed Query: User asked "${entry.message}". The system responded with: "${entry.response}". This response was rated as incorrect.${correctAnswer ? `\nCorrect answer: ${correctAnswer}` : ""}`;
       await addDocumentToCatalog(entry.id, ragText, {
         category: "previous_analysis",
         department: "analytics",

@@ -448,6 +448,123 @@ export async function getColumnProfile(
     }
 }
 
+export async function computeTableKpis(
+    tableName: string,
+    columns: string[],
+    profile: Record<string, { type: string; min?: string; max?: string; distinct: number }>
+): Promise<string[]> {
+    const kpiLines: string[] = [];
+    if (!pool || !_pgAvailable) return kpiLines;
+
+    // Detect numeric columns
+    const numericCols = columns.filter(c => {
+        const p = profile[c];
+        return p && /int|numeric|decimal|real|float|double|money/i.test(p.type) && p.distinct > 1;
+    });
+    if (numericCols.length === 0) return kpiLines;
+
+    // Detect date/text columns for grouping
+    const dateCols = columns.filter(c => /date|time|month|year/i.test(c) && !/id$/i.test(c));
+    const catCols = columns.filter(c => {
+        const p = profile[c];
+        return p && !numericCols.includes(c) && !dateCols.includes(c) && /text|varchar|char/i.test(p.type) && p.distinct > 1 && p.distinct < 50;
+    });
+
+    try {
+        // 0. Data quality stats for all columns (null %, distinct ratio)
+        const totalCount = numericCols.length > 0 ? await pool.query(`SELECT COUNT(*) AS cnt FROM "${tableName}"`) : null;
+        const rowCount = totalCount?.rows?.[0]?.cnt ? Number(totalCount.rows[0].cnt) : 0;
+        const dqParts: string[] = [];
+        for (const col of columns.slice(0, 10)) {
+            const nullResult = await pool.query(`SELECT COUNT(*) AS cnt FROM "${tableName}" WHERE "${col}" IS NULL`);
+            const nullCount = Number(nullResult.rows[0]?.cnt || 0);
+            const nullPct = rowCount > 0 ? ((nullCount / rowCount) * 100).toFixed(1) : "0";
+            const p = profile[col];
+            const distinctInfo = p?.distinct !== undefined && rowCount > 0 ? `, distinct=${p.distinct} (${(p.distinct / rowCount * 100).toFixed(1)}%)` : "";
+            const nullLabel = Number(nullPct) > 0 ? `, null=${nullPct}%` : "";
+            dqParts.push(`${col}${nullLabel}${distinctInfo}`);
+        }
+        if (dqParts.length > 0) {
+            kpiLines.push(`[DATA QUALITY] Table '${tableName}' (${rowCount} rows): ${dqParts.join("; ")}`);
+        }
+
+        // 1. Aggregations for each numeric column
+        const aggParts: string[] = [];
+        for (const col of numericCols.slice(0, 5)) {
+            const result = await pool.query(
+                `SELECT COUNT("${col}") AS cnt, SUM("${col}") AS total, AVG("${col}") AS avg, MIN("${col}") AS min, MAX("${col}") AS max FROM "${tableName}"`
+            );
+            const r = result.rows[0];
+            if (r) {
+                aggParts.push(`${col}: count=${r.cnt}, sum=${Number(r.total).toFixed(2)}, avg=${Number(r.avg).toFixed(2)}, min=${Number(r.min).toFixed(2)}, max=${Number(r.max).toFixed(2)}`);
+            }
+        }
+        if (aggParts.length > 0) {
+            kpiLines.push(`[KPI] Table '${tableName}' aggregations:\n${aggParts.join("\n")}`);
+        }
+
+        // 1b. Outlier detection for numeric columns (values > 3 stddev from mean)
+        const outlierParts: string[] = [];
+        for (const col of numericCols.slice(0, 3)) {
+            const stats = await pool.query(
+                `SELECT AVG("${col}") AS mean, STDDEV("${col}") AS stddev, MIN("${col}") AS min, MAX("${col}") AS max FROM "${tableName}"`
+            );
+            const s = stats.rows[0];
+            if (s && s.stddev && Number(s.stddev) > 0) {
+                const mean = Number(s.mean);
+                const stddev = Number(s.stddev);
+                const upper = mean + 3 * stddev;
+                const lower = mean - 3 * stddev;
+                const outlierResult = await pool.query(
+                    `SELECT COUNT(*) AS cnt FROM "${tableName}" WHERE "${col}" < $1 OR "${col}" > $2`,
+                    [lower, upper]
+                );
+                const outlierCount = Number(outlierResult.rows[0]?.cnt || 0);
+                const outlierPct = rowCount > 0 ? ((outlierCount / rowCount) * 100).toFixed(1) : "0";
+                if (Number(outlierPct) > 0) {
+                    outlierParts.push(`${col}: ${outlierCount} outliers (${outlierPct}%)`);
+                }
+            }
+        }
+        if (outlierParts.length > 0) {
+            kpiLines.push(`[OUTLIERS] Table '${tableName}': ${outlierParts.join("; ")}`);
+        }
+
+        // 2. Top category breakdown (if a category column exists)
+        if (catCols.length > 0 && numericCols.length > 0) {
+            for (const cat of catCols.slice(0, 2)) {
+                for (const num of numericCols.slice(0, 2)) {
+                    const result = await pool.query(
+                        `SELECT "${cat}", SUM("${num}") AS total FROM "${tableName}" WHERE "${cat}" IS NOT NULL GROUP BY "${cat}" ORDER BY total DESC LIMIT 5`
+                    );
+                    if (result.rows.length > 0) {
+                        const breakdown = result.rows.map((r: any) => `${r[cat]}=${Number(r.total).toFixed(2)}`).join(", ");
+                        kpiLines.push(`[KPI] Top ${cat} by ${num}: ${breakdown}`);
+                    }
+                }
+            }
+        }
+
+        // 3. Monthly trend (if a date column exists)
+        if (dateCols.length > 0 && numericCols.length > 0) {
+            const dateCol = dateCols[0];
+            for (const num of numericCols.slice(0, 2)) {
+                const result = await pool.query(
+                    `SELECT DATE_TRUNC('month', "${dateCol}"::timestamp) AS month, SUM("${num}") AS total FROM "${tableName}" WHERE "${dateCol}" IS NOT NULL GROUP BY month ORDER BY month DESC LIMIT 6`
+                );
+                if (result.rows.length > 0) {
+                    const trend = result.rows.map((r: any) => `${(r.month as Date).toISOString().slice(0, 7)}=${Number(r.total).toFixed(2)}`).join(" → ");
+                    kpiLines.push(`[KPI] Monthly ${num} trend (last ${result.rows.length} months): ${trend}`);
+                }
+            }
+        }
+    } catch (err) {
+        console.warn(`[Data Lake] computeTableKpis failed for ${tableName}:`, (err as Error).message);
+    }
+
+    return kpiLines;
+}
+
 export async function buildSchemaDefinition(entries: DataLakeCatalogEntry | DataLakeCatalogEntry[] | null): Promise<string> {
     if (!entries) return "No active table schema is available.";
     const tables = Array.isArray(entries) ? entries : [entries];

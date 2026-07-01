@@ -1,5 +1,6 @@
 import { createLLM, createLLMWithOrder } from "../llm-provider.js";
 import { getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
+import { searchKnowledgeBase } from "../rag.js";
 import { handleExecuteSql, isPythonQuery } from "../tools/enterprise-tools.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
@@ -56,6 +57,19 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
         console.error("[Tech Agent] Schema lookup failed:", err);
     }
 
+    // Fetch RAG context for business knowledge (column synonyms, dbt docs, user uploads)
+    console.log(`[Tech Agent] Fetching RAG context for query...`);
+    let ragContext = "";
+    try {
+        const ragResult = await searchKnowledgeBase(query, "TechAgent", 5, userId);
+        const ragDocs = ragResult.documents?.[0] ?? [];
+        if (ragDocs.length > 0) {
+            ragContext = "\n\n## RAG Context (business knowledge, dbt docs, user uploads)\n" + ragDocs.join("\n\n---\n\n");
+        }
+    } catch (err) {
+        console.warn("[Tech Agent] RAG search failed:", (err as Error).message);
+    }
+
     const activeEntry = state.cachedActiveEntry || await getActiveCatalogEntry(userId);
     const deterministicSql = await buildDeterministicTechSql(query, activeEntry);
     if (deterministicSql && activeEntry) {
@@ -92,10 +106,10 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             accumulatedText += warning;
         }
 
-        const sqlGenPrompt = (prompts.tech_agent_sql_gen as string).replace("{catalog}", schemaContext || "(catalog unavailable)");
+        const sqlGenPrompt = (prompts.tech_agent_sql_gen as string).replace("{catalog}", schemaContext || "(catalog unavailable)") + ragContext;
         let userContent = `Task: ${query}`;
         if (feedback) {
-            userContent += `\n\nYour previous SQL query failed with the following error:\n${feedback}\n\nPlease analyze this error and rewrite the SQL query to resolve it. Ensure you only use tables and columns available in the schema provided below. Do not repeat the same incorrect query. IMPORTANT: Never use PostgreSQL function names (TO_DATE, TO_CHAR, EXTRACT, DATE_TRUNC, etc.) as table names, aliases, or CTE names — they will be misinterpreted as table references.\n\n--- Schema ---\n${schemaContext || "(catalog unavailable)"}`;
+            userContent += `\n\nYour previous SQL query failed with the following error:\n${feedback}\n\nPlease analyze this error and rewrite the SQL query to resolve it. Ensure you only use tables and columns available in the schema provided below. Do not repeat the same incorrect query. IMPORTANT: Never use PostgreSQL function names (TO_DATE, TO_CHAR, EXTRACT, DATE_TRUNC, etc.) as table names, aliases, or CTE names — they will be misinterpreted as table references.\n\n--- Schema ---\n${schemaContext || "(catalog unavailable)"}${ragContext}`;
         }
 
         try {
@@ -227,7 +241,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
     const explainSystemPrompt = (prompts.tech_agent_explain as string)
       .replace("{visual_instruction}", "DO NOT generate any <visual> tags. Visualizations will be added automatically after your response.")
       .replace("{{ data_quality_checklist }}", qualityChecklist);
-    const explainPrompt = `${explainSystemPrompt}${contextSummary}\n\n${dataStats}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}`;
+    const explainPrompt = `${explainSystemPrompt}${contextSummary}\n\n${dataStats}\n\n## Execution Log (Last Attempt)\nSQL: ${sqlCode}\nResult: ${sandboxResult}\n\n## RAG Context\n${ragContext}`;
 
     const explainMessages = trimMessages([
         { role: "system", content: explainPrompt },
