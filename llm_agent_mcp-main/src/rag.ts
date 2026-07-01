@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 import fs from "fs";
 import path from "path";
+import yaml from "yaml";
 
 // Self-query cache: avoid redundant LLM calls across agents
 const selfQueryCache = new Map<string, { result: SelfQueryFilter; expiresAt: number }>();
@@ -31,109 +32,31 @@ export interface SelfQueryFilter {
   year?: number;
 }
 
-export let knowledgeDocuments: RagDocument[] = [
-  {
-    id: "doc1",
-    text: "Sales refers to the total revenue generated from closed deals, calculated from the active Data Lake dataset's revenue or amount column. The current annual target is set to 500,000 USD.",
-    metadata: { category: "finance", department: "sales", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["sales", "revenue", "target", "deals", "kpi", "kpi target"]
-  },
-  {
-    id: "doc2",
-    text: "Churn Rate is the percentage of users who have not made a purchase in over 6 months. The acceptable threshold is under 2.0%.",
-    metadata: { category: "finance", department: "retention", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["churn", "users", "cancel", "subscription", "retention", "percentage"]
-  },
-  {
-    id: "doc3",
-    text: "The Enterprise AI Orchestrator uses a unified Admin access model. All authenticated users have full access to SQL analysis, Python sandboxing, and KPI management.",
-    metadata: { category: "business_policy", department: "security", author: "admin", created_at: "2026-01-01", source_name: "Access Policy" },
-    keywords: ["policy", "rbac", "admin", "access", "security", "compliance", "unified"]
-  },
-  {
-    id: "doc4",
-    text: "Data Lake Catalog: Use the active uploaded table from the catalog for transaction analytics. Always read the live schema before writing SQL, and do not assume older table names or columns unless they appear in the current catalog.",
-    metadata: { category: "data_catalog", department: "analytics", author: "admin", created_at: "2026-01-01", source_name: "Data Lake Guide" },
-    keywords: ["catalog", "columns", "sales", "category", "data lake", "sql", "schema"]
-  },
-  {
-    id: "doc5",
-    text: "Data Lake Catalog: Historical trend analysis should use the live catalog entry for the currently loaded dataset. If dates contain dots, normalize them with REPLACE(column, '.', '-') before date grouping.",
-    metadata: { category: "data_catalog", department: "analytics", author: "admin", created_at: "2026-01-01", source_name: "Data Lake Guide" },
-    keywords: ["catalog", "columns", "order_date", "sales", "category", "data lake", "sql", "date"]
-  },
-  {
-    id: "doc6",
-    text: "SQL Best Practices: Always use ILIKE for case-insensitive text matching. Use DATE_TRUNC for time-series grouping. Use COALESCE to handle null values. Never use backticks — PostgreSQL uses double quotes for identifiers.",
-    metadata: { category: "technical", department: "engineering", author: "admin", created_at: "2026-01-01", source_name: "SQL Style Guide" },
-    keywords: ["sql", "ilike", "date_trunc", "coalesce", "postgresql", "best practices", "query"]
-  },
-  {
-    id: "doc7",
-    text: "Dashboard Design: A dashboard consists of 4-6 widgets. Each widget has a type (kpi, bar, line, pie, area), a title in Mongolian, a SQL query, and a unit. KPI widgets return a single number. Bar/Pie charts group by categorical columns. Line/Area charts group by date columns.",
-    metadata: { category: "technical", department: "engineering", author: "admin", created_at: "2026-01-01", source_name: "Dashboard Guide" },
-    keywords: ["dashboard", "widget", "kpi", "bar", "line", "pie", "chart", "visualization"]
-  },
-  {
-    id: "doc8",
-    text: "Python Analysis: The E2B Sandbox supports pandas, numpy, scikit-learn, statsmodels, scipy, matplotlib, and seaborn. Data is passed as inline JSON. Plots must be saved as 'analysis_plot.png'. Output text is captured from stdout.",
-    metadata: { category: "technical", department: "engineering", author: "admin", created_at: "2026-01-01", source_name: "Sandbox Guide" },
-    keywords: ["python", "sandbox", "e2b", "pandas", "matplotlib", "plot", "analysis"]
-  },
-  // ─────────────────────────────────────────────────────────────
-  // Business Glossary — Mongolian Business Term Definitions
-  // ─────────────────────────────────────────────────────────────
-  {
-    id: "glossary_net_profit",
-    text: "Business Definition: 'Цэвэр ашиг' (Net Profit) = Нийт орлого (Total Revenue) - Нийт зардал (Total Cost) - Татвар (Tax). Formula: Цэвэр ашиг = revenue - cost - tax. If the dataset has columns like revenue/income, cost/expense, tax columns, net profit can be calculated with: SUM(revenue) - SUM(cost) - SUM(tax).",
-    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["цэвэр ашиг", "net profit", "ашиг", "profit", "net income", "формула", "formula", "тооцоо"]
-  },
-  {
-    id: "glossary_revenue",
-    text: "Business Definition: 'Орлого' эсвэл 'Борлуулалтын орлого' (Revenue/Sales) — бараа, үйлчилгээ борлуулснаас олсон нийт мөнгөн дүн. Column mappings: sales, revenue, amount, gross_income, total_income, transaction_amount. SUM дээр бодно. Average Order Value (AOV) = Total Revenue / Total Orders.",
-    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["орлого", "revenue", "борлуулалт", "sales", "income", "ашиг", "орлогын"]
-  },
-  {
-    id: "glossary_cost",
-    text: "Business Definition: 'Зардал' (Cost/Expense) — бүтээгдэхүүн үйлдвэрлэх, үйлчилгээ үзүүлэхэд гарсан нийт зардал. Column mappings: cost, expense, cogs, cost_of_goods_sold, operating_cost. Цэвэр ашгийг бодоход: revenue - cost - tax.",
-    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["зардал", "cost", "expense", "cogs", "зарлагын", "шитгэх"]
-  },
-  {
-    id: "glossary_profit_margin",
-    text: "Business Definition: 'Ашгийн хувь' (Profit Margin) = (Цэвэр ашиг / Нийт орлого) * 100. Formula in SQL: (SUM(revenue) - SUM(cost)) / NULLIF(SUM(revenue), 0) * 100. Хэрэв ашгийн хувийг хувиар харуулна. 30% margin гэдэг нь орлогын 30% нь ашиг гэсэн үг.",
-    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["ашгийн хувь", "profit margin", "margin", "ашиг", "хувь", "percentage", "маржин"]
-  },
-  {
-    id: "glossary_aov",
-    text: "Business Definition: 'Дундаж захиалгын үнэ' (Average Order Value — AOV) = Нийт борлуулалт / Нийт захиалгын тоо. AOV = SUM(sales) / COUNT(order_id). AOV нь харилцагчийн нэг удаагийн худалдан авалтын дундаж дүнг харуулна. AOV өндөр байх тусам харилцагчид илүү үнэтэй бүтээгдэхүүн худалдаж авдаг гэсэн үг.",
-    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["aov", "average order value", "дундаж", "захиалга", "order", "дундаж үнэ"]
-  },
-  {
-    id: "glossary_customer_segment",
-    text: "Business Definition: 'Харилцагчийн сегмент' (Customer Segment) — харилцагчдыг худалдан авалтын давтамж, зардсан дүнгээр ангилах. Premium: өндөр зарлагатай (>500$), Regular: дунд (100-500$), Budget: бага (<100$). Column mappings in data: segment, customer_segment, tier, class, group, type.",
-    metadata: { category: "business_policy", department: "sales", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["сегмент", "segment", "харилцагч", "customer", "ангилал", "premium", "regular", "budget"]
-  },
-  {
-    id: "glossary_growth_rate",
-    text: "Business Definition: 'Өсөлтийн хувь' (Growth Rate) = (Энэ үеийн утга - Өмнөх үеийн утга) / Өмнөх үеийн утга * 100. Formula: (current_value - previous_value) / previous_value * 100. Monthly Growth Rate = (Энэ сарын борлуулалт - Өмнөх сарын борлуулалт) / Өмнөх сарын борлуулалт * 100. SQL: WITH monthly AS (SELECT DATE_TRUNC('month', order_date) AS month, SUM(sales) AS sales FROM table GROUP BY month) SELECT month, sales, LAG(sales) OVER (ORDER BY month) AS prev_sales, (sales - LAG(sales) OVER (ORDER BY month)) / NULLIF(LAG(sales) OVER (ORDER BY month), 0) * 100 AS growth_rate FROM monthly ORDER BY month.",
-    metadata: { category: "business_policy", department: "finance", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["өсөлт", "growth", "growth rate", "өсөлтийн хувь", "хандлага", "trend", "increase", "өөрчлөлт"]
-  },
-  {
-    id: "glossary_churn",
-    text: "Business Definition: 'Харилцагчийн алдагдал' (Churn) — тухайн хугацаанд үйлчилгээгээ зогсоосон/худалдан авалт хийхээ больсон харилцагчдын эзлэх хувь. Churn Rate = (Алдагдсан харилцагчид / Нийт харилцагчид) * 100. Хэрэв 6 сарын хугацаанд худалдан авалт хийгээгүй бол тухайн харилцагчийг 'churned' гэж үзнэ. Зорилтот түвшин: 2% -иас доош.",
-    metadata: { category: "business_policy", department: "retention", author: "admin", created_at: "2026-01-01", source_name: "Business Glossary" },
-    keywords: ["churn", "churn rate", "алдагдал", "харилцагч", "retention", "тасралт", "үйлчилгээ"]
-  },
-];
+export let knowledgeDocuments: RagDocument[] = [];
 
 export const mockDocuments = knowledgeDocuments;
+
+const KNOWLEDGE_BASE_PATH = path.join(process.cwd(), "docs", "knowledge-base.yaml");
+
+export function loadKnowledgeBase(): RagDocument[] {
+  try {
+    if (!fs.existsSync(KNOWLEDGE_BASE_PATH)) {
+      console.warn(`[RAG] Knowledge base file not found at ${KNOWLEDGE_BASE_PATH}`);
+      return [];
+    }
+    const raw = fs.readFileSync(KNOWLEDGE_BASE_PATH, "utf-8");
+    const parsed = yaml.parse(raw);
+    if (!parsed?.documents || !Array.isArray(parsed.documents)) {
+      console.warn("[RAG] No documents found in knowledge-base.yaml");
+      return [];
+    }
+    console.log(`[RAG] Loaded ${parsed.documents.length} documents from knowledge-base.yaml`);
+    return parsed.documents as RagDocument[];
+  } catch (err) {
+    console.warn("[RAG] Failed to load knowledge-base.yaml:", (err as Error).message);
+    return [];
+  }
+}
 
 const ROLE_CATEGORY_MAP: Record<string, string[]> = {
   FinanceAgent: ["finance", "business_policy"],
@@ -297,7 +220,11 @@ async function getChromaCollection() {
 }
 
 export async function setupKnowledgeBase() {
-  // Load approved feedback from failed_queries.json first
+  // Load knowledge base from YAML first
+  const yamlDocs = loadKnowledgeBase();
+  knowledgeDocuments.push(...yamlDocs);
+
+  // Load approved feedback from failed_queries.json
   try {
     const failedQueriesPath = path.join(process.cwd(), "logs", "failed_queries.json");
     if (fs.existsSync(failedQueriesPath)) {
