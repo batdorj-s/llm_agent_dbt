@@ -1,8 +1,12 @@
 /**
  * kpi-repository.ts — Repository factory
  *
- * Auto-selects Supabase (production) or Mock (development/test) based on env vars.
- * All consumers import from here — never directly from supabase/mock files.
+ * Auto-selects Supabase (production) or Marts (local/development) based on env vars.
+ * All consumers import from here — never directly from implementation files.
+ *
+ * The default local repository reads from dbt marts (kpi_sales, user_metrics)
+ * instead of raw Data Lake tables — ensuring KPI values are computed
+ * through the dbt transformation pipeline.
  *
  * Usage:
  *   import { getRepository } from "./db/kpi-repository.js";
@@ -14,7 +18,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import type { IKpiRepository } from "./types.js";
-import { SQLiteKpiRepository } from "./sqlite-repository.js";
+import { MartsKpiRepository } from "./marts-repository.js";
 
 let _instance: IKpiRepository | null = null;
 
@@ -51,16 +55,15 @@ export async function getRepository(): Promise<IKpiRepository> {
 
       const client = createClient(supabaseUrl!, supabaseKey!);
       
-      // Optional: Add a quick health check or validation here
       _instance = new SupabaseKpiRepository(client);
       console.log("[DB] Using Supabase repository [OK]");
     } catch (err) {
-      console.warn("[DB] Supabase init failed, falling back to SQLite:", (err as Error).message);
-      _instance = new SQLiteKpiRepository();
+      console.warn("[DB] Supabase init failed, falling back to Marts:", (err as Error).message);
+      _instance = new MartsKpiRepository();
     }
   } else {
-    console.log("[DB] Supabase not configured — using SQLite repository (Data Lake)");
-    _instance = new SQLiteKpiRepository();
+    console.log("[DB] Supabase not configured — using Marts repository (dbt models)");
+    _instance = new MartsKpiRepository();
   }
 
   return _instance;

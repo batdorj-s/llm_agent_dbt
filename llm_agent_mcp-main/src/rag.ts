@@ -3,6 +3,7 @@ dotenv.config();
 import fs from "fs";
 import path from "path";
 import yaml from "yaml";
+import { syncDbtModelsToRag } from "./dbt-sync.js";
 
 // Self-query cache: avoid redundant LLM calls across agents
 const selfQueryCache = new Map<string, { result: SelfQueryFilter; expiresAt: number }>();
@@ -223,6 +224,10 @@ export async function setupKnowledgeBase() {
   // Load knowledge base from YAML first
   const yamlDocs = loadKnowledgeBase();
   knowledgeDocuments.push(...yamlDocs);
+
+  // Load dbt model definitions as RAG context
+  const dbtDocs = syncDbtModelsToRag();
+  knowledgeDocuments.push(...dbtDocs);
 
   // Load approved feedback from failed_queries.json
   try {

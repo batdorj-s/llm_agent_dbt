@@ -47,7 +47,7 @@ describe("KPI Repository Factory — isSupabaseConfigured logic", () => {
     it("returns false when both SUPABASE_URL and SUPABASE_ANON_KEY are missing", async () => {
         const mod = await import("../db/kpi-repository.js");
         const repo = await mod.getRepository();
-        expect(repo.constructor.name).toBe("SQLiteKpiRepository");
+        expect(repo.constructor.name).toBe("MartsKpiRepository");
     });
 
     it("returns false with placeholder Supabase URL", async () => {
@@ -55,7 +55,7 @@ describe("KPI Repository Factory — isSupabaseConfigured logic", () => {
         process.env.SUPABASE_ANON_KEY = "placeholder-key";
         const mod = await import("../db/kpi-repository.js");
         const repo = await mod.getRepository();
-        expect(repo.constructor.name).toBe("SQLiteKpiRepository");
+        expect(repo.constructor.name).toBe("MartsKpiRepository");
     });
 
     it("returns false when keyword 'your_' is in Supabase key", async () => {
@@ -63,7 +63,7 @@ describe("KPI Repository Factory — isSupabaseConfigured logic", () => {
         process.env.SUPABASE_ANON_KEY = "your_anon_key_here";
         const mod = await import("../db/kpi-repository.js");
         const repo = await mod.getRepository();
-        expect(repo.constructor.name).toBe("SQLiteKpiRepository");
+        expect(repo.constructor.name).toBe("MartsKpiRepository");
     });
 
     it("returns false when DATABASE_URL points to localhost (dev mode)", async () => {
@@ -72,10 +72,10 @@ describe("KPI Repository Factory — isSupabaseConfigured logic", () => {
         process.env.DATABASE_URL = "postgres://localhost:5432/postgres";
         const mod = await import("../db/kpi-repository.js");
         const repo = await mod.getRepository();
-        expect(repo.constructor.name).toBe("SQLiteKpiRepository");
+        expect(repo.constructor.name).toBe("MartsKpiRepository");
     });
 
-    it("returns SQLite even without env — getKpi does not crash", async () => {
+    it("returns Marts even without env — getKpi does not crash", async () => {
         const mod = await import("../db/kpi-repository.js");
         const repo = await mod.getRepository();
         const result = await repo.getKpi("sales");
