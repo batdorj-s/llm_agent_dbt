@@ -1,14 +1,14 @@
 version: 2
 models:
   - name: stg_sales
-    description: Cleaned sales data sourced from test_upload_1782966868758.
+    description: Cleaned sales data sourced from test_upload_1782990274061.
     columns:
       - name: date
-        description: Column from test_upload_1782966868758.date.
+        description: Column from test_upload_1782990274061.date.
       - name: amount
-        description: Column from test_upload_1782966868758.amount.
+        description: Column from test_upload_1782990274061.amount.
       - name: customer_id
-        description: Column from test_upload_1782966868758.customer_id.
+        description: Column from test_upload_1782990274061.customer_id.
         tests:
           - unique
           - not_null
@@ -51,30 +51,3 @@ models:
       - assert_true:
           expression: total_spend >= 0
           severity: error
-
-  - name: finance_summary
-    description: "Monthly financial summary by category (transactions mart)"
-    columns:
-      - name: нийт_дүн
-        tests:
-          - not_null
-      - name: нийт_орлого
-        tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              expression: ">= 0"
-      - name: нийт_зарлага
-        tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              expression: ">= 0"
-
-  - name: finance_by_party
-    description: "Per-counterparty aggregated transaction summary"
-    columns:
-      - name: харилцагч
-        tests:
-          - not_null
-      - name: нийт_дүн
-        tests:
-          - not_null

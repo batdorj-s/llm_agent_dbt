@@ -249,11 +249,17 @@ export async function setupKnowledgeBase() {
   const yamlDocs = loadKnowledgeBase();
   knowledgeDocuments.push(...yamlDocs);
 
-  // Load finance glossary
+  // Load finance glossary (deduplicated by stable id)
   const financeDocs = ingestFinanceGlossary();
-  knowledgeDocuments.push(...financeDocs);
-  if (financeDocs.length > 0) {
-    console.log(`[RAG] Loaded ${financeDocs.length} finance glossary terms`);
+  let financeAdded = 0;
+  for (const doc of financeDocs) {
+    if (!knowledgeDocuments.some(d => d.id === doc.id)) {
+      knowledgeDocuments.push(doc);
+      financeAdded++;
+    }
+  }
+  if (financeAdded > 0) {
+    console.log(`[RAG] Loaded ${financeAdded} finance glossary terms`);
   }
 
   // Load dbt model definitions as RAG context
