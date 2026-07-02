@@ -173,7 +173,7 @@ export async function createLLMWithOrder(options?: {
 /**
  * Check if an error is a rate-limit / quota error.
  */
-function isRateLimitError(err: any): boolean {
+export function isRateLimitError(err: any): boolean {
     const msg = (err?.message || "").toLowerCase();
     return msg.includes("429") || msg.includes("rate limit") || msg.includes("quota") ||
         msg.includes("too many requests") || msg.includes("rate_limit") ||
@@ -258,12 +258,7 @@ export async function invokeWithFallback(
             lastError = err;
             const isRateLimit = isRateLimitError(err);
             console.warn(`[LLM] ${p.provider.toUpperCase()} failed: ${isRateLimit ? "RATE LIMIT" : err.message}`);
-            if (!isRateLimit) {
-                // Non-retryable error — do not try other providers
-                break;
-            }
-            // Rate-limit: try next provider
-            console.log(`[LLM] Falling back to next provider after ${p.provider} rate limit...`);
+            console.log(`[LLM] Falling back to next provider after ${p.provider} failure...`);
         }
     }
 
