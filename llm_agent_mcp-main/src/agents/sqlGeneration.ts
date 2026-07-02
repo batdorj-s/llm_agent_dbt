@@ -149,14 +149,14 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
       const groupCol = subCatCol || categoryCol;
 
       if (/нийт.зарлага|total.expense|зарлага.нийт/i.test(lowerQuery)) {
+        const loanExclude = subCatCol ? `\n  AND "${subCatCol}" NOT ILIKE '%зээл%'` : "";
         return [
           `SELECT`,
           `  "${groupCol}" AS ангилал,`,
           `  SUM("${amountCol}") AS нийт_дүн,`,
           `  COUNT(*) AS тоо`,
           `FROM "${tableName}"`,
-          `WHERE "${categoryCol}" ILIKE '%зарлага%'`,
-          `   OR "${categoryCol}" ILIKE '%expense%'`,
+          `WHERE ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%')${loanExclude}`,
           `GROUP BY 1`,
           `ORDER BY 2 DESC;`,
         ].join("\n");
@@ -169,8 +169,8 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
           `  SUM("${amountCol}") AS нийт_дүн,`,
           `  COUNT(*) AS тоо`,
           `FROM "${tableName}"`,
-          `WHERE "${categoryCol}" ILIKE '%орлого%'`,
-          `   OR "${categoryCol}" ILIKE '%income%'`,
+          `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
+          `  AND "${categoryCol}" NOT ILIKE '%зээл%'`,
           `GROUP BY 1`,
           `ORDER BY 2 DESC;`,
         ].join("\n");

@@ -387,7 +387,7 @@ app.get("/api/finance-charts", async (req, res) => {
     // Excludes Зарлага/Зээл (loan repayments) and Зарлага/Бусад (catches misclassified
     // internal transfers like "КАСС РУУ ХИЙВ" that should be Дотоод шилжүүлэг).
     const isOpExpense = qSubCat
-      ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${qSubCat} NOT ILIKE 'бусад')`
+      ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${qSubCat} NOT ILIKE '%бусад%')`
       : `${qCat} ILIKE '%зарлага%'`;
     // Noise filter: exclude internal transfers and owner loans (Дотоод шилжүүлэг, Эздийн зээл)
     const notNoise = `${qCat} NOT ILIKE '%шилжүүлэг%' AND ${qCat} NOT ILIKE '%эздийн зээл%'`;

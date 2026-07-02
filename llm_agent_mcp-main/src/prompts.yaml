@@ -385,10 +385,13 @@ finance_context: |
 
   ## Example queries:
   User: "Нийт зарлага хэд вэ?" / "What is total expense?"
-  SQL: SELECT SUM("дүн") FROM transactions WHERE "ангилал" ILIKE '%зарлага%'
+  SQL: SELECT SUM("дүн") FROM transactions WHERE "ангилал" ILIKE '%зарлага%' AND "дэд_ангилал" NOT ILIKE '%зээл%'
+
+  User: "Цалин хэд вэ?" / "What is the payroll expense?"
+  SQL: SELECT SUM("дүн") FROM transactions WHERE "дэд_ангилал" ILIKE '%цалин%'
 
   User: "Харилцагчаар задал" / "Break down by partner"
   SQL: SELECT "харилцагч", SUM("дүн") FROM transactions GROUP BY "харилцагч" ORDER BY 2 DESC
 
   User: "Сараар орлого харуул" / "Show monthly income"
-  SQL: SELECT DATE_TRUNC('month', "өдөр") AS сар, SUM("дүн") FROM transactions WHERE "ангилал" ILIKE '%орлого%' GROUP BY 1 ORDER BY 1
+  SQL: SELECT DATE_TRUNC('month', "өдөр") AS сар, SUM("дүн") FROM transactions WHERE "ангилал" ILIKE '%орлого%' AND "ангилал" NOT ILIKE '%зээл%' GROUP BY 1 ORDER BY 1

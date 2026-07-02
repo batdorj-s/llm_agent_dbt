@@ -1,12 +1,19 @@
-import { getPool } from "../db/data-lake.js";
+import { getPool, getActiveCatalogEntry, quoteIdent } from "../db/data-lake.js";
 import { computeMetrics } from "./reportMetrics.js";
 import { getRepository } from "../db/kpi-repository.js";
+import { findConceptColumn } from "./columnSynonyms.js";
+import { buildMntAmountExpr } from "../utils/sqlHelpers.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import path from "path";
 import fs from "fs";
 
 function formatCurrency(value: number): string {
-  return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `₮${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// PDF-safe: Helvetica uses WinAnsi which cannot encode ₮ (U+20AE)
+function formatCurrencyPdf(value: number): string {
+  return `MNT ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatNumber(value: number): string {
@@ -15,15 +22,67 @@ function formatNumber(value: number): string {
 
 // ── PDF Report ─────────────────────────────────────────────────────────
 
+async function getFinanceReportData(userId: string, startDate?: string, endDate?: string) {
+  const entry = await getActiveCatalogEntry(userId);
+  if (!entry) return null;
+  const cols: string[] = JSON.parse(entry.columns_info);
+  const amtCol = findConceptColumn(cols, "finance_amount", entry.table_name);
+  const catCol = findConceptColumn(cols, "finance_category", entry.table_name);
+  const subCatCol = findConceptColumn(cols, "finance_subcategory", entry.table_name);
+  const dateCol = findConceptColumn(cols, "finance_date", entry.table_name);
+  if (!amtCol || !catCol) return null;
+
+  const qTbl = quoteIdent(entry.table_name);
+  const qAmt = buildMntAmountExpr(quoteIdent(amtCol));
+  const qCat = quoteIdent(catCol);
+  const qSubCat = subCatCol ? quoteIdent(subCatCol) : null;
+  const isOpIncome  = `(${qCat} ILIKE '%орлого%' AND ${qCat} NOT ILIKE '%зээл%')`;
+  const isOpExpense = qSubCat
+    ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${qSubCat} NOT ILIKE '%бусад%')`
+    : `${qCat} ILIKE '%зарлага%'`;
+
+  let dateWhere = "";
+  const dParams: any[] = [];
+  if (dateCol && (startDate || endDate)) {
+    const qDate = quoteIdent(dateCol);
+    if (startDate) { dParams.push(startDate); dateWhere += ` AND ${qDate} >= $${dParams.length}`; }
+    if (endDate)   { dParams.push(endDate);   dateWhere += ` AND ${qDate} <= $${dParams.length}`; }
+  }
+
+  const [incomeRes, expenseRes, monthlyRes] = await Promise.all([
+    getPool().query(`SELECT COALESCE(SUM(${qAmt}), 0) AS total FROM ${qTbl} WHERE ${isOpIncome}${dateWhere}`, dParams),
+    getPool().query(`SELECT COALESCE(SUM(${qAmt}), 0) AS total FROM ${qTbl} WHERE ${isOpExpense}${dateWhere}`, dParams),
+    dateCol ? getPool().query(`
+      SELECT TO_CHAR(DATE_TRUNC('month', ${quoteIdent(dateCol)}), 'Mon YYYY') AS month,
+             SUM(CASE WHEN ${isOpIncome} THEN ${qAmt} ELSE 0 END) AS revenue
+      FROM ${qTbl}
+      WHERE ${qCat} NOT ILIKE '%шилжүүлэг%'${dateWhere}
+      GROUP BY 1, DATE_TRUNC('month', ${quoteIdent(dateCol)})
+      ORDER BY DATE_TRUNC('month', ${quoteIdent(dateCol)})`, dParams) : null,
+  ]);
+
+  const totalIncome  = Number(incomeRes.rows[0]?.total || 0);
+  const totalExpense = Number(expenseRes.rows[0]?.total || 0);
+  const history = (monthlyRes?.rows ?? []).map((r: any) => ({ month: r.month, revenue: Number(r.revenue || 0) }));
+
+  return { totalIncome, totalExpense, netProfit: totalIncome - totalExpense, history };
+}
+
 export async function generateReportPdf(userId: string, startDate?: string, endDate?: string): Promise<Buffer> {
   const dateFilter = { startDate, endDate };
-  const [metrics, repo] = await Promise.all([computeMetrics(userId, startDate, endDate), getRepository()]);
-  const [history, salesKpi, usersKpi, churnKpi] = await Promise.all([
-    repo.getSalesHistory(12, dateFilter),
-    repo.getKpi("sales", dateFilter),
-    repo.getKpi("users", dateFilter),
-    repo.getKpi("churn_rate", dateFilter),
+  const [metrics, financeData, repo] = await Promise.all([
+    computeMetrics(userId, startDate, endDate),
+    getFinanceReportData(userId, startDate, endDate),
+    getRepository(),
   ]);
+  const [history, salesKpi, usersKpi, churnKpi] = financeData
+    ? [financeData.history, null, null, null]
+    : await Promise.all([
+        repo.getSalesHistory(12, dateFilter),
+        repo.getKpi("sales", dateFilter),
+        repo.getKpi("users", dateFilter),
+        repo.getKpi("churn_rate", dateFilter),
+      ]);
 
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -49,21 +108,31 @@ export async function generateReportPdf(userId: string, startDate?: string, endD
   }
 
   // Title
-  text("SALES REPORT", 16, { bold: true, color: [0, 0, 0] }); y -= 20;
+  const reportTitle = financeData ? "FINANCIAL REPORT" : "SALES REPORT";
+  text(reportTitle, 16, { bold: true, color: [0, 0, 0] }); y -= 20;
   text(`Generated: ${new Date().toISOString().split("T")[0]}`, 9); y -= 24;
 
   // KPI Summary
   text("KPI SUMMARY", 12, { bold: true }); y -= 18;
 
   const hyphen = "-";
-  const kpiRows = [
-    ["Sales Revenue", salesKpi ? formatCurrency(salesKpi.current) : hyphen],
-    ["Active Users", usersKpi ? formatNumber(usersKpi.current) : hyphen],
-    ["Churn Rate", churnKpi ? `${churnKpi.current}%` : hyphen],
-    ["Avg Order Value", metrics ? formatCurrency(metrics.aov) : hyphen],
-    ["Growth Rate", metrics ? `${metrics.growthRate.toFixed(1)}%` : hyphen],
-    ["Top Category", metrics?.topCategory ?? hyphen],
-  ];
+  const kpiRows: [string, string][] = financeData
+    ? [
+        ["Total Income",   formatCurrencyPdf(financeData.totalIncome)],
+        ["Total Expenses", formatCurrencyPdf(financeData.totalExpense)],
+        ["Net Profit",     formatCurrencyPdf(financeData.netProfit)],
+        ["Avg Order Value", metrics ? formatCurrencyPdf(metrics.aov) : hyphen],
+        ["Growth Rate",    metrics ? `${metrics.growthRate.toFixed(1)}%` : hyphen],
+        ["Top Category",   metrics?.topCategory ?? hyphen],
+      ]
+    : [
+        ["Sales Revenue", salesKpi ? formatCurrencyPdf(salesKpi.current) : hyphen],
+        ["Active Users",  usersKpi ? formatNumber(usersKpi.current) : hyphen],
+        ["Churn Rate",    churnKpi ? `${churnKpi.current}%` : hyphen],
+        ["Avg Order Value", metrics ? formatCurrencyPdf(metrics.aov) : hyphen],
+        ["Growth Rate",   metrics ? `${metrics.growthRate.toFixed(1)}%` : hyphen],
+        ["Top Category",  metrics?.topCategory ?? hyphen],
+      ];
 
   for (const [label, value] of kpiRows) {
     text(label, 9, { bold: true }); text(value, 9, { x: col2 }); y -= 14;
@@ -130,7 +199,7 @@ export async function generateReportPdf(userId: string, startDate?: string, endD
       const change = prev > 0 ? ((row.revenue - prev) / prev * 100) : 0;
 
       page.drawText(row.month, { x: tableLeft, y, size: 8, font, color: rgb(0.3, 0.3, 0.3) });
-      page.drawText(formatCurrency(row.revenue), { x: tableLeft + colW, y, size: 8, font, color: rgb(0.3, 0.3, 0.3) });
+      page.drawText(formatCurrencyPdf(row.revenue), { x: tableLeft + colW, y, size: 8, font, color: rgb(0.3, 0.3, 0.3) });
       page.drawText(i > 0 ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : hyphen, { x: tableLeft + colW * 2, y, size: 8, font, color: rgb(0.3, 0.3, 0.3) });
 
       y -= 11;
@@ -156,37 +225,58 @@ export async function generateReportXlsx(userId: string, startDate?: string, end
   const mod = (XLSX as any).default || XLSX;
   const dateFilter = { startDate, endDate };
 
-  const [metrics, repo] = await Promise.all([computeMetrics(userId, startDate, endDate), getRepository()]);
-  const [history, salesKpi, usersKpi, churnKpi] = await Promise.all([
-    repo.getSalesHistory(12, dateFilter),
-    repo.getKpi("sales", dateFilter),
-    repo.getKpi("users", dateFilter),
-    repo.getKpi("churn_rate", dateFilter),
+  const [metrics, financeData, repo] = await Promise.all([
+    computeMetrics(userId, startDate, endDate),
+    getFinanceReportData(userId, startDate, endDate),
+    getRepository(),
   ]);
+  const [history, salesKpi, usersKpi, churnKpi] = financeData
+    ? [financeData.history, null, null, null]
+    : await Promise.all([
+        repo.getSalesHistory(12, dateFilter),
+        repo.getKpi("sales", dateFilter),
+        repo.getKpi("users", dateFilter),
+        repo.getKpi("churn_rate", dateFilter),
+      ]);
 
   const wb = mod.utils.book_new();
 
-  // Sheet 1: Tailan (Summary)
-  const summaryData = [
-    ["Borluulaltyn Tailan", ""],
-    ["Uüsgegdsen:", new Date().toISOString().split("T")[0]],
-    [],
-    ["KPI", "Current", "Target"],
-    ["Sales Revenue", salesKpi?.current ?? "—", salesKpi?.target ?? "—"],
-    ["Active Users", usersKpi?.current ?? "—", usersKpi?.target ?? "—"],
-    ["Churn Rate (%)", churnKpi?.current ?? "—", churnKpi?.target ?? "—"],
-    ["Avg Order Value", metrics?.aov ?? "—", ""],
-    ["Growth Rate (%)", metrics?.growthRate ?? "—", ""],
-    ["Top Category", metrics?.topCategory ?? "—", ""],
-  ];
+  // Sheet 1: Summary
+  const sheetTitle = financeData ? "Санхүүгийн тайлан" : "Borluulaltyn Tailan";
+  const summaryData = financeData
+    ? [
+        [sheetTitle, ""],
+        ["Үүсгэгдсэн:", new Date().toISOString().split("T")[0]],
+        [],
+        ["Үзүүлэлт", "Дүн (₮)"],
+        ["Нийт орлого",  financeData.totalIncome],
+        ["Нийт зарлага", financeData.totalExpense],
+        ["Цэвэр ашиг",   financeData.netProfit],
+        ["Дундаж гүйлгээ", metrics?.aov ?? "—"],
+        ["Өсөлт (%)",     metrics?.growthRate ?? "—"],
+        ["Тэргүүлэх зардал", metrics?.topCategory ?? "—"],
+      ]
+    : [
+        [sheetTitle, ""],
+        ["Uüsgegdsen:", new Date().toISOString().split("T")[0]],
+        [],
+        ["KPI", "Current", "Target"],
+        ["Sales Revenue", salesKpi?.current ?? "—", salesKpi?.target ?? "—"],
+        ["Active Users",  usersKpi?.current ?? "—", usersKpi?.target ?? "—"],
+        ["Churn Rate (%)", churnKpi?.current ?? "—", churnKpi?.target ?? "—"],
+        ["Avg Order Value", metrics?.aov ?? "—", ""],
+        ["Growth Rate (%)", metrics?.growthRate ?? "—", ""],
+        ["Top Category", metrics?.topCategory ?? "—", ""],
+      ];
   const ws1 = mod.utils.aoa_to_sheet(summaryData);
   ws1["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }];
   mod.utils.book_append_sheet(wb, ws1, "Tailan");
 
-  // Sheet 2: Borluulalt (Sales History)
+  // Sheet 2: History
   if (history.length > 0) {
+    const historyLabel = financeData ? "Орлого" : "Orlogo";
     const historyData = [
-      ["Sar", "Orlogo", "Oörchlolt (%)"],
+      ["Sar", historyLabel, "Oörchlolt (%)"],
       ...history.map((row, i) => {
         const prev = i > 0 ? history[i - 1].revenue : row.revenue;
         const change = prev > 0 ? ((row.revenue - prev) / prev * 100) : 0;
@@ -195,7 +285,7 @@ export async function generateReportXlsx(userId: string, startDate?: string, end
     ];
     const ws2 = mod.utils.aoa_to_sheet(historyData);
     ws2["!cols"] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }];
-    mod.utils.book_append_sheet(wb, ws2, "Borluulalt");
+    mod.utils.book_append_sheet(wb, ws2, financeData ? "Сараар орлого" : "Borluulalt");
   }
 
   const buffer = mod.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
