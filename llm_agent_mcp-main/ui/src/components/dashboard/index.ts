@@ -6,3 +6,7 @@ export { SalesCard } from "./SalesCard";
 export { TopSearch } from "./TopSearch";
 export { ProportionSales } from "./ProportionSales";
 export { ActiveChart } from "./ActiveChart";
+export { IntroduceRow } from "./IntroduceRow";
+export { OfflineData } from "./OfflineData";
+export { Gauge } from "./Gauge";
+export { Radar } from "./Radar";
