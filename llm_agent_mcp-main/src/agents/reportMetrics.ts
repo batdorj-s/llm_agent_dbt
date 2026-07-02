@@ -208,7 +208,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
           ORDER BY total DESC LIMIT 1`;
       } else {
         const expenseCond = rawMainCatCol
-          ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%зарлага%')`
+          ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%Expense%' OR ${quoteIdent(rawMainCatCol)} LIKE '%expense%')`
           : "";
         topCatQuery = `
           SELECT ${quoteIdent(catCol)} as category, SUM(${amountExpr(salesCol)}) as total

@@ -75,7 +75,7 @@ describe("generateVisualTag dynamic year range", () => {
 
         const result = generateVisualTag(data);
         expect(result).toContain("<visual>");
-        expect(result).toContain('"type":"pie"');
+        expect(result).toContain('"type":"donut"');
     });
 
     it("generates combo chart for time series with 2nd metric", () => {

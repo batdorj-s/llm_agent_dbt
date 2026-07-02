@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
-import { initDataLake, isPgAvailable } from "../db/data-lake.js";
+import { initDataLake, isPgAvailable, getPool } from "../db/data-lake.js";
+import { verifyToken } from "../auth.js";
 import type { Express } from "express";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@admin.com";
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || "bataa0818";
+const SUFFIX = Date.now();
+const TEST_TABLE = `export_test_${SUFFIX}`;
 
 describe("Export endpoints — POST /api/report/export-pdf and export-xlsx", () => {
     let app: Express;
@@ -21,6 +24,44 @@ describe("Export endpoints — POST /api/report/export-pdf and export-xlsx", () 
             .post("/api/auth/login")
             .send({ email: ADMIN_EMAIL, password: ADMIN_PASS });
         adminToken = adminRes.body.token;
+
+        // Set up test data for export
+        const payload = verifyToken(adminToken);
+        if (!payload.success || !payload.payload) return;
+        const ownerId = payload.payload.userId;
+
+        await getPool().query(
+            `CREATE TABLE IF NOT EXISTS "${TEST_TABLE}" (id INT, amount NUMERIC, quantity INT, category TEXT, date TEXT)`
+        );
+        await getPool().query(
+            `INSERT INTO "${TEST_TABLE}" (id, amount, quantity, category, date) VALUES
+             (1, 500000, 2, 'Operating Expense', '2024-06-01'),
+             (2, 300000, 1, 'Rent Expense', '2024-06-15'),
+             (3, 1000000, 1, 'Sales Income', '2024-06-20')`
+        );
+        await getPool().query(
+            `INSERT INTO data_lake_catalog
+             (table_name, created_by, owner_id, visibility, columns_info, description)
+             VALUES ($1, $2, $2, 'private', '["id","amount","quantity","category","date"]', 'export test data')
+             ON CONFLICT (table_name) DO UPDATE SET
+               owner_id = EXCLUDED.owner_id, visibility = EXCLUDED.visibility,
+               columns_info = EXCLUDED.columns_info`,
+            [TEST_TABLE, ownerId]
+        );
+        await getPool().query(
+            `INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)
+             VALUES ($1, $1, 'dataset', 'export test data', $2, 'private', NOW())
+             ON CONFLICT (id) DO UPDATE SET
+               owner_id = EXCLUDED.owner_id, visibility = EXCLUDED.visibility`,
+            [TEST_TABLE, ownerId]
+        );
+    });
+
+    afterAll(async () => {
+        if (!isPgAvailable()) return;
+        await getPool().query(`DROP TABLE IF EXISTS "${TEST_TABLE}" CASCADE`).catch(() => {});
+        await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [TEST_TABLE]).catch(() => {});
+        await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [TEST_TABLE]).catch(() => {});
     });
 
     describe("POST /api/report/export-pdf", () => {

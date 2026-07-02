@@ -28,15 +28,20 @@ describe("computeMetrics — cross-tenant integration", () => {
                 `CREATE TABLE "${tableB}" (id INT, amount NUMERIC, quantity INT, category TEXT, date TEXT)`
             );
 
+            const catA = 'Operating Expense';
+            const catB = 'Rent Expense';
+
             await getPool().query(
                 `INSERT INTO "${tableA}" (id, amount, quantity, category, date) VALUES
-                 (1, 100, 2, 'Electronics', '2024-06-01'),
-                 (2, 200, 3, 'Electronics', '2024-06-15')`
+                 (1, 100, 2, $1, '2024-06-01'),
+                 (2, 200, 3, $1, '2024-06-15')`,
+                [catA]
             );
             await getPool().query(
                 `INSERT INTO "${tableB}" (id, amount, quantity, category, date) VALUES
-                 (1, 200, 5, 'Clothing', '2024-06-01'),
-                 (2, 300, 6, 'Clothing', '2024-06-15')`
+                 (1, 200, 5, $1, '2024-06-01'),
+                 (2, 300, 6, $1, '2024-06-15')`,
+                [catB]
             );
 
             await getPool().query(
@@ -88,8 +93,8 @@ describe("computeMetrics — cross-tenant integration", () => {
             const topCatA = tailanA.find((r: string[]) => r[0] === "Top Category")?.[1] ?? "";
             const topCatB = tailanB.find((r: string[]) => r[0] === "Top Category")?.[1] ?? "";
 
-            expect(topCatA).toBe("Electronics");
-            expect(topCatB).toBe("Clothing");
+            expect(topCatA).toBe(catA);
+            expect(topCatB).toBe(catB);
 
             console.log(`[CROSS-TENANT-EXPORT] UserA Top Category=${topCatA}, UserB Top Category=${topCatB} — isolated OK`);
         } finally {
@@ -118,18 +123,23 @@ describe("computeMetrics — cross-tenant integration", () => {
                 `CREATE TABLE "${tableB}" (id INT, amount NUMERIC, quantity INT, category TEXT, date TEXT)`
             );
 
-            // User A data: AOV = 100/2 = 50, category = Electronics
+            const catA = 'Operating Expense';
+            const catB = 'Rent Expense';
+
+            // User A data: AOV = 100/2 = 50, top expense category = catA
             await getPool().query(
                 `INSERT INTO "${tableA}" (id, amount, quantity, category, date) VALUES
-                 (1, 100, 2, 'Electronics', '2024-06-01'),
-                 (2, 200, 3, 'Electronics', '2024-06-15')`
+                 (1, 100, 2, $1, '2024-06-01'),
+                 (2, 200, 3, $1, '2024-06-15')`,
+                [catA]
             );
 
-            // User B data: AOV = 200/5 = 40, category = Clothing
+            // User B data: AOV = 200/5 = 40, top expense category = catB
             await getPool().query(
                 `INSERT INTO "${tableB}" (id, amount, quantity, category, date) VALUES
-                 (1, 200, 5, 'Clothing', '2024-06-01'),
-                 (2, 300, 6, 'Clothing', '2024-06-15')`
+                 (1, 200, 5, $1, '2024-06-01'),
+                 (2, 300, 6, $1, '2024-06-15')`,
+                [catB]
             );
 
             // Register both tables in catalog with private visibility
@@ -159,13 +169,13 @@ describe("computeMetrics — cross-tenant integration", () => {
             // Verify isolation: User A sees only A's data
             const metricsA = await computeMetrics(userA);
             expect(metricsA).not.toBeNull();
-            expect(metricsA!.topCategory).toBe("Electronics");
+            expect(metricsA!.topCategory).toBe(catA);
 
             // Verify isolation: User B sees only B's data (not A's)
             const metricsB = await computeMetrics(userB);
             expect(metricsB).not.toBeNull();
-            expect(metricsB!.topCategory).toBe("Clothing");
-            expect(metricsB!.topCategory).not.toBe("Electronics");
+            expect(metricsB!.topCategory).toBe(catB);
+            expect(metricsB!.topCategory).not.toBe(catA);
 
             console.log(`[CROSS-TENANT] UserA topCategory='${metricsA!.topCategory}', UserB topCategory='${metricsB!.topCategory}' — isolated OK`);
         } finally {
