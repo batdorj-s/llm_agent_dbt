@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { BarChart2, Activity, TrendingUp, PieChart as PieChartIcon, LayoutDashboard, Upload, ThumbsUp, ThumbsDown, FileText } from "lucide-react";
-import { chartTheme } from "../components/chartTheme";
 
 import { Message, KpiData, SalesHistory, UploadedFile, ServerStatus, ComputedMetrics } from "../components/types";
 import { Header } from "../components/Header";
@@ -13,7 +12,7 @@ import { AdminPanel } from "../components/AdminPanel";
 import { ChatInput } from "../components/ChatInput";
 import { PreviewDrawer } from "../components/PreviewDrawer";
 import { formatMessageText } from "../components/ChatMessage";
-import { SalesCard, TopSearch, ProportionSales, ActiveChart } from "../components/dashboard";
+import { SalesCard, TopSearch, ProportionSales, ActiveChart, IntroduceRow, OfflineData, Gauge, Radar } from "../components/dashboard";
 
 export default function Home() {
   // ── Auth ──
@@ -681,7 +680,15 @@ export default function Home() {
                       <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} computedMetrics={computedMetrics} salesHistory={salesHistory} isLoading={isDashboardLoading} />
                     </div>
 
-                    {/* CHARTS ROW */}
+                    {/* INTRODUCE ROW */}
+                    <div className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>
+                      <IntroduceRow
+                        totalSales={salesKpi?.current}
+                        totalVisits={usersKpi?.current}
+                      />
+                    </div>
+
+                    {/* SALES CARD */}
                     <div className="animate-fade-in-up" style={{ animationDelay: "150ms" }}>
                       <SalesCard
                         salesData={salesHistory.map((h) => ({ x: h.month, y: h.revenue }))}
@@ -694,10 +701,26 @@ export default function Home() {
                       <TopSearch />
                     </div>
 
-                    {/* ACTIVE CHART */}
-                    <div className="border border-border/80 rounded-xl p-5 bg-card animate-fade-in-up" style={{ animationDelay: "250ms" }}>
-                      <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Үйл ажиллагааны идэвхжил</p>
-                      <ActiveChart />
+                    {/* ACTIVE CHART + GAUGE + RADAR */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-up" style={{ animationDelay: "250ms" }}>
+                      <div className="lg:col-span-2 border border-border/80 rounded-xl p-5 bg-card">
+                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Үйл ажиллагааны идэвхжил</p>
+                        <ActiveChart />
+                      </div>
+                      <div className="border border-border/80 rounded-xl p-5 bg-card flex flex-col items-center justify-center">
+                        <Gauge percent={salesKpi ? Math.round((salesKpi.current / salesKpi.target) * 100) : 78} title="Зорилтын биелэлт" />
+                      </div>
+                    </div>
+
+                    {/* OFFLINE DATA + RADAR */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-up" style={{ animationDelay: "300ms" }}>
+                      <div className="lg:col-span-2">
+                        <OfflineData />
+                      </div>
+                      <div className="border border-border/80 rounded-xl p-5 bg-card">
+                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Үзүүлэлтийн харьцуулалт</p>
+                        <Radar />
+                      </div>
                     </div>
                   </div>
                 )}
