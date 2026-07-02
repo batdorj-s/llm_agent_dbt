@@ -238,10 +238,11 @@ describe("Finance transaction concepts", () => {
         expect(sql).toContain("харилцагч");
         expect(sql).toContain("GROUP BY");
     });
-    it("finance SQL: сараар query generates DATE_TRUNC", async () => {
+    it("finance SQL: сараар query generates TO_CHAR with DATE cast", async () => {
         const sql = await buildDeterministicTechSql("сараар орлого задла", TRANSACTIONS);
         expect(sql).not.toBeNull();
-        expect(sql).toContain("DATE_TRUNC");
+        expect(sql).toContain("TO_CHAR");
+        expect(sql).toContain("::DATE");
         expect(sql).toContain("сар");
     });
 });

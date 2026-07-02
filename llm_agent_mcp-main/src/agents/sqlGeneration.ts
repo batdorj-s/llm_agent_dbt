@@ -192,12 +192,75 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
       if (/сараар|by.month|monthly|сар.тус.бүрээр/i.test(lowerQuery) && dateCol2) {
         return [
           `SELECT`,
-          `  DATE_TRUNC('month', "${dateCol2}") AS сар,`,
+          `  TO_CHAR(("${dateCol2}")::DATE, 'YYYY-MM') AS сар,`,
           `  SUM("${amountCol}") AS нийт_дүн,`,
           `  COUNT(*) AS гүйлгээний_тоо`,
           `FROM "${tableName}"`,
           `GROUP BY 1`,
           `ORDER BY 1 DESC;`,
+        ].join("\n");
+      }
+
+      // Daily net income (operating income - operating expense per day)
+      if (/өдрийн.цэвэр|daily.net|net.income|net.cash/i.test(lowerQuery) && dateCol2) {
+        const isOpIncomeExpr = `CASE WHEN "${categoryCol}" ILIKE '%орлого%' AND "${categoryCol}" NOT ILIKE '%зээл%' THEN "${amountCol}" ELSE 0 END`;
+        const isOpExpenseExpr = subCatCol
+          ? `CASE WHEN ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%') AND "${subCatCol}" NOT ILIKE '%зээл%' AND "${subCatCol}" NOT ILIKE '%бусад%' THEN "${amountCol}" ELSE 0 END`
+          : `CASE WHEN ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%') THEN "${amountCol}" ELSE 0 END`;
+        return [
+          `SELECT`,
+          `  TO_CHAR(("${dateCol2}")::DATE, 'MM/DD') AS label,`,
+          `  SUM(${isOpIncomeExpr}) - SUM(${isOpExpenseExpr}) AS value`,
+          `FROM "${tableName}"`,
+          `WHERE "${dateCol2}" IS NOT NULL AND "${categoryCol}" NOT ILIKE '%шилжүүлэг%' AND "${categoryCol}" NOT ILIKE '%эздийн зээл%'`,
+          `GROUP BY ("${dateCol2}")::DATE`,
+          `ORDER BY ("${dateCol2}")::DATE;`,
+        ].join("\n");
+      }
+
+      // Monthly profit/loss
+      if (/сарын.ашиг|monthly.profit|ашиг.алдагдал|p&l|орлого.зарлага.харьцуулалт|ашиг.тус/i.test(lowerQuery) && dateCol2) {
+        const isOpIncomeExpr = `CASE WHEN "${categoryCol}" ILIKE '%орлого%' AND "${categoryCol}" NOT ILIKE '%зээл%' THEN "${amountCol}" ELSE 0 END`;
+        const isOpExpenseExpr = subCatCol
+          ? `CASE WHEN ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%') AND "${subCatCol}" NOT ILIKE '%зээл%' AND "${subCatCol}" NOT ILIKE '%бусад%' THEN "${amountCol}" ELSE 0 END`
+          : `CASE WHEN ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%') THEN "${amountCol}" ELSE 0 END`;
+        return [
+          `SELECT`,
+          `  TO_CHAR(("${dateCol2}")::DATE, 'YYYY-MM') AS сар,`,
+          `  SUM(${isOpIncomeExpr}) AS орлого,`,
+          `  SUM(${isOpExpenseExpr}) AS зарлага,`,
+          `  SUM(${isOpIncomeExpr}) - SUM(${isOpExpenseExpr}) AS ашиг`,
+          `FROM "${tableName}"`,
+          `WHERE "${dateCol2}" IS NOT NULL AND "${categoryCol}" NOT ILIKE '%шилжүүлэг%' AND "${categoryCol}" NOT ILIKE '%эздийн зээл%'`,
+          `GROUP BY 1`,
+          `ORDER BY 1;`,
+        ].join("\n");
+      }
+
+      // Average transaction value
+      if (/дундаж.гүйлгээ|average.transaction|avg.transaction|avg.amount/i.test(lowerQuery)) {
+        return [
+          `SELECT`,
+          `  COUNT(*) AS гүйлгээний_тоо,`,
+          `  AVG("${amountCol}") AS дундаж_дүн,`,
+          `  MIN("${amountCol}") AS хамгийн_бага,`,
+          `  MAX("${amountCol}") AS хамгийн_их`,
+          `FROM "${tableName}";`,
+        ].join("\n");
+      }
+
+      // Top expense category (single best)
+      if (/хамгийн.их.зарлага|top.expense|top.spend|хамгийн.их.зарцуулсан/i.test(lowerQuery)) {
+        const loanExclude = subCatCol ? ` AND "${subCatCol}" NOT ILIKE '%зээл%'` : "";
+        return [
+          `SELECT`,
+          `  "${groupCol}" AS ангилал,`,
+          `  SUM("${amountCol}") AS нийт_дүн`,
+          `FROM "${tableName}"`,
+          `WHERE ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%')${loanExclude}`,
+          `GROUP BY 1`,
+          `ORDER BY 2 DESC`,
+          `LIMIT 1;`,
         ].join("\n");
       }
     }

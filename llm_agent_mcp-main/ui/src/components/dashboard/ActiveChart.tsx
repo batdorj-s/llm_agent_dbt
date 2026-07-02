@@ -2,16 +2,26 @@
 
 import { AreaChart, Area, ResponsiveContainer, ReferenceLine, YAxis, Tooltip } from "recharts";
 
-const cashData = [
+interface CashDataPoint {
+  x: string;
+  label?: string;
+  y: number;
+}
+
+const defaultCashData: CashDataPoint[] = [
   { x: "1/1", label: "1-р сарын эхлэл", y: 2118200 },
   { x: "2/1", label: "2-р сарын эхлэл", y: 1197539 },
   { x: "3/1", label: "3-р сарын эхлэл", y: 6582195 },
   { x: "4/1", label: "Q1 дуусгавар", y: 1049423 },
 ];
 
+interface ActiveChartProps {
+  cashData?: CashDataPoint[];
+}
+
 const formatM = (v: number) => `₮${(v / 1_000_000).toFixed(2)}M`;
 
-export const ActiveChart = () => {
+export const ActiveChart: React.FC<ActiveChartProps> = ({ cashData = defaultCashData }) => {
   const peak = Math.max(...cashData.map((d) => d.y));
   const opening = cashData[0].y;
   const closing = cashData[cashData.length - 1].y;

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -19,6 +19,8 @@ interface ExpenseCategory {
 
 interface OfflineDataProps {
   loading?: boolean;
+  categories?: ExpenseCategory[];
+  monthlyExpenses?: Record<string, { month: string; amount: number }[]>;
 }
 
 const defaultCategories: ExpenseCategory[] = [
@@ -73,8 +75,18 @@ const ringGradientId = "offlineRingGrad";
 
 const formatM = (v: number) => `₮${(v / 1_000_000).toFixed(1)}M`;
 
-export const OfflineData: React.FC<OfflineDataProps> = ({ loading = false }) => {
-  const [activeKey, setActiveKey] = useState(defaultCategories[0].name);
+export const OfflineData: React.FC<OfflineDataProps> = ({
+  loading = false,
+  categories: activeCategories = defaultCategories,
+  monthlyExpenses: activeMonthlyExpenses = monthlyExpenses,
+}) => {
+  const [activeKey, setActiveKey] = useState(activeCategories[0].name);
+
+  useEffect(() => {
+    if (activeCategories.length > 0 && !activeCategories.find(c => c.name === activeKey)) {
+      setActiveKey(activeCategories[0].name);
+    }
+  }, [activeCategories, activeKey]);
 
   if (loading) {
     return (
@@ -85,13 +97,13 @@ export const OfflineData: React.FC<OfflineDataProps> = ({ loading = false }) => 
     );
   }
 
-  const currentCategory = defaultCategories.find((c) => c.name === activeKey) ?? defaultCategories[0];
-  const chartData = monthlyExpenses[activeKey] ?? [];
+  const currentCategory = activeCategories.find((c) => c.name === activeKey) ?? activeCategories[0];
+  const chartData = activeMonthlyExpenses[activeKey] ?? [];
 
   return (
     <div className="rounded-xl border border-border/80 bg-card overflow-hidden">
       <div className="flex flex-wrap gap-1 p-4 border-b border-border/40">
-        {defaultCategories.map((cat, i) => {
+        {activeCategories.map((cat, i) => {
           const ringCircumference = 2 * Math.PI * 22;
           const ringOffset = ringCircumference * (1 - cat.share);
 
@@ -158,7 +170,7 @@ export const OfflineData: React.FC<OfflineDataProps> = ({ loading = false }) => 
             {currentCategory.name} — Сарын зарлага
           </span>
           <span className="text-[10px] font-mono text-foreground/40">
-            Q1 нийт: {formatM(monthlyExpenses[activeKey]?.reduce((s, d) => s + d.amount, 0) ?? 0)}
+            Q1 нийт: {formatM(activeMonthlyExpenses[activeKey]?.reduce((s, d) => s + d.amount, 0) ?? 0)}
           </span>
         </div>
         <ResponsiveContainer width="100%" height={220}>

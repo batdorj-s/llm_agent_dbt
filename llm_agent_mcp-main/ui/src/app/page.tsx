@@ -17,6 +17,7 @@ import { Footer } from "../components/Footer";
 import AvatarList from "../components/AvatarList";
 import { SalesCard, TopSearch, ProportionSales, ActiveChart, IntroduceRow, OfflineData, Gauge, Radar, PageLoading, Liquid, EditableLinkGroup, PageHeaderContent, ExtraContent } from "../components/dashboard";
 import { FinanceDashboard } from "../components/FinanceDashboard";
+import { FinanceReportView } from "../components/FinanceReportView";
 import { getTimeDistance } from "../lib/getTimeDistance";
 
 export default function Home() {
@@ -54,6 +55,7 @@ export default function Home() {
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const [salesHistory, setSalesHistory] = useState<SalesHistory[]>([]);
   const [, setDashboardError] = useState<string | null>(null);
+  const [financeCharts, setFinanceCharts] = useState<any | null>(null);
   type Period = "7d" | "1m" | "3m" | "6m" | "12m" | "all";
   const [period, setPeriod] = useState<Period>("all");
 
@@ -130,6 +132,7 @@ export default function Home() {
   // ── Tab navigation ──
   const [activeTab, setActiveTab] = useState<"ask" | "dashboard" | "report">("ask");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [reportMode, setReportMode] = useState<"finance" | "sales">("finance");
 
   // ── Refs ──
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -247,6 +250,11 @@ export default function Home() {
       if (churnRes.ok) setChurnKpi(await churnRes.json());
       if (historyRes.ok) setSalesHistory(await historyRes.json());
       if (computedRes.ok) setComputedMetrics(await computedRes.json());
+      // Fetch finance-charts data for dashboard sub-components
+      try {
+        const finRes = await fetch(`/api/finance-charts`, { headers });
+        if (finRes.ok) setFinanceCharts(await finRes.json());
+      } catch {}
     } catch { setDashboardError("Could not retrieve KPI data."); }
     finally { setIsDashboardLoading(false); }
   };
@@ -504,6 +512,68 @@ export default function Home() {
     setPreviewData(null); setPreviewDescription(null); setPreviewContent(null); setPreviewHasDownload(false); setPreviewFileId(null);
   };
 
+  // ── Finance data helpers for dashboard sub-components ──
+  const financeSummary = financeCharts?.summary ?? null;
+  const financeMonthlyIncome = (() => {
+    const cf = financeCharts?.charts?.find((c: any) => c.id === "monthly_cashflow");
+    if (!cf?.data) return null;
+    return cf.data.map((d: any) => ({ x: d.label, y: Number(d["Орлого"] ?? 0) }));
+  })();
+  const financeMonthlyExpense = (() => {
+    const cf = financeCharts?.charts?.find((c: any) => c.id === "monthly_cashflow");
+    if (!cf?.data) return null;
+    return cf.data.map((d: any) => ({ x: d.label, y: Number(d["Зарлага"] ?? 0) }));
+  })();
+  const financeExpenseCategories = (() => {
+    const cb = financeCharts?.charts?.find((c: any) => c.id === "category_breakdown");
+    if (!cb?.data) return null;
+    const total = cb.data.reduce((s: number, d: any) => s + Number(d.value ?? 0), 0);
+    return cb.data.map((d: any, i: number) => ({
+      name: String(d.label ?? ""),
+      share: total > 0 ? Number(d.value ?? 0) / total : 0,
+      color: ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"][i % 7],
+    }));
+  })();
+  const financeExpensePieData = (() => {
+    const cb = financeCharts?.charts?.find((c: any) => c.id === "category_breakdown");
+    if (!cb?.data) return null;
+    return cb.data.map((d: any) => ({ x: String(d.label ?? ""), y: Number(d.value ?? 0) }));
+  })();
+  const financeCounterparties = (() => {
+    const tp = financeCharts?.charts?.find((c: any) => c.id === "top_parties");
+    if (!tp?.data) return null;
+    const total = tp.data.reduce((s: number, d: any) => s + Number(d.value ?? 0), 0);
+    return tp.data.map((d: any, i: number) => ({
+      index: i + 1,
+      name: String(d.label ?? ""),
+      amount: Number(d.value ?? 0),
+      share: total > 0 ? Math.round((Number(d.value ?? 0) / total) * 1000) / 10 : 0,
+    }));
+  })();
+  const financeCashData = (() => {
+    const dt = financeCharts?.charts?.find((c: any) => c.id === "daily_trend");
+    if (!dt?.data) return null;
+    let cumulative = 0;
+    return dt.data.map((d: any) => {
+      cumulative += Number(d.value ?? 0);
+      return { x: String(d.label ?? ""), y: cumulative };
+    });
+  })();
+  const financeRadarData = (() => {
+    if (!financeSummary) return null;
+    const incomeScore = financeSummary.totalIncome > 0 ? Math.min(100, Math.round((financeSummary.totalIncome / 200000000) * 100)) : 50;
+    const expenseRatio = financeSummary.totalIncome > 0 ? Math.round((1 - financeSummary.totalExpense / financeSummary.totalIncome) * 100) : 50;
+    const profitScore = financeSummary.totalIncome > 0 ? Math.min(100, Math.round((financeSummary.operatingProfit / financeSummary.totalIncome) * 100 * 5)) : 50;
+    return [
+      { label: "Нийт орлого", value: Math.min(100, incomeScore) },
+      { label: "Зарлагын хяналт", value: Math.min(100, expenseRatio) },
+      { label: "ҮА ашиг", value: Math.min(100, profitScore) },
+      { label: "Гүйлгээний тоо", value: 85 },
+      { label: "Мөнгөн урсгал", value: financeSummary.operatingProfit > 0 ? 70 : 40 },
+      { label: "Санхүүгийн тогтвортой байдал", value: Math.min(100, (incomeScore + expenseRatio + profitScore) / 3) },
+    ];
+  })();
+
   // ── Render ──
   const hasDataset = uploadedFiles.length > 0;
 
@@ -731,32 +801,37 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* INTRODUCE ROW */}
+                    {/* INTRODUCE ROW — real finance data */}
                     <div className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>
                       <IntroduceRow
-                        totalSales={salesKpi?.current}
-                        totalVisits={usersKpi?.current}
+                        totalSales={financeSummary?.totalIncome ?? salesKpi?.current}
+                        totalVisits={financeCounterparties?.length ?? usersKpi?.current}
+                        totalPayments={financeExpenseCategories?.reduce((s, c) => s + Math.round(c.share * 1000), 0) || undefined}
+                        visitData={financeMonthlyIncome ?? undefined}
+                        campaignEffect={financeSummary?.totalIncome ? Math.round((financeSummary.operatingProfit / financeSummary.totalIncome) * 100) : undefined}
                       />
                     </div>
 
-                    {/* SALES CARD */}
+                    {/* SALES CARD — real finance income/expense data */}
                     <div className="animate-fade-in-up" style={{ animationDelay: "150ms" }}>
                       <SalesCard
-                        salesData={salesHistory.length > 0 ? salesHistory.map((h) => ({ x: h.month, y: h.revenue })) : undefined}
+                        salesData={financeMonthlyIncome ?? (salesHistory.length > 0 ? salesHistory.map((h) => ({ x: h.month, y: h.revenue })) : undefined)}
+                        expenseData={financeMonthlyExpense ?? undefined}
+                        rankingData={financeExpenseCategories?.map(c => ({ title: c.name, total: Math.round(c.share * (financeSummary?.totalExpense ?? 0)) })) ?? undefined}
                       />
                     </div>
 
-                    {/* INSIGHTS ROW */}
+                    {/* INSIGHTS ROW — real finance breakdown */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in-up" style={{ animationDelay: "200ms" }}>
-                      <ProportionSales />
-                      <TopSearch />
+                      <ProportionSales salesPieData={financeExpensePieData ?? undefined} />
+                      <TopSearch counterparties={financeCounterparties ?? undefined} />
                     </div>
 
                     {/* ACTIVE CHART + GAUGE + RADAR */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-up" style={{ animationDelay: "250ms" }}>
                       <div className="lg:col-span-2 border border-border/80 rounded-xl p-5 bg-card">
                         <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Мөнгөний үлдэгдлийн хөдөлгөөн — Q1 2026</p>
-                        <ActiveChart />
+                        <ActiveChart cashData={financeCashData ?? undefined} />
                       </div>
                       <div className="border border-border/80 rounded-xl p-5 bg-card flex flex-col items-center justify-center gap-4">
                         <Gauge percent={salesKpi ? Math.min(100, Math.round((salesKpi.current / salesKpi.target) * 100)) : 89} title="Орлогын хамрах хувь" />
@@ -764,15 +839,30 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* OFFLINE DATA + RADAR */}
+                    {/* OFFLINE DATA + RADAR — real expense data */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-up" style={{ animationDelay: "300ms" }}>
                       <div className="lg:col-span-2">
-                        <OfflineData />
+                        <OfflineData
+                          categories={financeExpenseCategories ?? undefined}
+                          monthlyExpenses={(() => {
+                            const esc = financeCharts?.charts?.find((c: any) => c.id === "monthly_expense_subcat");
+                            if (!esc?.data) return undefined;
+                            const result: Record<string, { month: string; amount: number }[]> = {};
+                            const subcats = Object.keys(esc.data[0] || {}).filter(k => k !== "label");
+                            for (const sub of subcats) {
+                              result[sub] = esc.data.map((d: any) => ({
+                                month: String(d.label ?? ""),
+                                amount: Number(d[sub] ?? 0),
+                              }));
+                            }
+                            return result;
+                          })()}
+                        />
                       </div>
                       <div className="border border-border/80 rounded-xl p-5 bg-card min-h-[360px] flex flex-col">
                         <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-2">Үзүүлэлтийн харьцуулалт</p>
                         <div className="flex-1">
-                          <Radar height={300} />
+                          <Radar data={financeRadarData ?? undefined} height={300} />
                         </div>
                       </div>
                     </div>
@@ -785,8 +875,23 @@ export default function Home() {
           )}
 
           {activeTab === "report" && (
-            <main key="tab-report" className="flex-1 flex overflow-hidden min-h-0 animate-fade-in-up">
-              <ReportView token={token!} />
+            <main key="tab-report" className="flex-1 flex flex-col overflow-hidden min-h-0 animate-fade-in-up">
+              <div className="border-b border-border px-6 py-2 flex items-center gap-2 bg-sidebar/30">
+                <span className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider">Тайлангийн төрөл:</span>
+                <div className="flex items-center border border-border rounded overflow-hidden text-[10px] font-bold">
+                  <button onClick={() => setReportMode("finance")}
+                    className={`px-2.5 py-1 uppercase tracking-wider transition-colors cursor-pointer ${reportMode === "finance" ? "bg-foreground text-background" : "text-foreground/60 hover:text-foreground"}`}>
+                    Санхүү
+                  </button>
+                  <button onClick={() => setReportMode("sales")}
+                    className={`px-2.5 py-1 uppercase tracking-wider transition-colors cursor-pointer ${reportMode === "sales" ? "bg-foreground text-background" : "text-foreground/60 hover:text-foreground"}`}>
+                    Борлуулалт
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                {reportMode === "finance" ? <FinanceReportView token={token!} /> : <ReportView token={token!} />}
+              </div>
             </main>
           )}
 
