@@ -27,7 +27,7 @@ const defaultRanking = Array.from({ length: 7 }, (_, i) => ({
 }));
 
 const formatCurrency = (v: number) =>
-  `$${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
+  `₮${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
 
 const CHART_COLORS = {
   sales: ["#5B8FF9", "#85b5fb"],
@@ -43,8 +43,8 @@ export const SalesCard: React.FC<SalesCardProps> = ({
   const [timeRange, setTimeRange] = useState<TimeType>("month");
 
   const tabs = [
-    { key: "sales" as const, label: "Борлуулалт" },
-    { key: "views" as const, label: "Хандалт" },
+    { key: "sales" as const, label: "Орлого" },
+    { key: "views" as const, label: "Зарлага" },
   ];
 
   const barColor = tab === "sales" ? CHART_COLORS.sales[0] : CHART_COLORS.views[0];
@@ -124,7 +124,7 @@ export const SalesCard: React.FC<SalesCardProps> = ({
                 tick={{ fontSize: 10, fill: "var(--color-foreground)" }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`}
               />
               <Tooltip
                 formatter={(value) => formatCurrency(Number(value) || 0)}
@@ -153,7 +153,7 @@ export const SalesCard: React.FC<SalesCardProps> = ({
         {/* Ranking list */}
         <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l border-border/60 p-5">
           <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">
-            {tab === "sales" ? "Салбарын борлуулалт" : "Салбарын хандалт"}
+            {tab === "sales" ? "Орлогын эх үүсвэр" : "Зарлагын ангилал"}
           </h4>
           <ul className="space-y-3">
             {rankingData.map((item, i) => (

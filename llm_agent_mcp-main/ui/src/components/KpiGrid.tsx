@@ -119,10 +119,10 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {[
         <KpiCard key="sales"
-          label="Sales Revenue"
-          value={salesKpi ? `$${salesKpi.current.toLocaleString()}` : "—"}
-          subLabel="Target"
-          subValue={salesKpi ? `$${salesKpi.target.toLocaleString()}` : "—"}
+          label="Нийт орлого"
+          value={salesKpi ? `₮${salesKpi.current.toLocaleString()}` : "—"}
+          subLabel="Зорилт"
+          subValue={salesKpi ? `₮${salesKpi.target.toLocaleString()}` : "—"}
           color={chartTheme.colors.semantic.bar}
           sparkline={salesHistory && salesHistory.length > 0 ? (
             <Sparkline data={salesHistory} dataKey="revenue" color={chartTheme.colors.semantic.bar} />
@@ -130,25 +130,25 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
           progress={salesKpi ? { current: salesKpi.current, target: salesKpi.target } : undefined}
         />,
         <KpiCard key="users"
-          label="Active Users"
+          label="Харилцагчид"
           value={usersKpi ? usersKpi.current.toLocaleString() : "—"}
-          subLabel="Goal"
+          subLabel="Зорилт"
           subValue={usersKpi ? usersKpi.target.toLocaleString() : "—"}
           color={chartTheme.colors.semantic.line}
           progress={usersKpi ? { current: usersKpi.current, target: usersKpi.target } : undefined}
         />,
         <KpiCard key="churn"
-          label="Churn Rate"
-          value={churnKpi ? `${churnKpi.current}%` : "—"}
-          subLabel="Limit"
+          label="Зарлагын хувь"
+          value={churnKpi ? `${churnKpi.current.toFixed(1)}%` : "—"}
+          subLabel="Хязгаар"
           subValue={churnKpi ? `${churnKpi.target}%` : "—"}
           color={churnColor}
           progress={churnKpi ? { current: churnKpi.current, target: churnKpi.target, invert: true } : undefined}
         />,
         <KpiCard key="aov"
-          label="Average Order Value"
-          value={aov !== null ? `${aov.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
-          subLabel="Top Category"
+          label="Дундаж гүйлгээ"
+          value={aov !== null ? `₮${Math.round(aov).toLocaleString()}` : "—"}
+          subLabel="Хамгийн их зарлага"
           subValue={topCategory !== null && aov !== null ? topCategory : "—"}
           color={chartTheme.colors.semantic.area}
           trend={growthRate !== null ? { direction: growthDirection, label: `${Math.abs(growthRate).toFixed(1)}%` } : undefined}

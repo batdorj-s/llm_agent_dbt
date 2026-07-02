@@ -75,8 +75,11 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
   const { tableName, columns, columnTypes } = table;
   const rawSalesCol = findConceptColumn(columns, "sales", tableName);
   const rawQtyCol = findConceptColumn(columns, "quantity", tableName);
-  const rawCatCol = findConceptColumn(columns, "product", tableName);
+  // subcategory → дэлгэрэнгүй ангилал, category → үндсэн ангилал
+  const rawCatCol = columns.find(c => /^subcategory$/i.test(c))
+    || findConceptColumn(columns, "product", tableName);
   const rawDateCol = findConceptColumn(columns, "date", tableName);
+  const rawMainCatCol = columns.find(c => /^category$/i.test(c)) || undefined;
 
   const salesCol = rawSalesCol ? sanitizeColumnName(rawSalesCol) : undefined;
   const qtyCol = rawQtyCol ? sanitizeColumnName(rawQtyCol) : undefined;
@@ -98,10 +101,16 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
   const { clause: dateWhere, params: dateParams } = buildDateWhere(dateCol || "", dateCast, startDate, endDate);
   const dateLen = dateParams.length;
 
-  if (salesCol && qtyCol) {
+  if (salesCol) {
     try {
+      // Дундаж гүйлгээний дүн (AOV): нийт орлого / гүйлгээний тоо
+      const incomeCond = rawMainCatCol
+        ? ` AND LOWER(${quoteIdent(rawMainCatCol)}) LIKE '%орлого%'`
+        : (qtyCol ? ` AND CAST(${quoteIdent(qtyCol)} AS NUMERIC) > 0` : "");
       const result = await getPool().query(
-        `SELECT COALESCE(SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) / NULLIF(SUM(CAST(${quoteIdent(qtyCol)} AS NUMERIC)), 0), 0) as aov FROM ${quoteIdent(tableName)} WHERE 1=1${dateWhere}`,
+        `SELECT COALESCE(SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) / NULLIF(COUNT(*), 0), 0) as aov
+         FROM ${quoteIdent(tableName)}
+         WHERE 1=1${dateWhere}${incomeCond}`,
         dateParams
       );
       aov = Number(result.rows[0]?.aov || 0);
@@ -144,10 +153,14 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
 
   if (catCol && salesCol) {
     try {
+      // Хамгийн их зарлага гарсан дэд ангилал
+      const expenseCond = rawMainCatCol
+        ? ` AND LOWER(${quoteIdent(rawMainCatCol)}) LIKE '%зарлага%'`
+        : "";
       const result = await getPool().query(
         `SELECT ${quoteIdent(catCol)} as category, SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) as total
          FROM ${quoteIdent(tableName)}
-         WHERE 1=1${dateWhere}
+         WHERE 1=1${dateWhere}${expenseCond}
          GROUP BY ${quoteIdent(catCol)}
          ORDER BY total DESC LIMIT 1`,
         dateParams
@@ -163,11 +176,11 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
 
   return {
     aov: Math.round(aov * 100) / 100,
-    aovUnit: "$",
+    aovUnit: "₮",
     growthRate: Math.round(growthRate * 100) / 100,
     growthDirection: growthRate >= 0 ? "up" : "down",
     topCategory,
     topCategoryValue: Math.round(topCategoryValue * 100) / 100,
-    topCategoryUnit: "$",
+    topCategoryUnit: "₮",
   };
 }

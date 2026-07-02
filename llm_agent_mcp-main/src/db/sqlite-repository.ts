@@ -16,10 +16,20 @@ function buildDateWhere(tableInfo: { dateCol: string }, df?: DateFilter, paramOf
     return { clause: " AND " + clauses.join(" AND "), params };
 }
 
+// Орлогын категориудыг шүүх нөхцөл (category column байвал)
+function incomeFilter(categoryCol: string | undefined): string {
+    if (!categoryCol) return "";
+    return ` AND LOWER("${categoryCol}") LIKE '%орлого%'`;
+}
+
+// Зарлагын категориудыг шүүх нөхцөл
+function expenseFilter(categoryCol: string | undefined): string {
+    if (!categoryCol) return "";
+    return ` AND LOWER("${categoryCol}") LIKE '%зарлага%'`;
+}
+
 export class SQLiteKpiRepository implements IKpiRepository {
-    constructor() {
-        // Data Lake tables (kpi_targets, etc.) are initialized by initDataLake()
-    }
+    constructor() {}
 
     async getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter, userId?: string): Promise<KpiMetric | null> {
         return this.getKpiFallback(metric, dateFilter, userId);
@@ -40,26 +50,55 @@ export class SQLiteKpiRepository implements IKpiRepository {
             if (!tableInfo) return null;
 
             let current = 0;
-
             const { clause: dateWhere, params: dateParams } = buildDateWhere(tableInfo, dateFilter);
+            const cat = tableInfo.categoryCol;
+
             if (metric === "sales") {
+                // Зөвхөн орлогын гүйлгээний нийлбэр
                 const result = await getPool().query(
-                    `SELECT COALESCE(SUM(CAST("${tableInfo.salesCol}" AS NUMERIC)), 0) as total FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`,
+                    `SELECT COALESCE(SUM(CAST("${tableInfo.salesCol}" AS NUMERIC)), 0) as total
+                     FROM "${tableInfo.tableName}"
+                     WHERE 1=1${dateWhere}${incomeFilter(cat)}`,
                     dateParams
                 );
                 current = Number(result.rows[0]?.total || 0);
             } else if (metric === "users") {
+                // Орлогын гүйлгээн дэх өвөрмөц харилцагчид
                 const result = await getPool().query(
-                    `SELECT COUNT(DISTINCT "${tableInfo.userCol}") as count FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`,
+                    `SELECT COUNT(DISTINCT "${tableInfo.userCol}") as count
+                     FROM "${tableInfo.tableName}"
+                     WHERE 1=1${dateWhere}${incomeFilter(cat)}`,
                     dateParams
                 );
                 current = Number(result.rows[0]?.count || 0);
             } else if (metric === "churn_rate") {
-                const result = await getPool().query(
-                    `SELECT COUNT(*) FILTER (WHERE "${tableInfo.dateCol}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as rate FROM "${tableInfo.tableName}" WHERE 1=1${dateWhere}`,
-                    dateParams
-                );
-                current = Number(result.rows[0]?.rate || 0);
+                if (cat) {
+                    // Зарлага / Орлого харьцаа (%)
+                    const result = await getPool().query(
+                        `SELECT
+                           COALESCE(
+                             SUM(CASE WHEN LOWER("${cat}") LIKE '%зарлага%'
+                                 THEN CAST("${tableInfo.salesCol}" AS NUMERIC) ELSE 0 END) * 100.0
+                             / NULLIF(
+                                 SUM(CASE WHEN LOWER("${cat}") LIKE '%орлого%'
+                                     THEN CAST("${tableInfo.salesCol}" AS NUMERIC) ELSE 0 END),
+                               0),
+                           0) as rate
+                         FROM "${tableInfo.tableName}"
+                         WHERE 1=1${dateWhere}`,
+                        dateParams
+                    );
+                    current = Number(result.rows[0]?.rate || 0);
+                } else {
+                    const result = await getPool().query(
+                        `SELECT COUNT(*) FILTER (WHERE "${tableInfo.dateCol}" IS NULL) * 100.0
+                           / NULLIF(COUNT(*), 0) as rate
+                         FROM "${tableInfo.tableName}"
+                         WHERE 1=1${dateWhere}`,
+                        dateParams
+                    );
+                    current = Number(result.rows[0]?.rate || 0);
+                }
             }
 
             return {
@@ -74,7 +113,13 @@ export class SQLiteKpiRepository implements IKpiRepository {
         }
     }
 
-    private async getActiveTableInfo(userId?: string): Promise<{ tableName: string; salesCol: string; userCol: string; dateCol: string } | null> {
+    private async getActiveTableInfo(userId?: string): Promise<{
+        tableName: string;
+        salesCol: string;
+        userCol: string;
+        dateCol: string;
+        categoryCol?: string;
+    } | null> {
         if (userId) {
             const fileCheck = await getPool().query(
                 `SELECT id FROM uploaded_files WHERE type = 'dataset' AND owner_id = $1 LIMIT 1`,
@@ -130,7 +175,11 @@ export class SQLiteKpiRepository implements IKpiRepository {
                 || null;
             if (!dateCol) continue;
 
-            return { tableName: catalog.table_name, salesCol, userCol, dateCol };
+            const categoryCol = columns.find(c => /^category$/i.test(c))
+                || columns.find(c => /category|type|kind|class/i.test(c))
+                || undefined;
+
+            return { tableName: catalog.table_name, salesCol, userCol, dateCol, categoryCol };
         }
 
         return null;
@@ -147,21 +196,24 @@ export class SQLiteKpiRepository implements IKpiRepository {
 
             await initDataLake();
             const { clause: dateWhere, params: dateParams } = buildDateWhere(tableInfo, dateFilter);
+            const cat = tableInfo.categoryCol;
+
             const rows = await getPool().query(`
                 SELECT
                     TO_CHAR(REPLACE("${tableInfo.dateCol}", '.', '-')::timestamp, 'YYYY-MM') as month,
                     SUM(CAST("${tableInfo.salesCol}" AS NUMERIC)) as revenue
                 FROM "${tableInfo.tableName}"
-                WHERE 1=1${dateWhere}
+                WHERE 1=1${dateWhere}${incomeFilter(cat)}
                 GROUP BY month
                 ORDER BY month DESC
                 LIMIT $${dateParams.length + 1}
             `, [...dateParams, limit]);
 
-            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            const monthNames = ["1-р сар", "2-р сар", "3-р сар", "4-р сар", "5-р сар", "6-р сар",
+                                "7-р сар", "8-р сар", "9-р сар", "10-р сар", "11-р сар", "12-р сар"];
 
             return [...rows.rows].reverse().map(row => {
-                if (!row.month) return { month: "Unknown", revenue: row.revenue };
+                if (!row.month) return { month: "Тодорхойгүй", revenue: row.revenue };
                 const parts = row.month.split("-");
                 const year = parts[0];
                 const monthIdx = parseInt(parts[1]) - 1;

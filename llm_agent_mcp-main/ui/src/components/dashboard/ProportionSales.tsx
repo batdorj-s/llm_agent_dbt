@@ -23,7 +23,7 @@ const defaultPieData: DataItem[] = [
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
 const formatCurrency = (v: number) =>
-  `$${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
+  `₮${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
 
 export const ProportionSales: React.FC<ProportionSalesProps> = ({
   loading = false,
@@ -52,7 +52,7 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
     <div className="rounded-xl border border-border/80 bg-card p-5 h-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">
-          Борлуулалтын категорийн харьцаа
+          Орлого / зарлагын харьцаа
         </h3>
         <div className="flex items-center gap-1 bg-foreground/5 rounded-lg p-0.5">
           {segments.map((s) => (
@@ -71,7 +71,7 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
         </div>
       </div>
 
-      <div className="text-[11px] text-foreground/50 mb-2">Борлуулалт</div>
+      <div className="text-[11px] text-foreground/50 mb-2">Нийт дүн</div>
 
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>

@@ -36,7 +36,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
   campaignEffect = 78,
 }) => {
   const formatCurrency = (v: number) =>
-    `$${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
+    `₮${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
 
   const formatNumber = (v: number) => v.toLocaleString();
 
@@ -44,9 +44,9 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {/* Total Sales */}
       <ChartCard
-        title="Нийт борлуулалт"
+        title="Нийт орлого"
         total={formatCurrency(totalSales)}
-        footer={<Field label="Өдрийн борлуулалт" value={formatCurrency(12423)} />}
+        footer={<Field label="Дундаж сарын орлого" value={formatCurrency(12423)} />}
         contentHeight={72}
         loading={loading}
       >
@@ -58,9 +58,9 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
 
       {/* Visits */}
       <ChartCard
-        title="Хандалт"
+        title="Харилцагчид"
         total={formatNumber(totalVisits)}
-        footer={<Field label="Өдрийн хандалт" value={formatNumber(1234)} />}
+        footer={<Field label="Нийт харилцагч" value={formatNumber(1234)} />}
         contentHeight={72}
         loading={loading}
       >
@@ -81,9 +81,9 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
 
       {/* Payments */}
       <ChartCard
-        title="Төлбөрийн тоо"
+        title="Гүйлгээний тоо"
         total={formatNumber(totalPayments)}
-        footer={<Field label="Хөрвүүлэлт" value="60%" />}
+        footer={<Field label="Орлогын гүйлгээ" value="60%" />}
         contentHeight={72}
         loading={loading}
       >
