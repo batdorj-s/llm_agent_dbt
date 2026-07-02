@@ -296,99 +296,182 @@ export function computeResultStats(sandboxResult: string): string {
     }
 }
 
+function detectChartShape(data: Record<string, unknown>[]): {
+  labelKey: string;
+  valueKey: string;
+  allNumericKeys: string[];
+  allTextKeys: string[];
+  categoryCount: number;
+  numericCount: number;
+  isTimeSeries: boolean;
+  isBinary: boolean;
+  isSmallCategory: boolean;
+} {
+  if (data.length === 0) throw new Error("No data");
+  const keys = Object.keys(data[0]);
+
+  const allNumericKeys = keys.filter(k =>
+    data.some((r: any) => {
+      const v = parseFloat(r[k]);
+      return !isNaN(v) && isFinite(v);
+    })
+  );
+  const allTextKeys = keys.filter(k => !allNumericKeys.includes(k));
+
+  let labelKey: string;
+  let valueKey: string;
+
+  if (keys.find(k => k.toLowerCase() === "label")) {
+    labelKey = keys.find(k => k.toLowerCase() === "label")!;
+    valueKey = keys.find(k => k.toLowerCase() === "value") || allNumericKeys.find(k => k !== labelKey) || allNumericKeys[0] || keys[keys.length - 1];
+  } else if (allNumericKeys.length >= 2) {
+    valueKey = allNumericKeys[allNumericKeys.length - 1];
+    labelKey = allTextKeys[0] || allNumericKeys[0];
+  } else if (allNumericKeys.length === 1) {
+    valueKey = allNumericKeys[0];
+    labelKey = allTextKeys[0] || valueKey;
+  } else {
+    labelKey = keys[0];
+    valueKey = keys[keys.length - 1];
+  }
+
+  const sampleLabel = String(data[0][labelKey] || "").toLowerCase();
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: currentYear - 2018 + 1 }, (_, i) => String(2018 + i));
+  const timeIndicators = [
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    ...years, "month", "year", "date", "сар", "жил", "оноос", "өдөр",
+  ];
+  const isTimeSeries =
+    timeIndicators.some(p => sampleLabel.includes(p) || sampleLabel.startsWith(p)) ||
+    data.some((r: any) => /^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/.test(String(r[labelKey] || ""))) ||
+    data.some((r: any) => /^\d{4}/.test(String(r[labelKey] || "")));
+
+  const uniqueLabels = new Set(data.map(r => String(r[labelKey] || "")));
+  const categoryCount = uniqueLabels.size;
+  const allValues = data.map((r: any) => parseFloat(r[valueKey]) || 0);
+  const allIntegers = allValues.every(v => Number.isInteger(v) && v >= 0);
+  const isBinary = allIntegers && new Set(allValues).size <= 2;
+  const isSmallCategory = categoryCount <= 6;
+  const numericCount = allNumericKeys.length;
+
+  return { labelKey, valueKey, allNumericKeys, allTextKeys, categoryCount, numericCount, isTimeSeries, isBinary, isSmallCategory };
+}
+
+function inferTitle(data: Record<string, unknown>[], shape: ReturnType<typeof detectChartShape>): string {
+  if (shape.isTimeSeries && data.length >= 2) {
+    const first = String(data[0][shape.labelKey] ?? "");
+    const last = String(data[data.length - 1][shape.labelKey] ?? "");
+    return `Цуваа: ${first} → ${last}`;
+  }
+  if (shape.isSmallCategory) return "Ангилалын харьцуулалт";
+  if (shape.numericCount >= 3) return "Олон үзүүлэлтийн харьцуулалт";
+  return "Дүн шинжилгээ";
+}
+
 export function generateVisualTag(jsonResults: string): string {
-    let data: any[];
-    try {
-        const { data: parsed } = safeJsonParse<any[]>(jsonResults, []);
-        if (!Array.isArray(parsed)) throw new Error("Not an array");
-        data = parsed;
-    } catch {
-        return '';
-    }
-    if (!Array.isArray(data) || data.length <= 1) return '';
-    const keys = Object.keys(data[0]);
-    if (keys.length === 0) return '';
+  let data: any[];
+  try {
+    const { data: parsed } = safeJsonParse<any[]>(jsonResults, []);
+    if (!Array.isArray(parsed)) throw new Error("Not an array");
+    data = parsed;
+  } catch {
+    return "";
+  }
+  if (!Array.isArray(data) || data.length <= 1) return "";
 
-    const allNumericKeys = keys.filter(k => {
-        return data.some((r: any) => {
-            const v = parseFloat(r[k]);
-            return !isNaN(v) && isFinite(v);
-        });
+  let shape: ReturnType<typeof detectChartShape>;
+  try {
+    shape = detectChartShape(data);
+  } catch {
+    return "";
+  }
+
+  const { labelKey, valueKey, allNumericKeys, isTimeSeries, isSmallCategory, isBinary, categoryCount } = shape;
+  const remainingNumeric = allNumericKeys.filter(k => k !== labelKey && k !== valueKey);
+  const hasMultiMetric = remainingNumeric.length >= 1;
+  const title = inferTitle(data, shape);
+
+  // Rule 1: Time-series → always line/area (or combo if multi-metric)
+  if (isTimeSeries) {
+    if (hasMultiMetric) {
+      const seriesKeys = [valueKey, ...remainingNumeric.slice(0, 3)];
+      const visualData = data.map((row: any) => ({
+        label: String(row[labelKey] ?? ""),
+        value: parseFloat(row[valueKey]) || 0,
+        lineValue: parseFloat(row[remainingNumeric[0]]) || 0,
+      }));
+      return `<visual>${JSON.stringify({
+        title, type: "combo",
+        data: visualData,
+        config: { xAxis: "label", yAxis: "value", series: seriesKeys },
+      })}</visual>`;
+    }
+    return `<visual>${JSON.stringify({
+      title, type: "line",
+      data: data.map((row: any) => ({
+        label: String(row[labelKey] ?? ""),
+        value: parseFloat(row[valueKey]) || 0,
+      })),
+      config: { xAxis: "label", yAxis: "value" },
+    })}</visual>`;
+  }
+
+  // Rule 2: Multi-metric (composition: category + multiple values) → stacked_bar
+  if (hasMultiMetric) {
+    const seriesKeys = [valueKey, ...remainingNumeric.slice(0, 3)];
+    const visualData = data.map((row: any) => {
+      const point: Record<string, unknown> = { label: String(row[labelKey] ?? "") };
+      seriesKeys.forEach((k, i) => {
+        point[i === 0 ? "value" : `value${i + 1}`] = parseFloat(row[k]) || 0;
+      });
+      return point;
     });
-    const allTextKeys = keys.filter(k => !allNumericKeys.includes(k));
+    return `<visual>${JSON.stringify({
+      title, type: "stacked_bar",
+      data: visualData,
+      config: {
+        xAxis: "label", yAxis: "value",
+        series: ["value", ...seriesKeys.slice(1).map((_, i) => `value${i + 2}`)],
+        stacked: true,
+      },
+    })}</visual>`;
+  }
 
-    let labelKey: string;
-    let valueKey: string;
+  // Rule 3: Binary data (0/1, yes/no) → horizontal_bar
+  if (isBinary) {
+    return `<visual>${JSON.stringify({
+      title, type: "horizontal_bar",
+      data: data.map((row: any) => ({
+        label: String(row[labelKey] ?? ""),
+        value: parseFloat(row[valueKey]) || 0,
+      })),
+      config: { xAxis: "label", yAxis: "value" },
+    })}</visual>`;
+  }
 
-    if (keys.find(k => k.toLowerCase() === 'label')) {
-        labelKey = keys.find(k => k.toLowerCase() === 'label')!;
-        valueKey = keys.find(k => k.toLowerCase() === 'value') || allNumericKeys.find(k => k !== labelKey) || allNumericKeys[0] || keys[keys.length - 1];
-    } else if (allNumericKeys.length >= 2) {
-        valueKey = allNumericKeys[allNumericKeys.length - 1];
-        labelKey = allTextKeys[0] || allNumericKeys[0];
-    } else if (allNumericKeys.length === 1) {
-        valueKey = allNumericKeys[0];
-        labelKey = allTextKeys[0] || valueKey;
-    } else {
-        labelKey = keys[0];
-        valueKey = keys[keys.length - 1];
-    }
+  // Rule 4: Small category (≤6) → donut (more modern than pie)
+  if (isSmallCategory && !isBinary) {
+    return `<visual>${JSON.stringify({
+      title, type: "donut",
+      data: data.map((row: any) => ({
+        label: String(row[labelKey] ?? ""),
+        value: parseFloat(row[valueKey]) || 0,
+      })),
+      config: {
+        xAxis: "label", yAxis: "value",
+        colors: ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#ec4899"],
+      },
+    })}</visual>`;
+  }
 
-    const sampleLabel = String(data[0][labelKey] || '').toLowerCase();
-    const currentYear = new Date().getFullYear();
-    const years = Array.from({ length: currentYear - 2018 + 1 }, (_, i) => String(2018 + i));
-    const timeIndicators = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
-        ...years, 'month', 'year', 'date'];
-    const isTimeSeries = timeIndicators.some(p => sampleLabel.includes(p) || sampleLabel.startsWith(p))
-        || data.some((r: any) => /^\d{4}/.test(String(r[labelKey] || '')));
-
-    const remainingNumeric = allNumericKeys.filter(k => k !== labelKey && k !== valueKey);
-
-    if (isTimeSeries) {
-        const hasSecondMetric = remainingNumeric.length >= 1;
-        if (hasSecondMetric) {
-            const seriesKeys = [valueKey, ...remainingNumeric.slice(0, 3)];
-            const visualData = data.map((row: any) => ({
-                label: String(row[labelKey] ?? ''),
-                value: parseFloat(row[valueKey]) || 0,
-                lineValue: parseFloat(row[remainingNumeric[0]]) || 0,
-            }));
-            const visual = { title: "Дүн шинжилгээ", type: "combo" as const, data: visualData, config: { xAxis: "label", yAxis: "value", series: seriesKeys } };
-            return `<visual>${JSON.stringify(visual)}</visual>`;
-        }
-        const visualData = data.map((row: any) => ({
-            label: String(row[labelKey] ?? ''),
-            value: parseFloat(row[valueKey]) || 0
-        }));
-        const visual = { title: "Дүн шинжилгээ", type: "line" as const, data: visualData, config: { xAxis: "label", yAxis: "value" } };
-        return `<visual>${JSON.stringify(visual)}</visual>`;
-    }
-
-    const hasAdditionalMetric = remainingNumeric.length >= 1;
-
-    if (hasAdditionalMetric) {
-        const seriesKeys = [valueKey, ...remainingNumeric.slice(0, 3)];
-        const visualData = data.map((row: any) => {
-            const point: Record<string, unknown> = { label: String(row[labelKey] ?? '') };
-            seriesKeys.forEach((k, i) => { point[i === 0 ? 'value' : `value${i + 1}`] = parseFloat(row[k]) || 0; });
-            return point;
-        });
-        const visual = { title: "Дүн шинжилгээ", type: "stacked_bar" as const, data: visualData, config: { xAxis: "label", yAxis: "value", series: ['value', ...seriesKeys.slice(1).map((_, i) => `value${i + 2}`)] } };
-        return `<visual>${JSON.stringify(visual)}</visual>`;
-    }
-
-    const allValues = data.map((r: any) => parseFloat(r[valueKey]) || 0);
-    const allIntegers = allValues.every(v => Number.isInteger(v) && v >= 0);
-    const allSmallInts = allIntegers && allValues.every(v => v <= 1000);
-    const isLikelyCounts = allSmallInts && allValues.some(v => v === 0 || v === 1);
-
-    const chartType = (data.length <= 6 && !isLikelyCounts) ? 'pie' : 'bar';
-
-    const visualData = data.map((row: any) => ({
-        label: String(row[labelKey] ?? ''),
-        value: parseFloat(row[valueKey]) || 0
-    }));
-
-    const visual = { title: "Дүн шинжилгээ", type: chartType, data: visualData, config: { xAxis: "label", yAxis: "value" } };
-    return `<visual>${JSON.stringify(visual)}</visual>`;
+  // Rule 5: Many categories (>6) or unknown → bar
+  return `<visual>${JSON.stringify({
+    title, type: "bar",
+    data: data.map((row: any) => ({
+      label: String(row[labelKey] ?? ""),
+      value: parseFloat(row[valueKey]) || 0,
+    })),
+    config: { xAxis: "label", yAxis: "value" },
+  })}</visual>`;
 }

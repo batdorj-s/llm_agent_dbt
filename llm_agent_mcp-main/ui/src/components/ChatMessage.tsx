@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Message } from "./types";
-import { VisualMessage, DashboardMessage } from "./VisualMessage";
+import { VisualMessage, DashboardMessage, VisualGrid } from "./VisualMessage";
 import { CodeBlock } from "./CodeBlock";
 import { ActionCard } from "./ActionCard";
 
@@ -115,21 +115,77 @@ export function formatMessageText(text: string) {
   const tagPattern = new RegExp("(<(?:visual|dashboard)>[\\s\\S]*?<\\/(?:visual|dashboard)>)", "g");
   const parts = text.split(tagPattern);
 
-  return parts.map((part, idx) => {
-    if (part.startsWith("<visual>")) {
-      const stripTag = new RegExp("<\\/?visual>", "g");
-      const jsonContent = part.replace(stripTag, "");
-      return <VisualMessage key={idx} visualJson={jsonContent} />;
+  // Group consecutive visual/dashboard parts into visual groups for grid layout
+  const visualGroups: string[][] = [];
+  const nonVisualParts: { part: string; index: number }[] = [];
+  let currentGroup: string[] = [];
+
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (p.startsWith("<visual>") || p.startsWith("<dashboard>")) {
+      currentGroup.push(p);
+    } else {
+      if (currentGroup.length > 0) {
+        visualGroups.push(currentGroup);
+        currentGroup = [];
+      }
+      if (p.trim()) {
+        nonVisualParts.push({ part: p, index: i });
+      }
     }
-    if (part.startsWith("<dashboard>")) {
-      const stripTag = new RegExp("<\\/?dashboard>", "g");
-      const jsonContent = part.replace(stripTag, "");
-      return <DashboardMessage key={idx} dashboardJson={jsonContent} />;
+  }
+  if (currentGroup.length > 0) {
+    visualGroups.push(currentGroup);
+  }
+
+  // Merge visual groups into nonVisualParts for rendering
+  const renderedParts: { type: "visual" | "text"; visualParts?: string[]; part?: string; idx: number }[] = [];
+  let vgIdx = 0;
+  for (const nvp of nonVisualParts) {
+    while (vgIdx < visualGroups.length) {
+      const firstVisualIdx = parts.indexOf(visualGroups[vgIdx][0]);
+      if (firstVisualIdx < nvp.index) {
+        renderedParts.push({ type: "visual", visualParts: visualGroups[vgIdx], idx: firstVisualIdx });
+        vgIdx++;
+      } else {
+        break;
+      }
+    }
+    renderedParts.push({ type: "text", part: nvp.part, idx: nvp.index });
+  }
+  while (vgIdx < visualGroups.length) {
+    const firstVisualIdx = parts.indexOf(visualGroups[vgIdx][0]);
+    renderedParts.push({ type: "visual", visualParts: visualGroups[vgIdx], idx: firstVisualIdx });
+    vgIdx++;
+  }
+
+  return renderedParts.map((rp) => {
+    if (rp.type === "visual" && rp.visualParts) {
+      const visuals = rp.visualParts.map((vp) => {
+        if (vp.startsWith("<visual>")) {
+          const jsonContent = vp.replace(/<\/?visual>/g, "");
+          return { type: "visual" as const, json: jsonContent };
+        }
+        if (vp.startsWith("<dashboard>")) {
+          const jsonContent = vp.replace(/<\/?dashboard>/g, "");
+          return { type: "dashboard" as const, json: jsonContent };
+        }
+        return null;
+      }).filter(Boolean) as { type: "visual" | "dashboard"; json: string }[];
+
+      if (visuals.length === 1 && visuals[0].type === "visual") {
+        return <VisualMessage key={`vg-${rp.idx}`} visualJson={visuals[0].json} />;
+      }
+      if (visuals.length === 1 && visuals[0].type === "dashboard") {
+        return <DashboardMessage key={`vg-${rp.idx}`} dashboardJson={visuals[0].json} />;
+      }
+      return <VisualGrid key={`vg-${rp.idx}`} items={visuals} />;
     }
 
+    const part = rp.part!;
     const segments = parseCodeBlocks(part);
     if (segments.length === 1 && segments[0].type === "text") {
-      return renderTextBlock(segments[0].content, idx);
+      return renderTextBlock(segments[0].content, rp.idx);
     }
 
     const grouped: { type: "action" | "text" | "json" | "code"; content?: string; language?: string; sql?: string; json?: string; text?: string }[] = [];
@@ -163,12 +219,12 @@ export function formatMessageText(text: string) {
 
     return grouped.map((seg, segIdx) => {
       if (seg.type === "text") {
-        return renderTextBlock(seg.text || "", `${idx}-${segIdx}`);
+        return renderTextBlock(seg.text || "", `${rp.idx}-${segIdx}`);
       }
       if (seg.type === "action") {
         return (
           <ActionCard
-            key={`${idx}-action-${segIdx}`}
+            key={`${rp.idx}-action-${segIdx}`}
             action={actionDesc}
             status={["SQL Query Executed", "Data Aggregated"]}
             sql={seg.sql}
@@ -178,14 +234,14 @@ export function formatMessageText(text: string) {
       }
       if (seg.type === "json") {
         return (
-          <div key={`${idx}-code-${segIdx}`} className="mt-2 mb-3">
+          <div key={`${rp.idx}-code-${segIdx}`} className="mt-2 mb-3">
             <CodeBlock code={seg.text || ""} language="json" />
           </div>
         );
       }
       if (seg.type === "code") {
         return (
-          <div key={`${idx}-code-${segIdx}`} className="mt-2 mb-3">
+          <div key={`${rp.idx}-code-${segIdx}`} className="mt-2 mb-3">
             <CodeBlock code={seg.text || ""} language={seg.language || "code"} />
           </div>
         );

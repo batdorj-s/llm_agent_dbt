@@ -19,6 +19,7 @@ import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { computeMetrics } from "./agents/reportMetrics.js";
 import { generateReportPdf, generateReportXlsx } from "./agents/reportExport.js";
+import { generateDataPassport } from "./agents/dataProfiler.js";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -549,6 +550,19 @@ async function processUploadedTable(
         }
         if (kpiLines.length > 0) {
             console.log(`[Upload] Auto-computed ${kpiLines.length} KPIs for '${sanitizedTableName}'`);
+        }
+
+        // Generate data passport (async, non-blocking)
+        if (cols.length > 0) {
+            try {
+                const previewResult = await getPool().query(`SELECT * FROM ${quoteIdent(sanitizedTableName)} LIMIT 10`);
+                const sampleRows = previewResult.rows as Record<string, unknown>[];
+                generateDataPassport(sanitizedTableName, cols, sampleRows, description).catch(err =>
+                    console.warn(`[Upload] Data passport generation failed (non-fatal):`, (err as Error).message)
+                );
+            } catch (previewErr) {
+                console.warn(`[Upload] Data passport sample fetch failed:`, (previewErr as Error).message);
+            }
         }
     }
 

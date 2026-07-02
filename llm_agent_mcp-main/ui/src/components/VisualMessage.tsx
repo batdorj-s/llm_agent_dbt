@@ -502,6 +502,30 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
   );
 };
 
+export const VisualGrid = ({ items }: { items: { type: "visual" | "dashboard"; json: string }[] }) => {
+  const visualCount = items.filter(i => i.type === "visual").length;
+  const dashCount = items.filter(i => i.type === "dashboard").length;
+  const total = items.length;
+
+  const gridCols = total <= 2 ? "grid-cols-1 sm:grid-cols-2" :
+    total <= 4 ? "grid-cols-1 sm:grid-cols-2" :
+    "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
+
+  return (
+    <div className={`grid ${gridCols} gap-3 mt-3`}>
+      {items.map((item, i) => (
+        <div key={i} className="min-w-0">
+          {item.type === "visual" ? (
+            <VisualMessage visualJson={item.json} />
+          ) : (
+            <DashboardMessage dashboardJson={item.json} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const DashboardMessage = ({ dashboardJson }: { dashboardJson: string }) => {
   let widgets: any[];
   try {
