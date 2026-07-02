@@ -52,7 +52,7 @@ export function base64url(data: string): string {
     .replace(/\//g, "_");
 }
 
-function sign(data: string, secret: string): string {
+export function sign(data: string, secret: string): string {
   return crypto
     .createHmac("sha256", secret)
     .update(data)
