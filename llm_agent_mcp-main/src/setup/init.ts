@@ -87,6 +87,26 @@ export function runDbtForTable(inputTable: string, columns?: string[], mapping?:
   }
 }
 
+export function runDbtFinanceModels(inputTable: string): void {
+  if (!dbtAvailable()) {
+    console.log(`[dbt] not installed — skipping finance dbt for '${inputTable}'`);
+    return;
+  }
+  try {
+    console.log(`[dbt] Running finance pipeline for '${inputTable}'...`);
+    const vars = JSON.stringify({ input_table: inputTable });
+    runDbt([
+      "run",
+      "--select", "stg_transactions int_transactions_classified finance_summary finance_by_party",
+      "--vars", vars,
+      "--profiles-dir", ".",
+    ]);
+    console.log(`[dbt] Finance pipeline complete for '${inputTable}' [OK]`);
+  } catch (err) {
+    console.warn(`[dbt] Finance pipeline failed for '${inputTable}':`, (err as Error).message);
+  }
+}
+
 export function runDbtTest(vars: string): string {
   if (!dbtAvailable()) return "dbt not available";
   try {

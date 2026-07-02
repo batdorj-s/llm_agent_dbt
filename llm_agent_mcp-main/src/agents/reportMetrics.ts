@@ -2,6 +2,7 @@ import { getPool, quoteIdent } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { detectDateColumn } from "./dateColumnHelper.js";
 import { sanitizeColumnName } from "./sanitize.js";
+import { buildMntAmountExpr } from "../utils/sqlHelpers.js";
 
 export interface ComputedMetrics {
   aov: number;
@@ -73,18 +74,30 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
   if (!table) return null;
 
   const { tableName, columns, columnTypes } = table;
-  const rawSalesCol = findConceptColumn(columns, "sales", tableName);
+  const rawSalesCol = findConceptColumn(columns, "sales", tableName)
+    || findConceptColumn(columns, "finance_amount", tableName);
   const rawQtyCol = findConceptColumn(columns, "quantity", tableName);
   // subcategory → дэлгэрэнгүй ангилал, category → үндсэн ангилал
   const rawCatCol = columns.find(c => /^subcategory$/i.test(c))
-    || findConceptColumn(columns, "product", tableName);
-  const rawDateCol = findConceptColumn(columns, "date", tableName);
-  const rawMainCatCol = columns.find(c => /^category$/i.test(c)) || undefined;
+    || findConceptColumn(columns, "product", tableName)
+    || findConceptColumn(columns, "finance_subcategory", tableName)
+    || findConceptColumn(columns, "finance_category", tableName);
+  const rawDateCol = findConceptColumn(columns, "date", tableName)
+    || findConceptColumn(columns, "finance_date", tableName);
+  const rawMainCatCol = columns.find(c => /^category$/i.test(c))
+    || findConceptColumn(columns, "finance_category", tableName)
+    || undefined;
+  const isFinanceTable = !!findConceptColumn(columns, "finance_amount", tableName)
+    && !!findConceptColumn(columns, "finance_category", tableName);
 
   const salesCol = rawSalesCol ? sanitizeColumnName(rawSalesCol) : undefined;
   const qtyCol = rawQtyCol ? sanitizeColumnName(rawQtyCol) : undefined;
   const catCol = rawCatCol ? sanitizeColumnName(rawCatCol) : undefined;
   const dateCol = rawDateCol ? sanitizeColumnName(rawDateCol) : undefined;
+  // Use MNT-safe expression for finance tables; plain CAST otherwise
+  const amountExpr = (col: string) => isFinanceTable
+    ? buildMntAmountExpr(quoteIdent(col))
+    : `CAST(${quoteIdent(col)} AS NUMERIC)`;
 
   let dateCast: string | null = null;
   if (dateCol) {
@@ -108,7 +121,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
         ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Орлого%' OR ${quoteIdent(rawMainCatCol)} LIKE '%орлого%' OR ${quoteIdent(rawMainCatCol)} LIKE '%ОРЛОГО%')`
         : (qtyCol ? ` AND CAST(${quoteIdent(qtyCol)} AS NUMERIC) > 0` : "");
       const result = await getPool().query(
-        `SELECT COALESCE(SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) / NULLIF(COUNT(*), 0), 0) as aov
+        `SELECT COALESCE(SUM(${amountExpr(salesCol)}) / NULLIF(COUNT(*), 0), 0) as aov
          FROM ${quoteIdent(tableName)}
          WHERE 1=1${dateWhere}${incomeCond}`,
         dateParams
@@ -131,7 +144,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
             CASE WHEN ${dateCast} >= CURRENT_DATE - INTERVAL '30 days'
               THEN 'current' ELSE 'previous'
             END AS period,
-            SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) AS total
+            SUM(${amountExpr(salesCol)}) AS total
           FROM ${quoteIdent(tableName)}
           WHERE ${filterClause}
           GROUP BY period
@@ -158,7 +171,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
         ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%ЗАРЛАГА%')`
         : "";
       const result = await getPool().query(
-        `SELECT ${quoteIdent(catCol)} as category, SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) as total
+        `SELECT ${quoteIdent(catCol)} as category, SUM(${amountExpr(salesCol)}) as total
          FROM ${quoteIdent(tableName)}
          WHERE 1=1${dateWhere}${expenseCond}
          GROUP BY ${quoteIdent(catCol)}

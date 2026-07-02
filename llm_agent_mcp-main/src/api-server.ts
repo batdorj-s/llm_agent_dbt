@@ -10,12 +10,13 @@ import { agentLimiter, authLimiter } from "./rate-limiter.js";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
 import { setupKnowledgeBase } from "./rag.js";
-import { ensureProjectReady, runDbtForTable, runDbtTest } from "./setup/init.js";
+import { ensureProjectReady, runDbtForTable, runDbtTest, runDbtFinanceModels } from "./setup/init.js";
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent } from "./db/data-lake.js";
 import { findConceptColumn } from "./agents/columnSynonyms.js";
+import { buildMntAmountExpr } from "./utils/sqlHelpers.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { computeMetrics } from "./agents/reportMetrics.js";
@@ -337,8 +338,7 @@ app.get("/api/finance-charts", async (req, res) => {
 
     if (!amtCol || !catCol) return res.json({ isFinance: false });
 
-    // Safe amount expression: handles both "₮2,000,000" text and plain NUMERIC
-    const qAmt = `CAST(REPLACE(REPLACE(${quoteIdent(amtCol)}::TEXT, '₮', ''), ',', '') AS NUMERIC)`;
+    const qAmt = buildMntAmountExpr(quoteIdent(amtCol));
     const qCat  = quoteIdent(catCol);
     const qTbl  = quoteIdent(table);
 
@@ -707,8 +707,22 @@ async function processUploadedTable(
     }
 
     let dbtStatus = "skipped";
-    if (cols.some((c: string) => /sales|revenue|amount/i.test(c))
-        && cols.some((c: string) => /customer_id|user_id|_id/i.test(c))) {
+    const isFinanceTable = !!findConceptColumn(cols, "finance_amount", sanitizedTableName)
+        && !!findConceptColumn(cols, "finance_category", sanitizedTableName);
+    const isSalesTable = !isFinanceTable
+        && cols.some((c: string) => /sales|revenue|amount/i.test(c))
+        && cols.some((c: string) => /customer_id|user_id|_id/i.test(c));
+
+    if (isFinanceTable) {
+        try {
+            runDbtFinanceModels(sanitizedTableName);
+            dbtStatus = "ok";
+            console.log(`[Upload] Finance dbt pipeline complete for '${sanitizedTableName}' [OK]`);
+        } catch (err) {
+            dbtStatus = "error";
+            console.warn(`[Upload] Finance dbt pipeline error for '${sanitizedTableName}':`, (err as Error).message);
+        }
+    } else if (isSalesTable) {
         const mapping = buildColumnMapping(cols);
         try {
             runDbtForTable(sanitizedTableName, cols, mapping);
