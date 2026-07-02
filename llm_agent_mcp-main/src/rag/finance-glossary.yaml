@@ -1,0 +1,63 @@
+terms:
+  - term: "Дотоод шилжүүлэг"
+    definition: >
+      Internal transfer between company accounts.
+      Байгууллагын дотоод данс хооронд мөнгө шилжүүлэх үйлдэл.
+      Жишээ: банкны дансаас кассруу мөнгө авах.
+      Энэ гүйлгээ P&L-д нөлөөлөхгүй — зөвхөн cash flow-д харагдана.
+    category: finance
+    subcategory: transfer
+    tags: [internal, transfer, cash, банк, касс, шилжүүлэг]
+
+  - term: "Эздийн зээл"
+    definition: >
+      Owner's loan to the business — owner's personal funds lent to company.
+      Бизнесийн эзэмшигч өөрийн хувийн мөнгийг компанид зээлдүүлэх.
+      Энэ нь өр төлбөр (liability) болдог — орлого биш.
+    category: finance
+    subcategory: loan
+    tags: [loan, owner, liability, зээл, эзэмшигч]
+
+  - term: "Бусад орлого"
+    definition: >
+      Other income not from primary business operations.
+      Үндсэн үйл ажиллагаанаас бус эх сурвалжаас орж ирэх орлого.
+      Жишээ: дэд түрээсийн орлого, хүүгийн орлого.
+    category: finance
+    subcategory: income
+    tags: [income, other, орлого, бусад]
+
+  - term: "Дэд түрээс"
+    definition: >
+      Sublease income — renting out leased premises to a third party.
+      Өөрөө түрээслэсэн талбайгаа бусдад дахин түрээслэхэд орж ирэх орлого.
+    category: finance
+    subcategory: income
+    tags: [sublease, rent, income, түрээс, орлого]
+
+  - term: "Зарлага"
+    definition: >
+      Business expense — outflow of money for operational purposes.
+      Бизнесийн үйл ажиллагааны зориулалтаар гаргасан мөнгөн зарцуулалт.
+      Ашгийг бууруулна (P&L-д сөрөг нөлөөтэй).
+    category: finance
+    subcategory: expense
+    tags: [expense, cost, зарлага, зарцуулалт]
+
+  - term: "Дүн"
+    definition: >
+      Transaction amount in MNT (Mongolian Tugrik ₮).
+      Гүйлгээний мөнгөн дүн — ₮ тэмдэгтэй, мянгатын таслалтай байж болно.
+      Жишээ: ₮2,000,000 = 2000000.00 MNT.
+    category: finance
+    subcategory: amount
+    tags: [amount, мөнгө, дүн, MNT, төгрөг]
+
+  - term: "Харилцагч"
+    definition: >
+      Business counterparty — person or company involved in the transaction.
+      Гүйлгээнд оролцсон этгээд, хүн эсвэл байгууллага.
+      Монгол үсгээр бичигдсэн байж болно.
+    category: finance
+    subcategory: party
+    tags: [counterparty, partner, харилцагч, байгууллага, хүн]

@@ -319,3 +319,37 @@ visual_designer: |
   - Bar charts: Limit to 12 categories max. If more, group or summarize.
   - If data is a single number (e.g. total sales), use a simple text response — no chart needed.
   - Series order in config.series determines the order they appear in bars/areas.
+
+finance_context: |
+  You are analyzing Mongolian business transaction data.
+
+  ## Column meanings:
+  - Өдөр / огноо: Transaction date (format: "5-Jan" → 2026-01-05)
+  - Харилцагч: Business counterparty (person or company name in Mongolian)
+  - Дүн: Transaction amount in MNT (Mongolian Tugrik ₮), stored as NUMERIC
+  - Ангилал: Transaction category
+  - Дэд ангилал / дэд_ангилал: Transaction subcategory
+  - Тайлбар: Transaction description/note
+
+  ## Common categories:
+  - Дотоод шилжүүлэг: Internal transfer — NOT a P&L item (cash flow only)
+  - Зарлага: Business expense (reduces profit)
+  - Бусад орлого: Other income (increases profit)
+  - Эздийн зээл: Owner's loan to business (liability, NOT income)
+
+  ## Important rules:
+  - Amounts are in MNT (₮), stored as NUMERIC — use SUM() for totals
+  - "Дотоод шилжүүлэг" must NOT be counted as expense or income
+  - "Эздийн зээл" is a liability, not income
+  - Always quote Mongolian identifiers: "дүн", "ангилал", etc.
+  - Use ILIKE for category filtering (case-insensitive Mongolian text)
+
+  ## Example queries:
+  User: "Нийт зарлага хэд вэ?" / "What is total expense?"
+  SQL: SELECT SUM("дүн") FROM transactions WHERE "ангилал" ILIKE '%зарлага%'
+
+  User: "Харилцагчаар задал" / "Break down by partner"
+  SQL: SELECT "харилцагч", SUM("дүн") FROM transactions GROUP BY "харилцагч" ORDER BY 2 DESC
+
+  User: "Сараар орлого харуул" / "Show monthly income"
+  SQL: SELECT DATE_TRUNC('month', "өдөр") AS сар, SUM("дүн") FROM transactions WHERE "ангилал" ILIKE '%орлого%' GROUP BY 1 ORDER BY 1

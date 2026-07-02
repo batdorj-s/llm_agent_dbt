@@ -220,10 +220,41 @@ async function getChromaCollection() {
   }
 }
 
+function ingestFinanceGlossary(): RagDocument[] {
+  const glossaryPath = path.join(process.cwd(), "src", "rag", "finance-glossary.yaml");
+  if (!fs.existsSync(glossaryPath)) {
+    console.warn("[RAG] Finance glossary not found at", glossaryPath);
+    return [];
+  }
+  const raw = fs.readFileSync(glossaryPath, "utf-8");
+  const parsed = yaml.parse(raw);
+  if (!parsed?.terms || !Array.isArray(parsed.terms)) return [];
+
+  return parsed.terms.map((term: any, i: number) => ({
+    id: `finance-glossary-${i}`,
+    text: `${term.term}: ${term.definition}`,
+    metadata: {
+      category: "finance" as const,
+      department: "finance",
+      author: "system",
+      source_name: "finance-glossary",
+      shared: true,
+    },
+    keywords: [term.term.toLowerCase(), ...(term.tags || [])],
+  }));
+}
+
 export async function setupKnowledgeBase() {
   // Load knowledge base from YAML first
   const yamlDocs = loadKnowledgeBase();
   knowledgeDocuments.push(...yamlDocs);
+
+  // Load finance glossary
+  const financeDocs = ingestFinanceGlossary();
+  knowledgeDocuments.push(...financeDocs);
+  if (financeDocs.length > 0) {
+    console.log(`[RAG] Loaded ${financeDocs.length} finance glossary terms`);
+  }
 
   // Load dbt model definitions as RAG context
   const dbtDocs = syncDbtModelsToRag();

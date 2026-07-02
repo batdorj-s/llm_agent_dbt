@@ -57,6 +57,15 @@ export const DATA_SCIENCE_SIGNALS = [
 export const FINANCE_SIGNALS = [
     "sales target", "revenue target", "profit target", "margin target", "kpi", "kpi target",
     "борлуулалтын төлөвлөгөө", "орлогын төлөвлөгөө", "ашгийн төлөвлөгөө",
+    // Санхүүгийн гүйлгээний Монгол keyword-ууд
+    "дүн", "орлого", "шилжүүлэг", "харилцагч",
+    "касс", "түрээс", "зээл", "тайлбар",
+    "дотоод шилжүүлэг", "эздийн зээл", "бусад орлого",
+    "дэд түрээс",
+    // Санхүүгийн Англи keyword-ууд
+    "income", "expense", "transaction", "transfer",
+    "cash", "payment", "receipt",
+    "balance", "ledger", "journal",
 ];
 
 export function hasSignal(text: string, signal: string): boolean {

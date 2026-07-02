@@ -23,6 +23,7 @@
 export interface ColumnConcept {
     readonly concept: string;
     readonly patterns: RegExp[];
+    readonly description?: string;
 }
 
 export const GLOBAL_CONCEPTS: ColumnConcept[] = [
@@ -54,6 +55,37 @@ export const GLOBAL_CONCEPTS: ColumnConcept[] = [
             /gross_income/i, /income/i,
         ],
     },
+    {
+        concept: "finance_amount",
+        // ^...$ exact match prevents "дүн" from matching "дүнгийн орлого" etc.
+        patterns: [/^дүн$/i, /^amount$/i, /^мөнгө$/i, /^үнэ$/i, /^дүнгийн/i],
+        description: "Transaction amount / Гүйлгээний дүн",
+    },
+    {
+        concept: "finance_date",
+        patterns: [/^өдөр$/i, /^огноо$/i, /^гүйлгээний.өдөр$/i],
+        description: "Transaction date / Гүйлгээний огноо",
+    },
+    {
+        concept: "finance_category",
+        patterns: [/^ангилал$/i, /^төрөл$/i],
+        description: "Transaction category / Ангилал",
+    },
+    {
+        concept: "finance_subcategory",
+        patterns: [/^дэд.ангилал$/i, /^subcategory$/i, /^дэд.төрөл$/i],
+        description: "Transaction subcategory / Дэд ангилал",
+    },
+    {
+        concept: "finance_party",
+        patterns: [/^харилцагч$/i, /^counterparty$/i],
+        description: "Transaction counterparty / Харилцагч",
+    },
+    {
+        concept: "finance_note",
+        patterns: [/^тайлбар$/i, /^утга$/i],
+        description: "Transaction note / Тайлбар",
+    },
 ];
 
 const TABLE_SPECIFIC_COLUMNS: Record<string, Record<string, string[]>> = {
@@ -62,6 +94,14 @@ const TABLE_SPECIFIC_COLUMNS: Record<string, Record<string, string[]>> = {
     },
     "superstore_sales": {
         "product": ["category"],
+    },
+    "transactions": {
+        "finance_amount":      ["дүн"],
+        "finance_date":        ["өдөр"],
+        "finance_category":    ["ангилал"],
+        "finance_subcategory": ["дэд_ангилал"],
+        "finance_party":       ["харилцагч"],
+        "finance_note":        ["тайлбар"],
     },
 };
 

@@ -192,3 +192,56 @@ describe("buildDeterministicTechSql — column synonym mapping", () => {
         expect(productCol).toBe("sales_category");
     });
 });
+
+describe("Finance transaction concepts", () => {
+    const TRANSACTIONS = makeEntry("transactions", [
+        "өдөр", "харилцагч", "дүн", "ангилал", "дэд_ангилал", "тайлбар",
+    ]);
+    const cols = ["өдөр", "харилцагч", "дүн", "ангилал", "дэд_ангилал", "тайлбар"];
+
+    it('finds "дүн" as finance_amount (table-specific)', () => {
+        expect(findConceptColumn(cols, "finance_amount", "transactions")).toBe("дүн");
+    });
+    it('finds "өдөр" as finance_date (table-specific)', () => {
+        expect(findConceptColumn(cols, "finance_date", "transactions")).toBe("өдөр");
+    });
+    it('finds "ангилал" as finance_category (table-specific)', () => {
+        expect(findConceptColumn(cols, "finance_category", "transactions")).toBe("ангилал");
+    });
+    it('finds "дэд_ангилал" as finance_subcategory (table-specific)', () => {
+        expect(findConceptColumn(cols, "finance_subcategory", "transactions")).toBe("дэд_ангилал");
+    });
+    it('finds "харилцагч" as finance_party (table-specific)', () => {
+        expect(findConceptColumn(cols, "finance_party", "transactions")).toBe("харилцагч");
+    });
+    it('finds "тайлбар" as finance_note (table-specific)', () => {
+        expect(findConceptColumn(cols, "finance_note", "transactions")).toBe("тайлбар");
+    });
+    it('does not match "дүн" as sales concept (collision prevention)', () => {
+        expect(findConceptColumn(cols, "sales", "transactions")).toBeNull();
+    });
+
+    it("finance SQL: нийт зарлага query generates WHERE ILIKE зарлага", async () => {
+        const sql = await buildDeterministicTechSql("нийт зарлага хэд вэ", TRANSACTIONS);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("ILIKE '%зарлага%'");
+        expect(sql).toContain("SUM");
+    });
+    it("finance SQL: нийт орлого query generates WHERE ILIKE орлого", async () => {
+        const sql = await buildDeterministicTechSql("нийт орлого харуул", TRANSACTIONS);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("ILIKE '%орлого%'");
+    });
+    it("finance SQL: харилцагчаар задлах generates GROUP BY харилцагч", async () => {
+        const sql = await buildDeterministicTechSql("харилцагчаар задал", TRANSACTIONS);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("харилцагч");
+        expect(sql).toContain("GROUP BY");
+    });
+    it("finance SQL: сараар query generates DATE_TRUNC", async () => {
+        const sql = await buildDeterministicTechSql("сараар орлого задла", TRANSACTIONS);
+        expect(sql).not.toBeNull();
+        expect(sql).toContain("DATE_TRUNC");
+        expect(sql).toContain("сар");
+    });
+});

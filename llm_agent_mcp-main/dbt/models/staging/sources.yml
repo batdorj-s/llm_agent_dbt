@@ -9,3 +9,13 @@ sources:
         description: Raw sales data from the Superstore dataset.
       - name: product_prices
         description: Current product prices.
+
+  - name: raw
+    description: Raw financial transaction data.
+    schema: public
+    tables:
+      - name: transactions
+        description: >
+          Raw business transaction data with Mongolian column names.
+          Columns: Өдөр (date), Харилцагч (counterparty), Дүн (amount ₮),
+          Ангилал (category), Дэд ангилал (subcategory), Тайлбар (note).

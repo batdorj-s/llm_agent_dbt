@@ -138,6 +138,70 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
         }
     }
 
+    // Finance pattern: нийт зарлага / total expense by subcategory
+    const amountCol    = findConceptColumn(columns, "finance_amount", tableName);
+    const categoryCol  = findConceptColumn(columns, "finance_category", tableName);
+    const subCatCol    = findConceptColumn(columns, "finance_subcategory", tableName);
+    const dateCol2     = findConceptColumn(columns, "finance_date", tableName);
+    const partyCol     = findConceptColumn(columns, "finance_party", tableName);
+
+    if (amountCol && categoryCol) {
+      const groupCol = subCatCol || categoryCol;
+
+      if (/нийт.зарлага|total.expense|зарлага.нийт/i.test(lowerQuery)) {
+        return [
+          `SELECT`,
+          `  "${groupCol}" AS ангилал,`,
+          `  SUM("${amountCol}") AS нийт_дүн,`,
+          `  COUNT(*) AS тоо`,
+          `FROM "${tableName}"`,
+          `WHERE "${categoryCol}" ILIKE '%зарлага%'`,
+          `   OR "${categoryCol}" ILIKE '%expense%'`,
+          `GROUP BY 1`,
+          `ORDER BY 2 DESC;`,
+        ].join("\n");
+      }
+
+      if (/нийт.орлого|total.income|орлого.нийт/i.test(lowerQuery)) {
+        return [
+          `SELECT`,
+          `  "${groupCol}" AS ангилал,`,
+          `  SUM("${amountCol}") AS нийт_дүн,`,
+          `  COUNT(*) AS тоо`,
+          `FROM "${tableName}"`,
+          `WHERE "${categoryCol}" ILIKE '%орлого%'`,
+          `   OR "${categoryCol}" ILIKE '%income%'`,
+          `GROUP BY 1`,
+          `ORDER BY 2 DESC;`,
+        ].join("\n");
+      }
+
+      if (/харилцагчаар|by.partner|by.counterparty|харилцагч.тус.бүрээр/i.test(lowerQuery) && partyCol) {
+        return [
+          `SELECT`,
+          `  "${partyCol}" AS харилцагч,`,
+          `  COUNT(*) AS гүйлгээний_тоо,`,
+          `  SUM("${amountCol}") AS нийт_дүн`,
+          `FROM "${tableName}"`,
+          `GROUP BY 1`,
+          `ORDER BY 3 DESC`,
+          `LIMIT 20;`,
+        ].join("\n");
+      }
+
+      if (/сараар|by.month|monthly|сар.тус.бүрээр/i.test(lowerQuery) && dateCol2) {
+        return [
+          `SELECT`,
+          `  DATE_TRUNC('month', "${dateCol2}") AS сар,`,
+          `  SUM("${amountCol}") AS нийт_дүн,`,
+          `  COUNT(*) AS гүйлгээний_тоо`,
+          `FROM "${tableName}"`,
+          `GROUP BY 1`,
+          `ORDER BY 1 DESC;`,
+        ].join("\n");
+      }
+    }
+
     if (lowerQuery.includes("count") || lowerQuery.includes("how many") || lowerQuery.includes("нийт хэдэн") || lowerQuery.includes("гүйлгээ") || lowerQuery.includes("хэдэн") || lowerQuery.includes("хэд")) {
         if (lowerQuery.includes("дундаж") || lowerQuery.includes("average") || lowerQuery.includes("avg")) {
             const avgCol = findColumn(columns, [/age/i, /balance/i, /salary/i, /income/i, /spend/i, /amount/i, /price/i, /value/i]);
