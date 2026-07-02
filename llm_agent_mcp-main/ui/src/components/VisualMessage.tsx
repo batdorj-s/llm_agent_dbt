@@ -1,9 +1,20 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend, ComposedChart } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend, ComposedChart, CartesianGrid } from "recharts";
 import { chartTheme, type ChartType } from "./chartTheme";
 import { DEFAULT_COLORS } from "./types";
+
+const fmtCompact = (v: number): string => {
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}М`;
+  if (abs >= 1_000) return `${(v / 1_000).toFixed(0)}К`;
+  return v.toLocaleString();
+};
+
+const fmtFull = (v: number): string => `₮${Math.round(v).toLocaleString()}`;
+
+const tooltipFormatter = (value: any) => [fmtFull(Number(value)), ""];
 
 const ChartSkeleton = () => (
   <div className="animate-pulse space-y-2 p-4">
@@ -87,17 +98,28 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
   );
   const compatible = getCompatibleTypes(series, hasMultiNumeric);
 
+  const gridStyle = { stroke: "var(--border)", strokeOpacity: 0.4, strokeDasharray: "3 3" };
+
   const renderMultiSeries = (ChartComponent: any, DataComponent: any, extraProps?: Record<string, unknown>) => {
     const s = series || ["value"];
     return (
       <ChartComponent data={rows} layout={extraProps?.layout || undefined}>
-        {extraProps?.layout === "vertical" ? null : <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />}
-        {extraProps?.layout === "vertical" ? <YAxis dataKey="label" type="category" stroke="#888888" fontSize={chartTheme.font.sizes.axis} /> : <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />}
-        {extraProps?.layout === "vertical" ? <XAxis type="number" stroke="#888888" fontSize={chartTheme.font.sizes.axis} /> : null}
-        <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
+        <CartesianGrid {...gridStyle} />
+        {extraProps?.layout === "vertical" ? null : (
+          <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} tick={{ fontSize: chartTheme.font.sizes.axis }} />
+        )}
+        {extraProps?.layout === "vertical" ? (
+          <YAxis dataKey="label" type="category" stroke="#888888" fontSize={chartTheme.font.sizes.axis} width={90} />
+        ) : (
+          <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+        )}
+        {extraProps?.layout === "vertical" ? (
+          <XAxis type="number" stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} />
+        ) : null}
+        <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
         {s.length > 1 && <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />}
         {s.map((key, i) => (
-          <DataComponent key={key} type="monotone" dataKey={key} fill={colors[i % colors.length]} stroke={colors[i % colors.length]} stackId={stacked ? "stack" : undefined} />
+          <DataComponent key={key} type="monotone" dataKey={key} fill={colors[i % colors.length]} stroke={colors[i % colors.length]} stackId={stacked ? "stack" : undefined} radius={DataComponent === Bar ? [3, 3, 0, 0] : undefined} />
         ))}
       </ChartComponent>
     );
@@ -109,69 +131,92 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
       case "bar":
         return stacked ? renderMultiSeries(BarChart, Bar) : series && series.length > 1 ? renderMultiSeries(BarChart, Bar) : (
           <BarChart data={rows} onClick={(data: any) => { const r = maybeRow(data); if (r) setDrillDown({ ...r, x: data.chartX || 0, y: (data.chartY || 0) - 8 }); }}>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Bar dataKey="value" fill={colors[0]} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Bar dataKey="value" fill={colors[0]} radius={[3, 3, 0, 0]} />
           </BarChart>
         );
       case "horizontal_bar":
         return series && series.length > 1 ? renderMultiSeries(BarChart, Bar, { layout: "vertical" }) : (
           <BarChart data={rows} layout="vertical" onClick={(data: any) => { const r = maybeRow(data); if (r) setDrillDown({ ...r, x: data.chartX || 0, y: (data.chartY || 0) - 8 }); }}>
-            <XAxis type="number" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis dataKey="label" type="category" stroke="#888888" fontSize={chartTheme.font.sizes.axis} width={80} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Bar dataKey="value" fill={colors[0]} />
+            <CartesianGrid {...gridStyle} horizontal={false} />
+            <XAxis type="number" stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} />
+            <YAxis dataKey="label" type="category" stroke="#888888" fontSize={chartTheme.font.sizes.axis} width={90} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Bar dataKey="value" fill={colors[0]} radius={[0, 3, 3, 0]} />
           </BarChart>
         );
       case "line":
         return series && series.length > 1 ? renderMultiSeries(LineChart, Line) : (
           <LineChart data={rows} onClick={(data: any) => { const r = maybeRow(data); if (r) setDrillDown({ ...r, x: data.chartX || 0, y: (data.chartY || 0) - 8 }); }}>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Line type="monotone" dataKey="value" stroke={colors[0]} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Line type="monotone" dataKey="value" stroke={colors[0]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
           </LineChart>
         );
       case "area":
         return series && series.length > 1 ? renderMultiSeries(AreaChart, Area) : (
           <AreaChart data={rows} onClick={(data: any) => { const r = maybeRow(data); if (r) setDrillDown({ ...r, x: data.chartX || 0, y: (data.chartY || 0) - 8 }); }}>
+            <defs>
+              <linearGradient id="areaGradient0" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={colors[0]} stopOpacity={0.25} />
+                <stop offset="95%" stopColor={colors[0]} stopOpacity={0.03} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Area type="monotone" dataKey="value" fill={colors[0]} stroke={colors[0]} fillOpacity={0.3} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Area type="monotone" dataKey="value" fill="url(#areaGradient0)" stroke={colors[0]} strokeWidth={2} />
           </AreaChart>
         );
       case "donut":
       case "pie":
         return (
           <PieChart onClick={(data: any) => { const r = maybeRow(data); if (r) setDrillDown({ ...r, x: 100, y: 60 }); }}>
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Pie data={rows} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={70} innerRadius={chartType === "donut" ? 30 : 0} label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${value ?? 0}`}>
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Pie
+              data={rows}
+              dataKey="value"
+              nameKey="label"
+              cx="50%"
+              cy="50%"
+              outerRadius={72}
+              innerRadius={chartType === "donut" ? 32 : 0}
+              label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${fmtCompact(Number(value ?? 0))}`}
+              labelLine={false}
+            >
               {rows.map((_, i) => (
                 <Cell key={i} fill={colors[i % colors.length]} />
               ))}
             </Pie>
+            <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />
           </PieChart>
         );
       case "combo":
         return (
           <ComposedChart data={rows} onClick={(data: any) => { const r = maybeRow(data); if (r) setDrillDown({ ...r, x: data.chartX || 0, y: (data.chartY || 0) - 8 }); }}>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
             <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />
-            <Bar dataKey="value" fill={colors[0]} />
-            <Line type="monotone" dataKey={series?.[1] || "lineValue"} stroke={colors[1]} strokeWidth={2} />
+            <Bar dataKey="value" fill={colors[0]} radius={[3, 3, 0, 0]} />
+            <Line type="monotone" dataKey={series?.[1] || "lineValue"} stroke={colors[1]} strokeWidth={2} dot={false} />
           </ComposedChart>
         );
       case "stacked_bar":
         return series && series.length > 1 ? renderMultiSeries(BarChart, Bar) : (
           <BarChart data={rows} onClick={(data: any) => { const r = maybeRow(data); if (r) setDrillDown({ ...r, x: data.chartX || 0, y: (data.chartY || 0) - 8 }); }}>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Bar dataKey="value" fill={colors[0]} stackId="auto" />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Bar dataKey="value" fill={colors[0]} stackId="auto" radius={[3, 3, 0, 0]} />
           </BarChart>
         );
       case "heatmap":
@@ -212,7 +257,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
                   zIndex: 50,
                 }}
               >
-                {heatmapTip.label}: {heatmapTip.value}
+                {heatmapTip.label}: {fmtFull(heatmapTip.value)}
               </div>
             )}
           </div>
@@ -292,7 +337,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
           </button>
         </div>
       </div>
-      <div className="h-48 w-full relative">
+      <div className="h-52 w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           {renderChartContent(effectiveType)}
         </ResponsiveContainer>
@@ -315,7 +360,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
               onClick={() => setDrillDown(null)}
             >
               <div className="text-[11px] font-semibold">{drillDown.label}</div>
-              <div className="text-[10px] text-foreground/70 mt-0.5">{chartTheme.format.number(drillDown.value)}</div>
+              <div className="text-[10px] text-foreground/70 mt-0.5">{fmtFull(drillDown.value)}</div>
             </div>
           </>
         )}
@@ -341,7 +386,7 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
       <div className="bg-gradient-to-br from-background to-sidebar border border-border/80 rounded-lg p-3 flex flex-col justify-center shadow-sm hover:shadow-md transition-shadow duration-150">
         <div className="text-[9px] text-foreground/50 uppercase tracking-wider font-semibold">{widget.title}</div>
         <div className={`${isLarge ? "text-2xl" : "text-xl"} font-bold text-foreground mt-1 tracking-tight`}>
-          {val != null ? val.toLocaleString() : "—"}
+          {val != null ? fmtFull(val) : "—"}
           {widget.unit && <span className="text-[10px] text-foreground/50 ml-1 font-normal">{widget.unit}</span>}
         </div>
       </div>
@@ -366,77 +411,101 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
   }
 
   const colors = DEFAULT_COLORS;
+  const gridStyle = { stroke: "var(--border)", strokeOpacity: 0.4, strokeDasharray: "3 3" };
 
   const renderChart = () => {
     switch (widget.type) {
       case "bar":
         return (
           <BarChart data={widget.data}>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Bar dataKey="value" fill={colors[0]} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Bar dataKey="value" fill={colors[0]} radius={[3, 3, 0, 0]} />
           </BarChart>
         );
       case "horizontal_bar":
         return (
           <BarChart data={widget.data} layout="vertical">
-            <XAxis type="number" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis dataKey="label" type="category" stroke="#888888" fontSize={chartTheme.font.sizes.axis} width={80} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Bar dataKey="value" fill={colors[0]} />
+            <CartesianGrid {...gridStyle} horizontal={false} />
+            <XAxis type="number" stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} />
+            <YAxis dataKey="label" type="category" stroke="#888888" fontSize={chartTheme.font.sizes.axis} width={90} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Bar dataKey="value" fill={colors[0]} radius={[0, 3, 3, 0]} />
           </BarChart>
         );
       case "line":
         return (
           <LineChart data={widget.data}>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Line type="monotone" dataKey="value" stroke={colors[0]} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Line type="monotone" dataKey="value" stroke={colors[0]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
           </LineChart>
         );
       case "area":
         return (
           <AreaChart data={widget.data}>
+            <defs>
+              <linearGradient id="areaGradientW0" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={colors[0]} stopOpacity={0.25} />
+                <stop offset="95%" stopColor={colors[0]} stopOpacity={0.03} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Area type="monotone" dataKey="value" fill={colors[0]} stroke={colors[0]} fillOpacity={0.3} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Area type="monotone" dataKey="value" fill="url(#areaGradientW0)" stroke={colors[0]} strokeWidth={2} />
           </AreaChart>
         );
       case "donut":
       case "pie":
         return (
           <PieChart>
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
-            <Pie data={widget.data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={60} innerRadius={widget.type === "donut" ? 25 : 0} label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${value ?? 0}`}>
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Pie
+              data={widget.data}
+              dataKey="value"
+              nameKey="label"
+              cx="50%"
+              cy="50%"
+              outerRadius={60}
+              innerRadius={widget.type === "donut" ? 25 : 0}
+              label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""}: ${fmtCompact(Number(value ?? 0))}`}
+              labelLine={false}
+            >
               {widget.data.map((_: any, i: number) => (
                 <Cell key={i} fill={colors[i % colors.length]} />
               ))}
             </Pie>
+            <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />
           </PieChart>
         );
       case "combo":
         return (
           <ComposedChart data={widget.data}>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
             <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />
-            <Bar dataKey="value" fill={colors[0]} />
-            <Line type="monotone" dataKey="lineValue" stroke={colors[1]} strokeWidth={2} />
+            <Bar dataKey="value" fill={colors[0]} radius={[3, 3, 0, 0]} />
+            <Line type="monotone" dataKey="lineValue" stroke={colors[1]} strokeWidth={2} dot={false} />
           </ComposedChart>
         );
       case "stacked_bar":
         return (
           <BarChart data={widget.data}>
+            <CartesianGrid {...gridStyle} />
             <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
-            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
             <Legend wrapperStyle={{ fontSize: `${chartTheme.font.sizes.legend}px` }} />
             {colors.slice(0, 4).map((color, i) => (
-              <Bar key={i} dataKey={["value", "value2", "value3", "value4"][i] || "value"} fill={color} stackId="auto" />
+              <Bar key={i} dataKey={["value", "value2", "value3", "value4"][i] || "value"} fill={color} stackId="auto" radius={i === 3 ? [3, 3, 0, 0] : undefined} />
             ))}
           </BarChart>
         );
@@ -478,7 +547,7 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
                   zIndex: 50,
                 }}
               >
-                {heatmapTip.label}: {heatmapTip.value}
+                {heatmapTip.label}: {fmtFull(heatmapTip.value)}
               </div>
             )}
           </div>
@@ -491,7 +560,7 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
   return (
     <div className="bg-gradient-to-br from-background to-sidebar border border-border/80 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow duration-150" ref={chartRef}>
       <h5 className="text-[9px] font-bold text-foreground/50 uppercase mb-2 tracking-wider">{widget.title}</h5>
-      <div className="h-40 w-full min-w-0" style={{ minHeight: "160px" }}>
+      <div className="h-44 w-full min-w-0" style={{ minHeight: "176px" }}>
         {ready && (
           <ResponsiveContainer width="100%" height="100%">
             {renderChart()}
