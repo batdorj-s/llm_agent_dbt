@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface ChartCardProps {
   title: string;
@@ -21,7 +21,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
   status,
   children,
   footer,
-  contentHeight = 46,
+  contentHeight = 60,
   loading = false,
 }) => {
   const trendIcon =
@@ -39,7 +39,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
         : "text-foreground/50";
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card p-5 flex flex-col gap-3">
+    <div className="rounded-xl border border-border/80 bg-card p-5 flex flex-col gap-3 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">
           {title}
@@ -69,7 +69,10 @@ export const ChartCard: React.FC<ChartCardProps> = ({
           )}
 
           {children && (
-            <div style={{ height: contentHeight }} className="-mx-2">
+            <div
+              className="w-full overflow-hidden"
+              style={{ height: contentHeight }}
+            >
               {children}
             </div>
           )}

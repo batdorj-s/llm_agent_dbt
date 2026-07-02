@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Info } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -43,59 +42,75 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Total Sales */}
       <ChartCard
         title="Нийт борлуулалт"
         total={formatCurrency(totalSales)}
         footer={<Field label="Өдрийн борлуулалт" value={formatCurrency(12423)} />}
-        contentHeight={46}
+        contentHeight={60}
         loading={loading}
       >
-        <div className="flex gap-4 mt-1">
+        <div className="flex gap-4 mt-1 h-full items-center">
           <Trend flag="up">7 хоног <span className="font-bold">12%</span></Trend>
           <Trend flag="down">Өдөр <span className="font-bold">11%</span></Trend>
         </div>
       </ChartCard>
 
+      {/* Visits */}
       <ChartCard
         title="Хандалт"
         total={formatNumber(totalVisits)}
         footer={<Field label="Өдрийн хандалт" value={formatNumber(1234)} />}
-        contentHeight={46}
+        contentHeight={60}
         loading={loading}
       >
-        <ResponsiveContainer width="100%" height={46}>
-          <AreaChart data={visitData}>
+        <ResponsiveContainer width="100%" height={60}>
+          <AreaChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>
-              <linearGradient id="visitGrad" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="white" stopOpacity={0.01} />
-                <stop offset="100%" stopColor="#975FE4" stopOpacity={0.6} />
+              <linearGradient id="visitGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#975FE4" stopOpacity={0.85} />
+                <stop offset="100%" stopColor="#975FE4" stopOpacity={0.05} />
               </linearGradient>
             </defs>
             <Area
               type="monotone"
               dataKey="y"
               stroke="#975FE4"
-              strokeWidth={1.5}
+              strokeWidth={2}
               fill="url(#visitGrad)"
+              isAnimationActive={false}
             />
           </AreaChart>
         </ResponsiveContainer>
       </ChartCard>
 
+      {/* Payments */}
       <ChartCard
         title="Төлбөрийн тоо"
         total={formatNumber(totalPayments)}
         footer={<Field label="Хөрвүүлэлт" value="60%" />}
-        contentHeight={46}
+        contentHeight={60}
         loading={loading}
       >
-        <ResponsiveContainer width="100%" height={46}>
-          <BarChart data={visitData}>
-            <Bar dataKey="y" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+        <ResponsiveContainer width="100%" height={60}>
+          <BarChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="payGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#36A2EB" stopOpacity={1} />
+                <stop offset="100%" stopColor="#36A2EB" stopOpacity={0.3} />
+              </linearGradient>
+            </defs>
+            <Bar
+              dataKey="y"
+              fill="url(#payGrad)"
+              radius={[3, 3, 0, 0]}
+              isAnimationActive={false}
+            />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
 
+      {/* Campaign Effect */}
       <ChartCard
         title="Үйл ажиллагааны үр дүн"
         total={`${campaignEffect}%`}
@@ -105,18 +120,25 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
             <Trend flag="down">Өдөр <span className="font-bold">11%</span></Trend>
           </div>
         }
-        contentHeight={46}
+        contentHeight={60}
         loading={loading}
       >
-        <div className="w-full h-full flex items-center">
-          <div className="w-full h-2 bg-foreground/10 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${campaignEffect}%`,
-                background: "linear-gradient(90deg, #3b82f6, #10b981)",
-              }}
-            />
+        <div className="w-full h-full flex items-center px-1">
+          <div className="w-full">
+            <div className="flex justify-between text-[10px] text-foreground/40 mb-1.5">
+              <span>0%</span>
+              <span>{campaignEffect}%</span>
+              <span>100%</span>
+            </div>
+            <div className="w-full h-2.5 bg-foreground/10 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${campaignEffect}%`,
+                  background: "linear-gradient(90deg, #667eea, #764ba2)",
+                }}
+              />
+            </div>
           </div>
         </div>
       </ChartCard>
