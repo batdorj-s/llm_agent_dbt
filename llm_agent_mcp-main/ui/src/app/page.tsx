@@ -860,7 +860,7 @@ export default function Home() {
                       </div>
                       <div className="flex flex-col gap-4">
                         {/* Gauge */}
-                        <div className="border border-border/60 rounded-xl p-4 bg-card shadow-sm flex flex-col items-center justify-center gap-3">
+                        <div className="border border-border/60 rounded-xl p-6 bg-card shadow-sm flex flex-col items-center justify-center">
                           <Gauge
                             percent={
                               financeSummary
@@ -870,7 +870,12 @@ export default function Home() {
                                   : 89
                             }
                             title="Орлогын гүйцэтгэл"
+                            size={210}
                           />
+                        </div>
+                        {/* Liquid */}
+                        <div className="border border-border/60 rounded-xl p-6 bg-card shadow-sm flex flex-col items-center justify-center gap-3">
+                          <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Дүүргэлт</span>
                           <Liquid
                             percent={
                               financeSummary
@@ -879,7 +884,7 @@ export default function Home() {
                                   ? Math.min(1, salesKpi.current / (salesKpi.target * 1.15))
                                   : 0.50
                             }
-                            height={100}
+                            height={130}
                           />
                         </div>
                         {/* Radar */}
