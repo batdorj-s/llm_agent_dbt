@@ -64,7 +64,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         contentHeight={60}
         loading={loading}
       >
-        <ResponsiveContainer width="100%" height={60}>
+        <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="visitGrad" x1="0" y1="0" x2="0" y2="1">
@@ -92,7 +92,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         contentHeight={60}
         loading={loading}
       >
-        <ResponsiveContainer width="100%" height={60}>
+        <ResponsiveContainer width="100%" height="100%">
           <BarChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="payGrad" x1="0" y1="0" x2="0" y2="1">

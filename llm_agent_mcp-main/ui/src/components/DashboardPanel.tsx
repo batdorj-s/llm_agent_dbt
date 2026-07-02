@@ -65,6 +65,7 @@ export const DashboardPanel = ({
           subTotal={growthRate ?? undefined}
           status={growthDirection}
           footer={<Field label="Зорилтот" value={formatCurrency(salesKpi?.target || 0)} />}
+          contentHeight={80}
         >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={salesHistory.slice(-6)}>
@@ -88,6 +89,7 @@ export const DashboardPanel = ({
           title="Идэвхтэй хэрэглэгчид"
           total={usersKpi?.current.toLocaleString() || "—"}
           footer={<Field label="Зорилго" value={usersKpi?.target.toLocaleString() || "—"} />}
+          contentHeight={80}
         >
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={salesHistory.slice(-6)}>
@@ -123,6 +125,7 @@ export const DashboardPanel = ({
               value={churnKpi ? `${churnKpi.target}%` : "—"}
             />
           }
+          contentHeight={80}
         >
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -162,6 +165,7 @@ export const DashboardPanel = ({
               value={topCategory ? `${topCategory} +1` : "—"}
             />
           }
+          contentHeight={80}
         >
           <div className="flex items-center justify-center h-full text-3xl font-bold text-foreground/20">
             {topCategory ? topCategory[0] : "?"}

@@ -38,16 +38,17 @@ const defaultStores: OfflineStore[] = [
   { name: "Өмнөд салбар", cvr: 0.45 },
 ];
 
-function generateChartData(): ChartPoint[] {
-  const types = ["хандалт", "төлбөр"];
-  return Array.from({ length: 30 }, (_, i) => {
-    const date = `2024-${String(Math.floor(i / 30) + 1).padStart(2, "0")}-${String((i % 30) + 1).padStart(2, "0")}`;
-    const entry: ChartPoint = { date, type: types[0], value: Math.floor(Math.random() * 200) + 50 };
-    return entry;
-  });
+function generateChartData(stores: OfflineStore[]): ChartPoint[] {
+  return stores.flatMap((store) =>
+    Array.from({ length: 30 }, (_, i) => ({
+      date: `2024-01-${String(i + 1).padStart(2, "0")}`,
+      type: store.name,
+      value: Math.floor(Math.random() * 200) + 50,
+    }))
+  );
 }
 
-const defaultChartData = generateChartData();
+const defaultChartData = generateChartData(defaultStores);
 
 const ringGradientId = "offlineRingGrad";
 
@@ -69,7 +70,7 @@ export const OfflineData: React.FC<OfflineDataProps> = ({
 
   const currentStore = offlineData.find((s) => s.name === activeKey) || offlineData[0];
 
-  const filteredData = offlineChartData.filter((d) => d.type === "хандалт");
+  const filteredData = offlineChartData.filter((d) => d.type === (currentStore?.name ?? ""));
 
   return (
     <div className="rounded-xl border border-border/80 bg-card overflow-hidden">
