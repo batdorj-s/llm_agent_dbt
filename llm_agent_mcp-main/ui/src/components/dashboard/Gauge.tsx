@@ -11,8 +11,8 @@ interface GaugeProps {
 }
 
 export const Gauge: React.FC<GaugeProps> = ({
-  percent = 78,
-  title = "Үр ашиг",
+  percent = 89,
+  title = "Орлогын хамрах хувь",
   color = "#3b82f6",
   size = 180,
   strokeWidth = 12,
@@ -82,7 +82,7 @@ export const Gauge: React.FC<GaugeProps> = ({
           opacity={0.4}
           fontSize={10}
         >
-          {title}
+          Q1 2026
         </text>
       </svg>
     </div>

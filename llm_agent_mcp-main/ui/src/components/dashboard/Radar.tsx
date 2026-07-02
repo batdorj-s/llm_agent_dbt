@@ -23,12 +23,12 @@ interface RadarProps {
 }
 
 const defaultData: RadarDataItem[] = [
-  { label: "Борлуулалт", value: 85 },
-  { label: "Үйлчлүүлэгч", value: 72 },
-  { label: "Бүтээмж", value: 90 },
-  { label: "Чанар", value: 68 },
-  { label: "Инновац", value: 78 },
-  { label: "Багийн ажил", value: 82 },
+  { label: "Орлогын өсөлт", value: 95 },
+  { label: "Зарлагын хяналт", value: 78 },
+  { label: "Мөнгөн урсгал", value: 65 },
+  { label: "Тогтвортой байдал", value: 40 },
+  { label: "Санхүүгийн ашиг", value: 45 },
+  { label: "Гүйлгээний идэвх", value: 93 },
 ];
 
 export const Radar: React.FC<RadarProps> = ({

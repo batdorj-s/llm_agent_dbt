@@ -2,123 +2,131 @@
 
 import React, { useState } from "react";
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from "recharts";
-import { NumberInfo } from "./NumberInfo";
-interface ChartPoint {
-  date: string;
-  type: string;
-  value: number;
-  [key: string]: string | number | undefined;
-}
 
-interface OfflineStore {
+interface ExpenseCategory {
   name: string;
-  cvr: number;
+  share: number;
+  color: string;
 }
 
 interface OfflineDataProps {
   loading?: boolean;
-  offlineData?: OfflineStore[];
-  offlineChartData?: ChartPoint[];
 }
 
-const defaultStores: OfflineStore[] = [
-  { name: "Төв салбар", cvr: 0.72 },
-  { name: "Баруун салбар", cvr: 0.65 },
-  { name: "Зүүн салбар", cvr: 0.58 },
-  { name: "Хойд салбар", cvr: 0.81 },
-  { name: "Өмнөд салбар", cvr: 0.45 },
+const defaultCategories: ExpenseCategory[] = [
+  { name: "Цалин", share: 0.362, color: "#3b82f6" },
+  { name: "Төсөл", share: 0.245, color: "#10b981" },
+  { name: "Зээл", share: 0.198, color: "#f59e0b" },
+  { name: "Бусад", share: 0.082, color: "#8b5cf6" },
+  { name: "Түрээс", share: 0.054, color: "#ec4899" },
+  { name: "ҮАЗ", share: 0.053, color: "#ef4444" },
+  { name: "Оффис", share: 0.006, color: "#14b8a6" },
 ];
 
-function generateChartData(stores: OfflineStore[]): ChartPoint[] {
-  return stores.flatMap((store) =>
-    Array.from({ length: 30 }, (_, i) => ({
-      date: `2024-01-${String(i + 1).padStart(2, "0")}`,
-      type: store.name,
-      value: Math.floor(Math.random() * 200) + 50,
-    }))
-  );
-}
-
-const defaultChartData = generateChartData(defaultStores);
+const monthlyExpenses: Record<string, { month: string; amount: number }[]> = {
+  "Цалин": [
+    { month: "1-р сар", amount: 27000000 },
+    { month: "2-р сар", amount: 20000000 },
+    { month: "3-р сар", amount: 30876281 },
+  ],
+  "Төсөл": [
+    { month: "1-р сар", amount: 18000000 },
+    { month: "2-р сар", amount: 14000000 },
+    { month: "3-р сар", amount: 20607526 },
+  ],
+  "Зээл": [
+    { month: "1-р сар", amount: 14157933 },
+    { month: "2-р сар", amount: 14157933 },
+    { month: "3-р сар", amount: 14157934 },
+  ],
+  "Бусад": [
+    { month: "1-р сар", amount: 7000000 },
+    { month: "2-р сар", amount: 5000000 },
+    { month: "3-р сар", amount: 5600000 },
+  ],
+  "Түрээс": [
+    { month: "1-р сар", amount: 3867302 },
+    { month: "2-р сар", amount: 3867302 },
+    { month: "3-р сар", amount: 3867302 },
+  ],
+  "ҮАЗ": [
+    { month: "1-р сар", amount: 5000000 },
+    { month: "2-р сар", amount: 2000000 },
+    { month: "3-р сар", amount: 4457856 },
+  ],
+  "Оффис": [
+    { month: "1-р сар", amount: 452500 },
+    { month: "2-р сар", amount: 452500 },
+    { month: "3-р сар", amount: 452500 },
+  ],
+};
 
 const ringGradientId = "offlineRingGrad";
 
-export const OfflineData: React.FC<OfflineDataProps> = ({
-  loading = false,
-  offlineData = defaultStores,
-  offlineChartData = defaultChartData,
-}) => {
-  const [activeKey, setActiveKey] = useState(offlineData[0]?.name);
+const formatM = (v: number) => `₮${(v / 1_000_000).toFixed(1)}M`;
+
+export const OfflineData: React.FC<OfflineDataProps> = ({ loading = false }) => {
+  const [activeKey, setActiveKey] = useState(defaultCategories[0].name);
 
   if (loading) {
     return (
       <div className="rounded-xl border border-border/80 bg-card p-5 animate-pulse">
         <div className="h-8 bg-foreground/10 rounded mb-4" />
-        <div className="h-[400px] bg-foreground/5 rounded" />
+        <div className="h-[300px] bg-foreground/5 rounded" />
       </div>
     );
   }
 
-  const currentStore = offlineData.find((s) => s.name === activeKey) || offlineData[0];
-
-  const filteredData = offlineChartData.filter((d) => d.type === (currentStore?.name ?? ""));
+  const currentCategory = defaultCategories.find((c) => c.name === activeKey) ?? defaultCategories[0];
+  const chartData = monthlyExpenses[activeKey] ?? [];
 
   return (
     <div className="rounded-xl border border-border/80 bg-card overflow-hidden">
       <div className="flex flex-wrap gap-1 p-4 border-b border-border/40">
-        {offlineData.map((store, i) => {
-          const colors = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"];
-          const color = colors[i % colors.length];
-          const ringPercent = store.cvr;
+        {defaultCategories.map((cat, i) => {
           const ringCircumference = 2 * Math.PI * 22;
-          const ringOffset = ringCircumference * (1 - ringPercent);
+          const ringOffset = ringCircumference * (1 - cat.share);
 
           return (
             <button
-              key={store.name}
-              onClick={() => setActiveKey(store.name)}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all cursor-pointer border-none text-left ${
-                activeKey === store.name
+              key={cat.name}
+              onClick={() => setActiveKey(cat.name)}
+              className={`flex items-center gap-2 px-2.5 py-2 rounded-lg transition-all cursor-pointer border-none text-left ${
+                activeKey === cat.name
                   ? "bg-foreground/5 ring-1 ring-foreground/10"
                   : "hover:bg-foreground/5"
               }`}
             >
               <div className="flex flex-col min-w-0">
-                <NumberInfo
-                  title={store.name}
-                  total={`${(store.cvr * 100).toFixed(0)}%`}
-                  subTitle="Хөрвүүлэлт"
-                  gap={2}
-                />
+                <span className="text-[11px] font-semibold text-foreground/80 leading-tight">{cat.name}</span>
+                <span className="text-[9px] text-foreground/40 leading-tight">Зарлагын хувь</span>
+                <span className="text-xs font-bold leading-tight" style={{ color: cat.color }}>
+                  {(cat.share * 100).toFixed(1)}%
+                </span>
               </div>
-              <svg width={50} height={50} viewBox="0 0 50 50" className="shrink-0">
+              <svg width={46} height={46} viewBox="0 0 50 50" className="shrink-0">
                 <defs>
                   <linearGradient id={`${ringGradientId}${i}`} x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor={color} />
-                    <stop offset="100%" stopColor={color} stopOpacity={0.5} />
+                    <stop offset="0%" stopColor={cat.color} />
+                    <stop offset="100%" stopColor={cat.color} stopOpacity={0.5} />
                   </linearGradient>
                 </defs>
                 <circle
-                  cx={25}
-                  cy={25}
-                  r={22}
+                  cx={25} cy={25} r={22}
                   fill="none"
                   stroke="var(--color-border, #e2e8f0)"
                   strokeWidth={4}
                 />
                 <circle
-                  cx={25}
-                  cy={25}
-                  r={22}
+                  cx={25} cy={25} r={22}
                   fill="none"
                   stroke={`url(#${ringGradientId}${i})`}
                   strokeWidth={4}
@@ -129,15 +137,14 @@ export const OfflineData: React.FC<OfflineDataProps> = ({
                   style={{ transition: "stroke-dashoffset 0.5s ease" }}
                 />
                 <text
-                  x={25}
-                  y={25}
+                  x={25} y={25}
                   textAnchor="middle"
                   dominantBaseline="central"
                   fill="var(--color-foreground)"
-                  fontSize={10}
+                  fontSize={9}
                   fontWeight={700}
                 >
-                  {(store.cvr * 100).toFixed(0)}
+                  {(cat.share * 100).toFixed(0)}%
                 </text>
               </svg>
             </button>
@@ -145,44 +152,55 @@ export const OfflineData: React.FC<OfflineDataProps> = ({
         })}
       </div>
 
-      <div className="p-6">
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={filteredData}>
+      <div className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">
+            {currentCategory.name} — Сарын зарлага
+          </span>
+          <span className="text-[10px] font-mono text-foreground/40">
+            Q1 нийт: {formatM(monthlyExpenses[activeKey]?.reduce((s, d) => s + d.amount, 0) ?? 0)}
+          </span>
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
             <CartesianGrid
               strokeDasharray="3 3"
               stroke="var(--color-border, #e2e8f0)"
+              vertical={false}
+              strokeOpacity={0.6}
             />
             <XAxis
-              dataKey="date"
+              dataKey="month"
               tick={{ fontSize: 10, fill: "var(--color-foreground)" }}
-              tickFormatter={(v) => v.slice(5)}
               tickLine={false}
+              axisLine={false}
             />
             <YAxis
               tick={{ fontSize: 10, fill: "var(--color-foreground)" }}
               tickLine={false}
               axisLine={false}
+              tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`}
             />
             <Tooltip
+              formatter={(value) => [formatM(Number(value)), currentCategory.name]}
               contentStyle={{
                 fontSize: 11,
                 borderRadius: 8,
                 border: "1px solid var(--color-border)",
+                backgroundColor: "var(--color-card)",
               }}
+              cursor={{ fill: "var(--color-foreground)", fillOpacity: 0.04 }}
             />
-            <Legend
-              wrapperStyle={{ fontSize: 11, paddingTop: 12 }}
+            <Bar
+              dataKey="amount"
+              fill={currentCategory.color}
+              fillOpacity={0.85}
+              radius={[4, 4, 0, 0]}
+              maxBarSize={48}
+              name={currentCategory.name}
+              isAnimationActive={true}
             />
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke="#3b82f6"
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4 }}
-              name={currentStore?.name || "Салбар"}
-            />
-          </LineChart>
+          </BarChart>
         </ResponsiveContainer>
       </div>
     </div>

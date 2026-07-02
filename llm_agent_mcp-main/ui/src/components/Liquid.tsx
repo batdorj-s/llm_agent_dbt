@@ -81,7 +81,7 @@ const Liquid: React.FC<LiquidProps> = ({ percent = 0, height = 160, className = 
           fill="white"
           opacity={0.7}
         >
-          хэрэглэлт
+          мөнгөн үлдэгдэл
         </text>
       </svg>
     </div>

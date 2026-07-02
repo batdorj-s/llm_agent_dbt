@@ -747,12 +747,12 @@ export default function Home() {
                     {/* ACTIVE CHART + GAUGE + RADAR */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-up" style={{ animationDelay: "250ms" }}>
                       <div className="lg:col-span-2 border border-border/80 rounded-xl p-5 bg-card">
-                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Үйл ажиллагааны идэвхжил</p>
+                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Мөнгөний үлдэгдлийн хөдөлгөөн — Q1 2026</p>
                         <ActiveChart />
                       </div>
                       <div className="border border-border/80 rounded-xl p-5 bg-card flex flex-col items-center justify-center gap-4">
-                        <Gauge percent={salesKpi ? Math.round((salesKpi.current / salesKpi.target) * 100) : 78} title="Зорилтын биелэлт" />
-                        <Liquid percent={salesKpi ? salesKpi.current / (salesKpi.target * 3) : 0.35} height={120} />
+                        <Gauge percent={salesKpi ? Math.min(100, Math.round((salesKpi.current / salesKpi.target) * 100)) : 89} title="Орлогын хамрах хувь" />
+                        <Liquid percent={salesKpi ? Math.min(1, salesKpi.current / (salesKpi.target * 1.15)) : 0.50} height={120} />
                       </div>
                     </div>
 
