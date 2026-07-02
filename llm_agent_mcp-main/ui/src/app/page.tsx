@@ -734,7 +734,7 @@ export default function Home() {
                     {/* SALES CARD */}
                     <div className="animate-fade-in-up" style={{ animationDelay: "150ms" }}>
                       <SalesCard
-                        salesData={salesHistory.map((h) => ({ x: h.month, y: h.revenue }))}
+                        salesData={salesHistory.length > 0 ? salesHistory.map((h) => ({ x: h.month, y: h.revenue })) : undefined}
                       />
                     </div>
 

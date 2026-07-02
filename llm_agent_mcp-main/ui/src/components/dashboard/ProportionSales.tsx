@@ -12,15 +12,16 @@ interface ProportionSalesProps {
 }
 
 const defaultPieData: DataItem[] = [
-  { x: "Электроник", y: 45400 },
-  { x: "Гэр ахуйн бараа", y: 38200 },
-  { x: "Хувцас", y: 28300 },
-  { x: "Спорт бараа", y: 21900 },
-  { x: "Хоол хүнс", y: 18700 },
-  { x: "Бусад", y: 12400 },
+  { x: "Цалин", y: 77876281 },
+  { x: "Төсөл", y: 52607526 },
+  { x: "Зээл", y: 42473800 },
+  { x: "Бусад", y: 17600000 },
+  { x: "Түрээс", y: 11601906 },
+  { x: "ҮАЗ", y: 11457856 },
+  { x: "Оффис", y: 1357500 },
 ];
 
-const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
 
 const formatCurrency = (v: number) =>
   `₮${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
@@ -32,9 +33,9 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
   const [salesType, setSalesType] = useState<SalesType>("all");
 
   const segments = [
-    { key: "all" as const, label: "Бүх суваг" },
-    { key: "online" as const, label: "Онлайн" },
-    { key: "stores" as const, label: "Дэлгүүр" },
+    { key: "all" as const, label: "Q1" },
+    { key: "online" as const, label: "Зарлага" },
+    { key: "stores" as const, label: "Орлого" },
   ];
 
   if (loading) {
@@ -52,7 +53,7 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
     <div className="rounded-xl border border-border/80 bg-card p-5 h-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">
-          Орлого / зарлагын харьцаа
+          Зарлагын бүтэц
         </h3>
         <div className="flex items-center gap-1 bg-foreground/5 rounded-lg p-0.5">
           {segments.map((s) => (
@@ -71,7 +72,7 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
         </div>
       </div>
 
-      <div className="text-[11px] text-foreground/50 mb-2">Нийт дүн</div>
+      <div className="text-[11px] text-foreground/50 mb-2">Нийт зарлага</div>
 
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
@@ -119,7 +120,7 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
                         opacity: 0.5,
                       }}
                     >
-                      Нийт борлуулалт
+                      Нийт зарлага
                     </tspan>
                   </text>
                 );

@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell,
 } from "recharts";
 import type { DataItem } from "./types";
 
@@ -17,38 +16,49 @@ type TimeType = "today" | "week" | "month" | "year";
 
 interface SalesCardProps {
   loading?: boolean;
-  salesData: DataItem[];
+  salesData?: DataItem[];
+  expenseData?: DataItem[];
   rankingData?: { title: string; total: number }[];
 }
 
-const defaultRanking = Array.from({ length: 7 }, (_, i) => ({
-  title: `${i + 1}-р салбар`,
-  total: Math.floor(Math.random() * 500000) + 50000,
-}));
+const defaultSalesData: DataItem[] = [
+  { x: "1-р сар", y: 41797000 },
+  { x: "2-р сар", y: 56550000 },
+  { x: "3-р сар", y: 92277000 },
+];
+
+const defaultExpenseData: DataItem[] = [
+  { x: "1-р сар", y: 75923153 },
+  { x: "2-р сар", y: 55858944 },
+  { x: "3-р сар", y: 83192772 },
+];
+
+const defaultRanking = [
+  { title: "Цалин", total: 77876281 },
+  { title: "Төсөл", total: 52607526 },
+  { title: "Зээл", total: 42473800 },
+  { title: "Бусад", total: 17600000 },
+  { title: "Түрээс", total: 11601906 },
+  { title: "ҮАЗ", total: 11457856 },
+  { title: "Оффис", total: 1357500 },
+];
 
 const formatCurrency = (v: number) =>
   `₮${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
 
-const CHART_COLORS = {
-  sales: ["#5B8FF9", "#85b5fb"],
-  views: ["#5AD8A6", "#7ee8bf"],
-};
-
 export const SalesCard: React.FC<SalesCardProps> = ({
   loading = false,
-  salesData,
+  salesData = defaultSalesData,
+  expenseData = defaultExpenseData,
   rankingData = defaultRanking,
 }) => {
-  const [tab, setTab] = useState<"sales" | "views">("sales");
   const [timeRange, setTimeRange] = useState<TimeType>("month");
 
-  const tabs = [
-    { key: "sales" as const, label: "Орлого" },
-    { key: "views" as const, label: "Зарлага" },
-  ];
-
-  const barColor = tab === "sales" ? CHART_COLORS.sales[0] : CHART_COLORS.views[0];
-  const barColorLight = tab === "sales" ? CHART_COLORS.sales[1] : CHART_COLORS.views[1];
+  const chartData = salesData.map((s, i) => ({
+    x: s.x,
+    income: s.y,
+    expense: expenseData[i]?.y ?? 0,
+  }));
 
   if (loading) {
     return (
@@ -64,20 +74,20 @@ export const SalesCard: React.FC<SalesCardProps> = ({
       {/* Header */}
       <div className="border-b border-border/60">
         <div className="flex items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-1">
-            {tabs.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                  tab === t.key
-                    ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20"
-                    : "text-foreground/40 hover:text-foreground/70"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-4">
+            <h3 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">
+              Орлого / Зарлага
+            </h3>
+            <div className="flex items-center gap-3 text-[10px] text-foreground/50">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-sm inline-block bg-emerald-500" />
+                Орлого
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-sm inline-block bg-red-400" />
+                Зарлага
+              </span>
+            </div>
           </div>
           <div className="flex items-center text-[11px] font-medium border border-border/60 rounded-lg overflow-hidden">
             {(["today", "week", "month", "year"] as TimeType[]).map((k) => (
@@ -107,7 +117,7 @@ export const SalesCard: React.FC<SalesCardProps> = ({
       <div className="flex flex-col lg:flex-row">
         <div className="flex-1 p-5">
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={salesData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
+            <BarChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke="var(--color-border, #e2e8f0)"
@@ -124,10 +134,13 @@ export const SalesCard: React.FC<SalesCardProps> = ({
                 tick={{ fontSize: 10, fill: "var(--color-foreground)" }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`}
+                tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`}
               />
               <Tooltip
-                formatter={(value) => formatCurrency(Number(value) || 0)}
+                formatter={(value, name) => [
+                  formatCurrency(Number(value) || 0),
+                  name === "income" ? "Орлого" : "Зарлага",
+                ]}
                 contentStyle={{
                   fontSize: 11,
                   borderRadius: 8,
@@ -137,15 +150,23 @@ export const SalesCard: React.FC<SalesCardProps> = ({
                 cursor={{ fill: "var(--color-foreground)", fillOpacity: 0.04 }}
               />
               <Bar
-                dataKey="y"
+                dataKey="income"
+                fill="#10b981"
+                fillOpacity={0.85}
                 radius={[4, 4, 0, 0]}
-                maxBarSize={36}
+                maxBarSize={28}
+                name="Орлого"
                 isAnimationActive={true}
-              >
-                {salesData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={barColor} fillOpacity={0.85} />
-                ))}
-              </Bar>
+              />
+              <Bar
+                dataKey="expense"
+                fill="#ef4444"
+                fillOpacity={0.85}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={28}
+                name="Зарлага"
+                isAnimationActive={true}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -153,7 +174,7 @@ export const SalesCard: React.FC<SalesCardProps> = ({
         {/* Ranking list */}
         <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l border-border/60 p-5">
           <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">
-            {tab === "sales" ? "Орлогын эх үүсвэр" : "Зарлагын ангилал"}
+            Зарлагын ангилал
           </h4>
           <ul className="space-y-3">
             {rankingData.map((item, i) => (
@@ -165,7 +186,7 @@ export const SalesCard: React.FC<SalesCardProps> = ({
                       : "bg-foreground/5 text-foreground/40"
                   }`}
                   style={i < 3 ? {
-                    background: `linear-gradient(135deg, ${barColor}, ${barColorLight})`,
+                    background: "linear-gradient(135deg, #ef4444, #f87171)",
                   } : {}}
                 >
                   {i + 1}

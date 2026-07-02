@@ -22,18 +22,19 @@ interface IntroduceRowProps {
   campaignEffect?: number;
 }
 
-const defaultVisitData: DataItem[] = Array.from({ length: 7 }, (_, i) => ({
-  x: `Day ${i + 1}`,
-  y: Math.floor(Math.random() * 80) + 20,
-}));
+const defaultVisitData: DataItem[] = [
+  { x: "1-р сар", y: 41797000 },
+  { x: "2-р сар", y: 56550000 },
+  { x: "3-р сар", y: 92277000 },
+];
 
 export const IntroduceRow: React.FC<IntroduceRowProps> = ({
   loading = false,
   visitData = defaultVisitData,
-  totalSales = 126560,
-  totalVisits = 8846,
-  totalPayments = 6560,
-  campaignEffect = 78,
+  totalSales = 190624000,
+  totalVisits = 4,
+  totalPayments = 186,
+  campaignEffect = 89,
 }) => {
   const formatCurrency = (v: number) =>
     `₮${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
@@ -46,21 +47,21 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
       <ChartCard
         title="Нийт орлого"
         total={formatCurrency(totalSales)}
-        footer={<Field label="Дундаж сарын орлого" value={formatCurrency(12423)} />}
+        footer={<Field label="Дундаж сарын орлого" value={formatCurrency(63541333)} />}
         contentHeight={72}
         loading={loading}
       >
         <div className="flex gap-4 mt-1 h-full items-center">
-          <Trend flag="up">7 хоног <span className="font-bold">12%</span></Trend>
-          <Trend flag="down">Өдөр <span className="font-bold">11%</span></Trend>
+          <Trend flag="up">1→3-р сар <span className="font-bold">+121%</span></Trend>
+          <Trend flag="down">Q1 алдагдал <span className="font-bold">₮24M</span></Trend>
         </div>
       </ChartCard>
 
       {/* Visits */}
       <ChartCard
-        title="Харилцагчид"
+        title="Орлогын харилцагч"
         total={formatNumber(totalVisits)}
-        footer={<Field label="Нийт харилцагч" value={formatNumber(1234)} />}
+        footer={<Field label="Гол харилцагч" value="ВАЙРАЛ ПИКСЕЛЬ" />}
         contentHeight={72}
         loading={loading}
       >
@@ -83,7 +84,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
       <ChartCard
         title="Гүйлгээний тоо"
         total={formatNumber(totalPayments)}
-        footer={<Field label="Орлогын гүйлгээ" value="60%" />}
+        footer={<Field label="Орлого/зарлага харьцаа" value="88.7%" />}
         contentHeight={72}
         loading={loading}
       >
@@ -101,12 +102,12 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
 
       {/* Campaign Effect */}
       <ChartCard
-        title="Үйл ажиллагааны үр дүн"
+        title="Орлогын хамрах хувь"
         total={`${campaignEffect}%`}
         footer={
           <div className="flex gap-4">
-            <Trend flag="up">7 хоног <span className="font-bold">12%</span></Trend>
-            <Trend flag="down">Өдөр <span className="font-bold">11%</span></Trend>
+            <Trend flag="up">3-р сар <span className="font-bold">+63%</span></Trend>
+            <Trend flag="down">Q1 алдагдал <span className="font-bold">₮24M</span></Trend>
           </div>
         }
         contentHeight={72}
@@ -124,7 +125,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
                 className="h-full rounded-full transition-all duration-700"
                 style={{
                   width: `${campaignEffect}%`,
-                  background: "linear-gradient(90deg, #667eea, #764ba2)",
+                  background: "linear-gradient(90deg, #10b981, #3b82f6)",
                 }}
               />
             </div>
