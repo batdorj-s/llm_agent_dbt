@@ -32,14 +32,37 @@ export function quoteIdent(name: string): string {
     return `"${name.replace(/"/g, '""')}"`;
 }
 
+const MONGOLIAN_COLUMN_MAP: Record<string, string> = {
+    // Date/time
+    "огноо": "date", "он сар өдөр": "date", "хугацаа": "date",
+    // Amount/revenue
+    "дүн": "amount", "орлого дүн": "amount", "зарлага дүн": "amount",
+    "нийт дүн": "amount", "үнэ": "price", "үнийн дүн": "amount",
+    // Category
+    "ангилал": "category", "үндсэн ангилал": "category",
+    "дэд ангилал": "subcategory", "төрөл": "type",
+    // Customer/counterparty
+    "харилцагч": "customer", "харилцагчийн нэр": "customer",
+    "нийлүүлэгч": "supplier", "байгууллага": "organization",
+    // Description/note
+    "тайлбар": "description", "тэмдэглэл": "note", "нэр": "name",
+    // Quantity
+    "тоо хэмжээ": "quantity", "тоо": "quantity",
+    // Account/code
+    "дансны дугаар": "account_number", "данс": "account", "код": "code",
+};
+
 export function normalizeColumnName(columnName: string): string {
-    return columnName
-        .trim()
-        .replace(/^["']|["']$/g, "")
+    const trimmed = columnName.trim().replace(/^["']|["']$/g, "");
+    const lowerTrimmed = trimmed.toLowerCase();
+    if (MONGOLIAN_COLUMN_MAP[lowerTrimmed]) {
+        return MONGOLIAN_COLUMN_MAP[lowerTrimmed];
+    }
+    return trimmed
         .replace(/[^a-zA-Z0-9_]/g, "_")
         .replace(/_+/g, "_")
         .replace(/^_|_$/g, "")
-        .toLowerCase();
+        .toLowerCase() || "col";
 }
 
 export function buildSslConfig(databaseUrl: string): false | { rejectUnauthorized: true; ca?: string } {
@@ -228,11 +251,24 @@ export async function initDataLake(): Promise<void> {
             await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_created_at ON sql_gen_log (created_at DESC)`);
             await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_outcome ON sql_gen_log (outcome)`);
 
-            const existing = await pool.query("SELECT metric_name FROM kpi_targets");
+            const existing = await pool.query("SELECT metric_name, target_value, unit FROM kpi_targets");
             if (existing.rows.length === 0) {
-                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["sales", 500000, "USD"]);
-                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["users", 2000, "users"]);
-                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["churn_rate", 2.0, "%"]);
+                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["sales", 200000000, "₮"]);
+                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["users", 10, "харилцагч"]);
+                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["churn_rate", 100.0, "%"]);
+            } else {
+                // Migrate stale defaults inserted with wrong USD/generic values
+                for (const row of existing.rows as Array<{ metric_name: string; target_value: number; unit: string }>) {
+                    if (row.metric_name === "sales" && row.unit === "USD") {
+                        await pool.query("UPDATE kpi_targets SET target_value = $1, unit = $2 WHERE metric_name = $3", [200000000, "₮", "sales"]);
+                    }
+                    if (row.metric_name === "users" && row.target_value === 2000) {
+                        await pool.query("UPDATE kpi_targets SET target_value = $1, unit = $2 WHERE metric_name = $3", [10, "харилцагч", "users"]);
+                    }
+                    if (row.metric_name === "churn_rate" && row.target_value === 2.0) {
+                        await pool.query("UPDATE kpi_targets SET target_value = $1 WHERE metric_name = $2", [100.0, "churn_rate"]);
+                    }
+                }
             }
 
             // Seed default admin user if no users exist

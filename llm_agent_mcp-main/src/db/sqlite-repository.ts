@@ -17,15 +17,16 @@ function buildDateWhere(tableInfo: { dateCol: string }, df?: DateFilter, paramOf
 }
 
 // Орлогын категориудыг шүүх нөхцөл (category column байвал)
+// LOWER() does not fold Mongolian Cyrillic in C/POSIX locale — match both forms explicitly
 function incomeFilter(categoryCol: string | undefined): string {
     if (!categoryCol) return "";
-    return ` AND LOWER("${categoryCol}") LIKE '%орлого%'`;
+    return ` AND ("${categoryCol}" LIKE '%Орлого%' OR "${categoryCol}" LIKE '%орлого%' OR "${categoryCol}" LIKE '%ОРЛОГО%')`;
 }
 
 // Зарлагын категориудыг шүүх нөхцөл
 function expenseFilter(categoryCol: string | undefined): string {
     if (!categoryCol) return "";
-    return ` AND LOWER("${categoryCol}") LIKE '%зарлага%'`;
+    return ` AND ("${categoryCol}" LIKE '%Зарлага%' OR "${categoryCol}" LIKE '%зарлага%' OR "${categoryCol}" LIKE '%ЗАРЛАГА%')`;
 }
 
 export class SQLiteKpiRepository implements IKpiRepository {
@@ -77,10 +78,10 @@ export class SQLiteKpiRepository implements IKpiRepository {
                     const result = await getPool().query(
                         `SELECT
                            COALESCE(
-                             SUM(CASE WHEN LOWER("${cat}") LIKE '%зарлага%'
+                             SUM(CASE WHEN ("${cat}" LIKE '%Зарлага%' OR "${cat}" LIKE '%зарлага%' OR "${cat}" LIKE '%ЗАРЛАГА%')
                                  THEN CAST("${tableInfo.salesCol}" AS NUMERIC) ELSE 0 END) * 100.0
                              / NULLIF(
-                                 SUM(CASE WHEN LOWER("${cat}") LIKE '%орлого%'
+                                 SUM(CASE WHEN ("${cat}" LIKE '%Орлого%' OR "${cat}" LIKE '%орлого%' OR "${cat}" LIKE '%ОРЛОГО%')
                                      THEN CAST("${tableInfo.salesCol}" AS NUMERIC) ELSE 0 END),
                                0),
                            0) as rate

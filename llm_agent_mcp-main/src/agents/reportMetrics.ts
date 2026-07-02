@@ -105,7 +105,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
     try {
       // Дундаж гүйлгээний дүн (AOV): нийт орлого / гүйлгээний тоо
       const incomeCond = rawMainCatCol
-        ? ` AND LOWER(${quoteIdent(rawMainCatCol)}) LIKE '%орлого%'`
+        ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Орлого%' OR ${quoteIdent(rawMainCatCol)} LIKE '%орлого%' OR ${quoteIdent(rawMainCatCol)} LIKE '%ОРЛОГО%')`
         : (qtyCol ? ` AND CAST(${quoteIdent(qtyCol)} AS NUMERIC) > 0` : "");
       const result = await getPool().query(
         `SELECT COALESCE(SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) / NULLIF(COUNT(*), 0), 0) as aov
@@ -155,7 +155,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
     try {
       // Хамгийн их зарлага гарсан дэд ангилал
       const expenseCond = rawMainCatCol
-        ? ` AND LOWER(${quoteIdent(rawMainCatCol)}) LIKE '%зарлага%'`
+        ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%ЗАРЛАГА%')`
         : "";
       const result = await getPool().query(
         `SELECT ${quoteIdent(catCol)} as category, SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) as total
