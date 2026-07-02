@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import { LogOut, Sun, Moon, MessageSquare, LayoutDashboard, FileText } from "lucide-react";
+import { Sun, Moon, MessageSquare, LayoutDashboard, FileText } from "lucide-react";
 import { ServerStatus } from "./types";
+import { AvatarDropdown, DocLink } from "./RightContent";
 
 type TabId = "ask" | "dashboard" | "report";
 
@@ -59,17 +60,14 @@ export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, o
         )}
 
         {isLoggedIn && user && (
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-foreground/50 font-mono">
-              {user.email}
-            </span>
-            <button
-              onClick={onLogout}
-              className="p-1 text-foreground/50 hover:text-foreground transition-colors cursor-pointer"
-              title="Log Out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
+          <div className="flex items-center gap-1">
+            <DocLink />
+            <AvatarDropdown
+              user={user}
+              theme={theme}
+              onToggleTheme={onToggleTheme}
+              onLogout={onLogout}
+            />
           </div>
         )}
 
