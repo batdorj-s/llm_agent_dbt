@@ -2,7 +2,7 @@
  * init.ts — Bootstrap Data Lake, seed CSVs, and optionally run dbt
  */
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -32,13 +32,13 @@ function resolveDbtPath(): string {
 
 const DBT_EXE = resolveDbtPath();
 
-function runDbt(args: string): void {
-  execSync(`"${DBT_EXE}" ${args}`, { cwd: DBT_PROJECT_DIR, stdio: "inherit" });
+function runDbt(args: string[]): void {
+  execFileSync(DBT_EXE, args, { cwd: DBT_PROJECT_DIR, stdio: "inherit" });
 }
 
 export function dbtAvailable(): boolean {
   try {
-    runDbt("--version");
+    runDbt(["--version"]);
     return true;
   } catch {
     return false;
@@ -53,9 +53,9 @@ function runDbtIfAvailable() {
 
   try {
     console.log("[Setup] Installing dbt packages...");
-    runDbt("deps --profiles-dir .");
+    runDbt(["deps", "--profiles-dir", "."]);
     console.log("[Setup] Running dbt to create KPI views...");
-    runDbt("run --profiles-dir .");
+    runDbt(["run", "--profiles-dir", "."]);
     console.log("[Setup] dbt run complete [OK]");
   } catch (err) {
     console.warn("[Setup] dbt run failed — KPI repository will use raw-table fallback:", (err as Error).message);
@@ -80,7 +80,7 @@ export function runDbtForTable(inputTable: string, columns?: string[], mapping?:
       id_col: mapping?.id_col || null,
       region_col: mapping?.region_col || null,
     });
-    runDbt(`run --vars '${vars}' --profiles-dir .`);
+    runDbt(["run", "--vars", vars, "--profiles-dir", "."]);
     console.log(`[dbt] Pipeline complete for '${inputTable}' [OK]`);
   } catch (err) {
     console.warn(`[dbt] Pipeline failed for '${inputTable}':`, (err as Error).message);
@@ -90,7 +90,7 @@ export function runDbtForTable(inputTable: string, columns?: string[], mapping?:
 export function runDbtTest(vars: string): string {
   if (!dbtAvailable()) return "dbt not available";
   try {
-    return execSync(`"${DBT_EXE}" test --vars '${vars}' --profiles-dir .`, {
+    return execFileSync(DBT_EXE, ["test", "--vars", vars, "--profiles-dir", "."], {
       cwd: DBT_PROJECT_DIR,
       encoding: "utf8",
       stdio: "pipe",

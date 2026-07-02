@@ -21,6 +21,7 @@ describe("computeMetrics — tenant isolation", () => {
 
     vi.doMock("../db/data-lake.js", () => ({
       getPool: vi.fn().mockReturnValue(mockPool),
+      quoteIdent: (name: string) => `"${name.replace(/"/g, '""')}"`,
     }));
 
     const { computeMetrics } = await import("../agents/reportMetrics.js");
@@ -59,6 +60,7 @@ describe("computeMetrics — tenant isolation", () => {
 
     vi.doMock("../db/data-lake.js", () => ({
         getPool: vi.fn().mockReturnValue(mockPool),
+        quoteIdent: (name: string) => `"${name.replace(/"/g, '""')}"`,
     }));
 
     const { computeMetrics } = await import("../agents/reportMetrics.js");
@@ -89,6 +91,7 @@ describe("computeMetrics — tenant isolation", () => {
     const mockPool = { query: vi.fn().mockImplementation(queryFn) };
     vi.doMock("../db/data-lake.js", () => ({
       getPool: vi.fn().mockReturnValue(mockPool),
+      quoteIdent: (name: string) => `"${name.replace(/"/g, '""')}"`,
     }));
 
     const { computeMetrics } = await import("../agents/reportMetrics.js");

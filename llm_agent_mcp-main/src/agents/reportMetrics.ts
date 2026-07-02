@@ -1,4 +1,4 @@
-import { getPool } from "../db/data-lake.js";
+import { getPool, quoteIdent } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { detectDateColumn } from "./dateColumnHelper.js";
 import { sanitizeColumnName } from "./sanitize.js";
@@ -54,7 +54,7 @@ async function getActiveTableInfo(userId: string): Promise<{
 
 function buildDateWhere(dateCol: string, dateCast: string | null, startDate?: string, endDate?: string, paramOffset: number = 0): { clause: string; params: any[] } {
   if (!startDate && !endDate) return { clause: "", params: [] };
-  const col = dateCast || `"${dateCol}"`;
+  const col = dateCast || quoteIdent(dateCol);
   const clauses: string[] = [];
   const params: any[] = [];
   if (startDate) {
@@ -73,16 +73,21 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
   if (!table) return null;
 
   const { tableName, columns, columnTypes } = table;
-  const salesCol = findConceptColumn(columns, "sales", tableName);
-  const qtyCol = findConceptColumn(columns, "quantity", tableName);
-  const catCol = findConceptColumn(columns, "product", tableName);
-  const dateCol = findConceptColumn(columns, "date", tableName);
+  const rawSalesCol = findConceptColumn(columns, "sales", tableName);
+  const rawQtyCol = findConceptColumn(columns, "quantity", tableName);
+  const rawCatCol = findConceptColumn(columns, "product", tableName);
+  const rawDateCol = findConceptColumn(columns, "date", tableName);
+
+  const salesCol = rawSalesCol ? sanitizeColumnName(rawSalesCol) : undefined;
+  const qtyCol = rawQtyCol ? sanitizeColumnName(rawQtyCol) : undefined;
+  const catCol = rawCatCol ? sanitizeColumnName(rawCatCol) : undefined;
+  const dateCol = rawDateCol ? sanitizeColumnName(rawDateCol) : undefined;
 
   let dateCast: string | null = null;
   if (dateCol) {
     const colType = columnTypes[dateCol.toLowerCase()] || "unknown";
     const dateInfo = detectDateColumn(dateCol, colType);
-    dateCast = dateInfo?.sqlCast || `CAST("${dateCol}" AS DATE)`;
+    dateCast = dateInfo?.sqlCast || `CAST(${quoteIdent(dateCol)} AS DATE)`;
   }
 
   let aov = 0;
@@ -96,7 +101,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
   if (salesCol && qtyCol) {
     try {
       const result = await getPool().query(
-        `SELECT COALESCE(SUM(CAST("${salesCol}" AS NUMERIC)) / NULLIF(SUM(CAST("${qtyCol}" AS NUMERIC)), 0), 0) as aov FROM "${tableName}" WHERE 1=1${dateWhere}`,
+        `SELECT COALESCE(SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) / NULLIF(SUM(CAST(${quoteIdent(qtyCol)} AS NUMERIC)), 0), 0) as aov FROM ${quoteIdent(tableName)} WHERE 1=1${dateWhere}`,
         dateParams
       );
       aov = Number(result.rows[0]?.aov || 0);
@@ -117,8 +122,8 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
             CASE WHEN ${dateCast} >= CURRENT_DATE - INTERVAL '30 days'
               THEN 'current' ELSE 'previous'
             END AS period,
-            SUM(CAST("${salesCol}" AS NUMERIC)) AS total
-          FROM "${tableName}"
+            SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) AS total
+          FROM ${quoteIdent(tableName)}
           WHERE ${filterClause}
           GROUP BY period
         )
@@ -140,10 +145,10 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
   if (catCol && salesCol) {
     try {
       const result = await getPool().query(
-        `SELECT "${catCol}" as category, SUM(CAST("${salesCol}" AS NUMERIC)) as total
-         FROM "${tableName}"
+        `SELECT ${quoteIdent(catCol)} as category, SUM(CAST(${quoteIdent(salesCol)} AS NUMERIC)) as total
+         FROM ${quoteIdent(tableName)}
          WHERE 1=1${dateWhere}
-         GROUP BY "${catCol}"
+         GROUP BY ${quoteIdent(catCol)}
          ORDER BY total DESC LIMIT 1`,
         dateParams
       );

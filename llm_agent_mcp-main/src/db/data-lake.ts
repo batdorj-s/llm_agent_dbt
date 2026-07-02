@@ -28,6 +28,10 @@ export type DataLakeCatalogEntry = {
     column_profiles?: Record<string, any>;
 };
 
+export function quoteIdent(name: string): string {
+    return `"${name.replace(/"/g, '""')}"`;
+}
+
 export function normalizeColumnName(columnName: string): string {
     return columnName
         .trim()
@@ -36,6 +40,15 @@ export function normalizeColumnName(columnName: string): string {
         .replace(/_+/g, "_")
         .replace(/^_|_$/g, "")
         .toLowerCase();
+}
+
+export function buildSslConfig(databaseUrl: string): false | { rejectUnauthorized: true; ca?: string } {
+    const isLocal = databaseUrl.includes("127.0.0.1") || databaseUrl.includes("localhost") || databaseUrl.includes("host.docker.internal");
+    if (isLocal) return false;
+    return {
+        rejectUnauthorized: true,
+        ...(process.env.PGSSLROOTCERT && { ca: fs.readFileSync(process.env.PGSSLROOTCERT, "utf8") }),
+    };
 }
 
 export function getPool(): Pool {
@@ -80,8 +93,7 @@ export async function initDataLake(): Promise<void> {
         }
 
         console.log("[Data Lake] Connecting to PostgreSQL...");
-        const isLocal = databaseUrl.includes("127.0.0.1") || databaseUrl.includes("localhost") || databaseUrl.includes("host.docker.internal");
-        pool = new Pool({ connectionString: databaseUrl, ssl: isLocal ? false : { rejectUnauthorized: false } });
+        pool = new Pool({ connectionString: databaseUrl, ssl: buildSslConfig(databaseUrl) });
 
         try {
             await pool.query("SELECT 1");
@@ -394,7 +406,7 @@ export async function getColumnSamples(
         if (columns.length === 1) {
             const col = columns[0];
             const result = await pool.query(
-                `SELECT DISTINCT "${col}" AS val FROM "${tableName}" WHERE "${col}" IS NOT NULL AND "${col}" != '' LIMIT $1`,
+                `SELECT DISTINCT "${col}" AS val FROM ${quoteIdent(tableName)} WHERE "${col}" IS NOT NULL AND "${col}" != '' LIMIT $1`,
                 [limit]
             );
             return { [col]: result.rows.map((r: any) => String(r.val)).filter(Boolean) };
@@ -402,7 +414,7 @@ export async function getColumnSamples(
         // Batch: select rows as JSON, unroll column-by-column in one query
         const result = await pool.query(
             `SELECT key, jsonb_agg(DISTINCT val) FILTER (WHERE val IS NOT NULL AND val::text != '') AS vals
-             FROM (SELECT row_to_json(t) AS r FROM "${tableName}" LIMIT 100) data,
+             FROM (SELECT row_to_json(t) AS r FROM ${quoteIdent(tableName)} LIMIT 100) data,
              jsonb_each_text(r::jsonb) AS cols(key, val)
              GROUP BY key`
         );
@@ -436,7 +448,7 @@ export async function getColumnProfile(
         // 2. Batch: get distinct counts for all columns in one query
         const distinctExprs = columns.map((c, i) => `COUNT(DISTINCT "${c}") AS d${i}`);
         const distinctResult = await pool.query(
-            `SELECT ${distinctExprs.join(", ")} FROM "${tableName}"`
+            `SELECT ${distinctExprs.join(", ")} FROM ${quoteIdent(tableName)}`
         );
         const distinctRow = distinctResult.rows[0] || {};
 
@@ -449,7 +461,7 @@ export async function getColumnProfile(
         let rangeRow: Record<string, any> = {};
         if (numericExprs.length > 0) {
             const rangeResult = await pool.query(
-                `SELECT ${numericExprs.join(", ")} FROM "${tableName}"`
+                `SELECT ${numericExprs.join(", ")} FROM ${quoteIdent(tableName)}`
             );
             rangeRow = rangeResult.rows[0] || {};
         }
@@ -498,11 +510,11 @@ export async function computeTableKpis(
 
     try {
         // 0. Data quality stats for all columns (null %, distinct ratio)
-        const totalCount = numericCols.length > 0 ? await pool.query(`SELECT COUNT(*) AS cnt FROM "${tableName}"`) : null;
+        const totalCount = numericCols.length > 0 ? await pool.query(`SELECT COUNT(*) AS cnt FROM ${quoteIdent(tableName)}`) : null;
         const rowCount = totalCount?.rows?.[0]?.cnt ? Number(totalCount.rows[0].cnt) : 0;
         const dqParts: string[] = [];
         for (const col of columns.slice(0, 10)) {
-            const nullResult = await pool.query(`SELECT COUNT(*) AS cnt FROM "${tableName}" WHERE "${col}" IS NULL`);
+            const nullResult = await pool.query(`SELECT COUNT(*) AS cnt FROM ${quoteIdent(tableName)} WHERE "${col}" IS NULL`);
             const nullCount = Number(nullResult.rows[0]?.cnt || 0);
             const nullPct = rowCount > 0 ? ((nullCount / rowCount) * 100).toFixed(1) : "0";
             const p = profile[col];
@@ -518,7 +530,7 @@ export async function computeTableKpis(
         const aggParts: string[] = [];
         for (const col of numericCols.slice(0, 5)) {
             const result = await pool.query(
-                `SELECT COUNT("${col}") AS cnt, SUM("${col}") AS total, AVG("${col}") AS avg, MIN("${col}") AS min, MAX("${col}") AS max FROM "${tableName}"`
+                `SELECT COUNT("${col}") AS cnt, SUM("${col}") AS total, AVG("${col}") AS avg, MIN("${col}") AS min, MAX("${col}") AS max FROM ${quoteIdent(tableName)}`
             );
             const r = result.rows[0];
             if (r) {
@@ -533,7 +545,7 @@ export async function computeTableKpis(
         const outlierParts: string[] = [];
         for (const col of numericCols.slice(0, 3)) {
             const stats = await pool.query(
-                `SELECT AVG("${col}") AS mean, STDDEV("${col}") AS stddev, MIN("${col}") AS min, MAX("${col}") AS max FROM "${tableName}"`
+                `SELECT AVG("${col}") AS mean, STDDEV("${col}") AS stddev, MIN("${col}") AS min, MAX("${col}") AS max FROM ${quoteIdent(tableName)}`
             );
             const s = stats.rows[0];
             if (s && s.stddev && Number(s.stddev) > 0) {
@@ -542,7 +554,7 @@ export async function computeTableKpis(
                 const upper = mean + 3 * stddev;
                 const lower = mean - 3 * stddev;
                 const outlierResult = await pool.query(
-                    `SELECT COUNT(*) AS cnt FROM "${tableName}" WHERE "${col}" < $1 OR "${col}" > $2`,
+                    `SELECT COUNT(*) AS cnt FROM ${quoteIdent(tableName)} WHERE "${col}" < $1 OR "${col}" > $2`,
                     [lower, upper]
                 );
                 const outlierCount = Number(outlierResult.rows[0]?.cnt || 0);
@@ -561,7 +573,7 @@ export async function computeTableKpis(
             for (const cat of catCols.slice(0, 2)) {
                 for (const num of numericCols.slice(0, 2)) {
                     const result = await pool.query(
-                        `SELECT "${cat}", SUM("${num}") AS total FROM "${tableName}" WHERE "${cat}" IS NOT NULL GROUP BY "${cat}" ORDER BY total DESC LIMIT 5`
+                        `SELECT "${cat}", SUM("${num}") AS total FROM ${quoteIdent(tableName)} WHERE "${cat}" IS NOT NULL GROUP BY "${cat}" ORDER BY total DESC LIMIT 5`
                     );
                     if (result.rows.length > 0) {
                         const breakdown = result.rows.map((r: any) => `${r[cat]}=${Number(r.total).toFixed(2)}`).join(", ");
@@ -576,7 +588,7 @@ export async function computeTableKpis(
             const dateCol = dateCols[0];
             for (const num of numericCols.slice(0, 2)) {
                 const result = await pool.query(
-                    `SELECT DATE_TRUNC('month', "${dateCol}"::timestamp) AS month, SUM("${num}") AS total FROM "${tableName}" WHERE "${dateCol}" IS NOT NULL GROUP BY month ORDER BY month DESC LIMIT 6`
+                    `SELECT DATE_TRUNC('month', "${dateCol}"::timestamp) AS month, SUM("${num}") AS total FROM ${quoteIdent(tableName)} WHERE "${dateCol}" IS NOT NULL GROUP BY month ORDER BY month DESC LIMIT 6`
                 );
                 if (result.rows.length > 0) {
                     const trend = result.rows.map((r: any) => `${(r.month as Date).toISOString().slice(0, 7)}=${Number(r.total).toFixed(2)}`).join(" → ");
@@ -802,7 +814,7 @@ export async function seedCsv(
         if (checkResult.rows.length > 0) {
             if (!overwrite) return;
             console.log(`[Data Lake] Table ${tableName} exists. Dropping with CASCADE...`);
-            await pool.query(`DROP TABLE IF EXISTS "${tableName}" CASCADE`);
+            await pool.query(`DROP TABLE IF EXISTS ${quoteIdent(tableName)} CASCADE`);
         }
 
         console.log(`[Data Lake] Seeding ${tableName}...`);
@@ -830,11 +842,11 @@ export async function seedCsv(
         );
         const types = columnValues.map(vals => inferColumnType(vals));
 
-        await pool.query(`CREATE TABLE "${tableName}" (
+        await pool.query(`CREATE TABLE ${quoteIdent(tableName)} (
             ${uniqueHeaders.map((h, i) => `"${h}" ${types[i]}`).join(",\n")}
         )`);
 
-        const insertSql = `INSERT INTO "${tableName}" (${uniqueHeaders.map(h => `"${h}"`).join(", ")}) VALUES (${uniqueHeaders.map((_, i) => `$${i + 1}`).join(", ")})`;
+        const insertSql = `INSERT INTO ${quoteIdent(tableName)} (${uniqueHeaders.map(h => `"${h}"`).join(", ")}) VALUES (${uniqueHeaders.map((_, i) => `$${i + 1}`).join(", ")})`;
 
         for (const row of dataRows) {
             const values = row.map((v, idx) => {
