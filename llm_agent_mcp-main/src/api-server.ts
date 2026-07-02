@@ -477,12 +477,12 @@ app.get("/api/finance-charts", async (req, res) => {
         const qDate = quoteIdent(dateCol);
         const r = await pool.query(`
           SELECT
-            ${qDate}::DATE AS label,
+            TO_CHAR(${qDate}::DATE, 'MM/DD') AS label,
             SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) -
             SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS value
           FROM ${qTbl}
           WHERE ${qDate} IS NOT NULL AND ${notNoise}
-          GROUP BY 1 ORDER BY 1
+          GROUP BY 1, ${qDate}::DATE ORDER BY ${qDate}::DATE
         `);
         if (r.rows.length > 0) {
           charts.push({
