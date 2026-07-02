@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { BarChart2, Activity, TrendingUp, PieChart as PieChartIcon, LayoutDashboard, Upload, ThumbsUp, ThumbsDown, FileText } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { chartTheme } from "../components/chartTheme";
 
 import { Message, KpiData, SalesHistory, UploadedFile, ServerStatus, ComputedMetrics } from "../components/types";
@@ -14,6 +13,7 @@ import { AdminPanel } from "../components/AdminPanel";
 import { ChatInput } from "../components/ChatInput";
 import { PreviewDrawer } from "../components/PreviewDrawer";
 import { formatMessageText } from "../components/ChatMessage";
+import { SalesCard, TopSearch, ProportionSales, ActiveChart } from "../components/dashboard";
 
 export default function Home() {
   // ── Auth ──
@@ -682,72 +682,22 @@ export default function Home() {
                     </div>
 
                     {/* CHARTS ROW */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in-up" style={{ animationDelay: "150ms" }}>
-                      <div className="border border-border/80 rounded-xl p-4 bg-card min-h-[200px]">
-                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-3">Борлуулалтын график</p>
-                        {salesHistory.length > 0 ? (
-                          <ResponsiveContainer width="100%" height={160}>
-                            <LineChart data={salesHistory}>
-                              <XAxis dataKey="month" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                              <Tooltip {...chartTheme.tooltip} />
-                              <Line type="monotone" dataKey="revenue" stroke={chartTheme.colors.semantic.line} strokeWidth={2} dot={false} />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <div className="flex items-center justify-center h-[160px] text-[10px] text-foreground/30">Өгөгдөл байхгүй</div>
-                        )}
-                      </div>
-                      <div className="border border-border/80 rounded-xl p-4 bg-card min-h-[200px]">
-                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-3">Категорийн график</p>
-                        {computedMetrics && computedMetrics.topCategory ? (
-                          <ResponsiveContainer width="100%" height={160}>
-                            <BarChart data={[{ name: computedMetrics.topCategory, value: computedMetrics.topCategoryValue }]}>
-                              <XAxis dataKey="name" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                              <Tooltip {...chartTheme.tooltip} />
-                              <Bar dataKey="value" fill={chartTheme.colors.semantic.bar} radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <div className="flex items-center justify-center h-[160px] text-[10px] text-foreground/30">Өгөгдөл байхгүй</div>
-                        )}
-                      </div>
+                    <div className="animate-fade-in-up" style={{ animationDelay: "150ms" }}>
+                      <SalesCard
+                        salesData={salesHistory.map((h) => ({ x: h.month, y: h.revenue }))}
+                      />
                     </div>
 
-                    {/* TABLE */}
-                    <div className="border border-border/80 rounded-xl p-4 bg-card animate-fade-in-up" style={{ animationDelay: "250ms" }}>
-                      <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-3">Борлуулалтын дэлгэрэнгүй</p>
-                      {salesHistory.length > 0 ? (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-[10px]">
-                            <thead>
-                              <tr className="border-b border-border/60 text-foreground/50">
-                                <th className="text-left py-1.5 pr-3 font-semibold">Сар</th>
-                                <th className="text-right py-1.5 pr-3 font-semibold">Орлого</th>
-                                <th className="text-right py-1.5 font-semibold">Өөрчлөлт</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {salesHistory.map((row, i) => {
-                                const prev = i > 0 ? salesHistory[i - 1].revenue : row.revenue;
-                                const change = prev > 0 ? ((row.revenue - prev) / prev * 100) : 0;
-                                return (
-                                  <tr key={row.month} className="border-b border-border/30 last:border-0">
-                                    <td className="py-1.5 pr-3 text-foreground/80">{row.month}</td>
-                                    <td className="py-1.5 pr-3 text-right text-foreground/80">{row.revenue.toLocaleString()}</td>
-                                    <td className={`py-1.5 text-right ${i === 0 ? "text-foreground/40" : change >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-                                      {i > 0 ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : "—"}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center h-[100px] text-[10px] text-foreground/30">Өгөгдөл байхгүй</div>
-                      )}
+                    {/* INSIGHTS ROW */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+                      <ProportionSales />
+                      <TopSearch />
+                    </div>
+
+                    {/* ACTIVE CHART */}
+                    <div className="border border-border/80 rounded-xl p-5 bg-card animate-fade-in-up" style={{ animationDelay: "250ms" }}>
+                      <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Үйл ажиллагааны идэвхжил</p>
+                      <ActiveChart />
                     </div>
                   </div>
                 )}
