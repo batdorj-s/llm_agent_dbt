@@ -36,7 +36,7 @@ export function requireJwtSecret(): void {
 
 const JWT_EXPIRES_IN_SECONDS = parseExpiry(process.env.JWT_EXPIRES_IN || "1h");
 
-function parseExpiry(expr: string): number {
+export function parseExpiry(expr: string): number {
   const match = expr.match(/^(\d+)([smhd])$/);
   if (!match) return 3600;
   const [, val, unit] = match;
@@ -44,7 +44,7 @@ function parseExpiry(expr: string): number {
   return parseInt(val) * (multipliers[unit] ?? 3600);
 }
 
-function base64url(data: string): string {
+export function base64url(data: string): string {
   return Buffer.from(data)
     .toString("base64")
     .replace(/=/g, "")
