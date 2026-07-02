@@ -73,14 +73,14 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
 
       <div className="text-[11px] text-foreground/50 mb-2">Борлуулалт</div>
 
-      <ResponsiveContainer width="100%" height={340}>
+      <ResponsiveContainer width="100%" height={280}>
         <PieChart>
           <Pie
             data={salesPieData}
             cx="50%"
             cy="50%"
-            innerRadius={80}
-            outerRadius={140}
+            innerRadius="38%"
+            outerRadius="62%"
             dataKey="y"
             nameKey="x"
             paddingAngle={2}
@@ -103,7 +103,7 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
                       x={cx}
                       dy={-8}
                       style={{
-                        fontSize: 22,
+                        fontSize: 16,
                         fontWeight: 800,
                         fill: "var(--color-foreground)",
                       }}
@@ -112,10 +112,11 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
                     </tspan>
                     <tspan
                       x={cx}
-                      dy={20}
+                      dy={18}
                       style={{
-                        fontSize: 10,
+                        fontSize: 9,
                         fill: "var(--color-foreground, rgba(0,0,0,0.4))",
+                        opacity: 0.5,
                       }}
                     >
                       Нийт борлуулалт

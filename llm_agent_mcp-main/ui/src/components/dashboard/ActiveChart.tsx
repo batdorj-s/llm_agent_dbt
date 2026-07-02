@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, ResponsiveContainer, ReferenceLine, YAxis } from "recharts";
 
 function fixedZero(val: number) {
   return val < 10 ? `0${val}` : `${val}`;
@@ -45,69 +45,54 @@ export const ActiveChart = () => {
   }, [activeData]);
 
   return (
-    <div className="relative">
-      <div className="text-xs text-foreground/70 font-medium mb-2">
-        <span className="text-foreground/50">Үнэлгээ: </span>
-        Хүлээгдэж буй үзүүлэлтэд хүрэх боломжтой
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[11px] text-foreground/60">
+          <span className="text-foreground/40">Үнэлгээ: </span>
+          Хүлээгдэж буй үзүүлэлтэд хүрэх боломжтой
+        </span>
+        <div className="flex gap-4 text-[10px] font-mono text-foreground/40">
+          <span>↑ {maxValue + 200}</span>
+          <span>≈ {medianValue}</span>
+        </div>
       </div>
 
-      <div className="h-[84px]">
-        <ResponsiveContainer width="100%" height={84}>
-          <AreaChart data={activeData}>
-            <Area
-              type="monotone"
-              dataKey="y"
-              stroke="#3b82f6"
-              strokeWidth={1.5}
-              fill="#3b82f6"
-              fillOpacity={0.15}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+      <ResponsiveContainer width="100%" height={130}>
+        <AreaChart data={activeData} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
+          <YAxis hide domain={[0, "auto"]} />
+          <ReferenceLine
+            y={maxValue}
+            stroke="var(--color-border, #e2e8f0)"
+            strokeDasharray="4 4"
+            strokeWidth={1}
+          />
+          <ReferenceLine
+            y={medianValue}
+            stroke="var(--color-border, #e2e8f0)"
+            strokeDasharray="4 4"
+            strokeWidth={1}
+          />
+          <Area
+            type="monotone"
+            dataKey="y"
+            stroke="#3b82f6"
+            strokeWidth={1.5}
+            fill="#3b82f6"
+            fillOpacity={0.15}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+
+      <div className="flex text-[10px] text-foreground/40 mt-1.5 font-mono">
+        <span className="flex-1 text-left">00:00</span>
+        <span className="flex-1 text-center">
+          {activeData[Math.floor(activeData.length / 2)]?.x}
+        </span>
+        <span className="flex-1 text-right">
+          {activeData[activeData.length - 1]?.x}
+        </span>
       </div>
-
-      {activeData.length > 0 && (
-        <>
-          <div className="relative" style={{ marginTop: -60, marginLeft: -3 }}>
-            <p className="absolute text-[10px] text-foreground/50 font-mono whitespace-nowrap" style={{ top: 0 }}>
-              {maxValue + 200}
-            </p>
-            <p className="absolute text-[10px] text-foreground/50 font-mono whitespace-nowrap" style={{ top: 35 }}>
-              {medianValue}
-            </p>
-            <div className="relative" style={{ top: -70, left: 0 }}>
-              <div
-                className="w-full h-px"
-                style={{
-                  backgroundImage:
-                    "linear-gradient(to right, transparent 50%, var(--color-border, #e2e8f0) 50%)",
-                  backgroundSize: "6px 1px",
-                }}
-              />
-            </div>
-            <div className="relative" style={{ top: -36, left: 0 }}>
-              <div
-                className="w-full h-px"
-                style={{
-                  backgroundImage:
-                    "linear-gradient(to right, transparent 50%, var(--color-border, #e2e8f0) 50%)",
-                  backgroundSize: "6px 1px",
-                }}
-              />
-            </div>
-          </div>
-
-          <div className="flex text-[11px] text-foreground/40 mt-2">
-            <span className="flex-1 text-left">00:00</span>
-            <span className="flex-1 text-center">
-              {activeData[Math.floor(activeData.length / 2)]?.x}
-            </span>
-            <span className="flex-1 text-right">
-              {activeData[activeData.length - 1]?.x}
-            </span>
-          </div>
-        </>
-      )}
     </div>
   );
 };

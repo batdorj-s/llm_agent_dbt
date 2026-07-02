@@ -146,7 +146,7 @@ export const OfflineData: React.FC<OfflineDataProps> = ({
       </div>
 
       <div className="p-6">
-        <ResponsiveContainer width="100%" height={400}>
+        <ResponsiveContainer width="100%" height={280}>
           <LineChart data={filteredData}>
             <CartesianGrid
               strokeDasharray="3 3"

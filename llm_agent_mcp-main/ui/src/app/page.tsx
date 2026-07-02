@@ -761,9 +761,11 @@ export default function Home() {
                       <div className="lg:col-span-2">
                         <OfflineData />
                       </div>
-                      <div className="border border-border/80 rounded-xl p-5 bg-card">
-                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Үзүүлэлтийн харьцуулалт</p>
-                        <Radar />
+                      <div className="border border-border/80 rounded-xl p-5 bg-card min-h-[360px] flex flex-col">
+                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-2">Үзүүлэлтийн харьцуулалт</p>
+                        <div className="flex-1">
+                          <Radar height={300} />
+                        </div>
                       </div>
                     </div>
 

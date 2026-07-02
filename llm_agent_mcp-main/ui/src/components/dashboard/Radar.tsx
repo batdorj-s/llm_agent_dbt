@@ -40,7 +40,7 @@ export const Radar: React.FC<RadarProps> = ({
   return (
     <div>
       <ResponsiveContainer width="100%" height={height}>
-        <RadarChart cx="50%" cy="50%" outerRadius="65%" data={data}>
+        <RadarChart cx="50%" cy="50%" outerRadius="72%" data={data}>
           <PolarGrid
             stroke="var(--color-border, #e2e8f0)"
             strokeOpacity={0.5}

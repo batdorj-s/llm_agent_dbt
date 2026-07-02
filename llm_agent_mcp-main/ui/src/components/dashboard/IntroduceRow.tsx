@@ -47,7 +47,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         title="Нийт борлуулалт"
         total={formatCurrency(totalSales)}
         footer={<Field label="Өдрийн борлуулалт" value={formatCurrency(12423)} />}
-        contentHeight={60}
+        contentHeight={72}
         loading={loading}
       >
         <div className="flex gap-4 mt-1 h-full items-center">
@@ -61,10 +61,10 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         title="Хандалт"
         total={formatNumber(totalVisits)}
         footer={<Field label="Өдрийн хандалт" value={formatNumber(1234)} />}
-        contentHeight={60}
+        contentHeight={72}
         loading={loading}
       >
-        <ResponsiveContainer width="100%" height={60}>
+        <ResponsiveContainer width="100%" height={72}>
           <AreaChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <Area
               type="monotone"
@@ -84,10 +84,10 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         title="Төлбөрийн тоо"
         total={formatNumber(totalPayments)}
         footer={<Field label="Хөрвүүлэлт" value="60%" />}
-        contentHeight={60}
+        contentHeight={72}
         loading={loading}
       >
-        <ResponsiveContainer width="100%" height={60}>
+        <ResponsiveContainer width="100%" height={72}>
           <BarChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <Bar
               dataKey="y"
@@ -109,7 +109,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
             <Trend flag="down">Өдөр <span className="font-bold">11%</span></Trend>
           </div>
         }
-        contentHeight={60}
+        contentHeight={72}
         loading={loading}
       >
         <div className="w-full h-full flex items-center px-1">
