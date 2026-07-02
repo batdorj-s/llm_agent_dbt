@@ -524,7 +524,7 @@ export default function Home() {
     if (!cf?.data) return null;
     return cf.data.map((d: any) => ({ x: d.label, y: Number(d["Зарлага"] ?? 0) }));
   })();
-  const financeExpenseCategories = (() => {
+  const financeExpenseCategories: { name: string; share: number; color: string }[] | null = (() => {
     const cb = financeCharts?.charts?.find((c: any) => c.id === "category_breakdown");
     if (!cb?.data) return null;
     const total = cb.data.reduce((s: number, d: any) => s + Number(d.value ?? 0), 0);

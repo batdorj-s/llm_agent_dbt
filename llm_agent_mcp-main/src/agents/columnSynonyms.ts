@@ -103,15 +103,35 @@ const TABLE_SPECIFIC_COLUMNS: Record<string, Record<string, string[]>> = {
         "finance_party":       ["харилцагч"],
         "finance_note":        ["тайлбар"],
     },
-    "sankhuu_2026_q1": {
-        "finance_amount":      ["Дүн"],
-        "finance_date":        ["Өдөр"],
-        "finance_category":    ["Ангилал"],
-        "finance_subcategory": ["Дэд ангилал"],
-        "finance_party":       ["Харилцагч"],
-        "finance_note":        ["Тайлбар"],
+};
+
+const TABLE_PREFIX_MAPPINGS: Record<string, Record<string, string[]>> = {
+    // Any table starting with "sankhuu_" auto-inherits finance columns.
+    // Supports sankhuu_2026_q1, sankhuu_2026_q2, sankhuu_2027, etc.
+    "sankhuu_": {
+        "finance_amount":      ["Дүн", "дүн"],
+        "finance_date":        ["Өдөр", "өдөр"],
+        "finance_category":    ["Ангилал", "ангилал"],
+        "finance_subcategory": ["Дэд ангилал", "дэд_ангилал"],
+        "finance_party":       ["Харилцагч", "харилцагч"],
+        "finance_note":        ["Тайлбар", "тайлбар"],
     },
 };
+
+function matchColumnsFromMapping(
+    mapping: Record<string, string[]> | undefined,
+    columns: string[],
+    concept: string,
+): string | null {
+    const exactColumns = mapping?.[concept];
+    if (!exactColumns) return null;
+    const lowerCols = columns.map((c) => c.toLowerCase());
+    for (const exact of exactColumns) {
+        const idx = lowerCols.indexOf(exact.toLowerCase());
+        if (idx !== -1) return columns[idx];
+    }
+    return null;
+}
 
 export function findConceptColumn(
     columns: string[],
@@ -119,13 +139,16 @@ export function findConceptColumn(
     tableName?: string,
 ): string | null {
     if (tableName) {
-        const tableMap = TABLE_SPECIFIC_COLUMNS[tableName.toLowerCase()];
-        const exactColumns = tableMap?.[concept];
-        if (exactColumns) {
-            const lowerCols = columns.map((c) => c.toLowerCase());
-            for (const exact of exactColumns) {
-                const idx = lowerCols.indexOf(exact.toLowerCase());
-                if (idx !== -1) return columns[idx];
+        const lowerName = tableName.toLowerCase();
+        // 1. Exact table match
+        let result = matchColumnsFromMapping(TABLE_SPECIFIC_COLUMNS[lowerName], columns, concept);
+        if (result) return result;
+
+        // 2. Prefix match (e.g. sankhuu_* → finance columns)
+        for (const [prefix, mapping] of Object.entries(TABLE_PREFIX_MAPPINGS)) {
+            if (lowerName.startsWith(prefix)) {
+                result = matchColumnsFromMapping(mapping, columns, concept);
+                if (result) return result;
             }
         }
     }
