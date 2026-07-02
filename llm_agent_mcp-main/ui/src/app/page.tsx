@@ -16,6 +16,7 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { Footer } from "../components/Footer";
 import AvatarList from "../components/AvatarList";
 import { SalesCard, TopSearch, ProportionSales, ActiveChart, IntroduceRow, OfflineData, Gauge, Radar, PageLoading, Liquid, EditableLinkGroup, PageHeaderContent, ExtraContent } from "../components/dashboard";
+import { FinanceDashboard } from "../components/FinanceDashboard";
 import { getTimeDistance } from "../lib/getTimeDistance";
 
 export default function Home() {
@@ -722,6 +723,13 @@ export default function Home() {
                     <div className="animate-fade-in-up" style={{ animationDelay: "50ms" }}>
                       <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} computedMetrics={computedMetrics} salesHistory={salesHistory} isLoading={isDashboardLoading} />
                     </div>
+
+                    {/* FINANCE DEFAULT CHARTS — transaction дата байвал автоматаар гарна */}
+                    {token && (
+                      <div className="animate-fade-in-up" style={{ animationDelay: "80ms" }}>
+                        <FinanceDashboard token={token} />
+                      </div>
+                    )}
 
                     {/* INTRODUCE ROW */}
                     <div className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>

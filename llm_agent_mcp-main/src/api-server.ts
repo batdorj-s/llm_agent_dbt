@@ -14,7 +14,8 @@ import { ensureProjectReady, runDbtForTable, runDbtTest } from "./setup/init.js"
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent } from "./db/data-lake.js";
+import { findConceptColumn } from "./agents/columnSynonyms.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { computeMetrics } from "./agents/reportMetrics.js";
@@ -307,6 +308,130 @@ app.get("/api/dashboard/computed-metrics", async (req, res) => {
     const metrics = await computeMetrics(auth.payload.userId, startDate, endDate);
     if (!metrics) return res.status(404).json({ error: "No active dataset found" });
     res.json(metrics);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Finance Default Charts
+// ─────────────────────────────────────────────────────────────
+app.get("/api/finance-charts", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+
+  const userId = auth.payload.userId;
+  const pool = getPool();
+
+  try {
+    const entry = await getActiveCatalogEntry(userId);
+    if (!entry) return res.json({ isFinance: false });
+
+    const columns: string[] = JSON.parse(entry.columns_info);
+    const table = entry.table_name;
+
+    const amtCol  = findConceptColumn(columns, "finance_amount",      table);
+    const catCol  = findConceptColumn(columns, "finance_category",    table);
+    const dateCol = findConceptColumn(columns, "finance_date",        table);
+    const partyCol = findConceptColumn(columns, "finance_party",      table);
+
+    if (!amtCol || !catCol) return res.json({ isFinance: false });
+
+    // Safe amount expression: handles both "₮2,000,000" text and plain NUMERIC
+    const qAmt = `CAST(REPLACE(REPLACE(${quoteIdent(amtCol)}::TEXT, '₮', ''), ',', '') AS NUMERIC)`;
+    const qCat  = quoteIdent(catCol);
+    const qTbl  = quoteIdent(table);
+
+    const charts: any[] = [];
+
+    // 1. Category breakdown — always available
+    try {
+      const r = await pool.query(`
+        SELECT ${qCat} AS label, SUM(${qAmt}) AS value
+        FROM ${qTbl}
+        WHERE ${qCat} NOT ILIKE '%шилжүүлэг%' AND ${qCat} IS NOT NULL
+        GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 6
+      `);
+      if (r.rows.length > 0) {
+        charts.push({
+          id: "category_breakdown",
+          title: "Ангиллын задаргаа",
+          type: "donut",
+          data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
+          config: { xAxis: "label", yAxis: "value" },
+        });
+      }
+    } catch {}
+
+    // 2. Monthly cashflow (stacked_bar) — requires date column
+    if (dateCol) {
+      try {
+        const qDate = quoteIdent(dateCol);
+        const r = await pool.query(`
+          SELECT
+            TO_CHAR(${qDate}::DATE, 'YYYY-MM') AS label,
+            SUM(CASE WHEN ${qCat} ILIKE '%орлого%' THEN ${qAmt} ELSE 0 END) AS value,
+            SUM(CASE WHEN ${qCat} ILIKE '%зарлага%' THEN ${qAmt} ELSE 0 END) AS value2
+          FROM ${qTbl}
+          WHERE ${qCat} NOT ILIKE '%шилжүүлэг%'
+          GROUP BY 1 ORDER BY 1
+        `);
+        if (r.rows.length > 0) {
+          charts.push({
+            id: "monthly_cashflow",
+            title: "Сарын орлого / зарлага",
+            type: "stacked_bar",
+            data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0), value2: Number(row.value2 ?? 0) })),
+            config: { xAxis: "label", yAxis: "value", series: ["value", "value2"], stacked: true, seriesLabels: ["Орлого", "Зарлага"] },
+          });
+        }
+      } catch {}
+    }
+
+    // 3. Top counterparties (horizontal_bar)
+    if (partyCol) {
+      try {
+        const qParty = quoteIdent(partyCol);
+        const r = await pool.query(`
+          SELECT ${qParty} AS label, SUM(${qAmt}) AS value
+          FROM ${qTbl}
+          WHERE ${qParty} IS NOT NULL AND ${qParty} != ''
+          GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 10
+        `);
+        if (r.rows.length > 0) {
+          charts.push({
+            id: "top_parties",
+            title: "Харилцагчдын нийт дүн",
+            type: "horizontal_bar",
+            data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
+            config: { xAxis: "label", yAxis: "value" },
+          });
+        }
+      } catch {}
+    }
+
+    // 4. Daily trend (line)
+    if (dateCol) {
+      try {
+        const qDate = quoteIdent(dateCol);
+        const r = await pool.query(`
+          SELECT ${qDate}::DATE AS label, SUM(${qAmt}) AS value
+          FROM ${qTbl}
+          GROUP BY 1 ORDER BY 1
+        `);
+        if (r.rows.length > 0) {
+          charts.push({
+            id: "daily_trend",
+            title: "Өдрийн гүйлгээний дүн",
+            type: "line",
+            data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
+            config: { xAxis: "label", yAxis: "value" },
+          });
+        }
+      } catch {}
+    }
+
+    res.json({ isFinance: charts.length > 0, tableName: table, charts });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

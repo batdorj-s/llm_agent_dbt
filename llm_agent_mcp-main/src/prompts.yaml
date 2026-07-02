@@ -320,6 +320,45 @@ visual_designer: |
   - If data is a single number (e.g. total sales), use a simple text response — no chart needed.
   - Series order in config.series determines the order they appear in bars/areas.
 
+finance_chart_selection: |
+  ## Chart type selection rules for financial transaction data
+
+  Available columns: өдөр (date), дүн (amount ₮), ангилал (category),
+                     дэд_ангилал (subcategory), харилцагч (counterparty)
+
+  RULES — apply the FIRST matching rule:
+
+  1. Time trend (сараар, өдрөөр, by month, over time, хугацаанд)
+     → type: "line"  (single series)  or  "combo"  (income + expense)
+     → x: өдөр/сар,  y: SUM(дүн)
+
+  2. Income vs expense comparison (орлого зарлага харьцуул, P&L)
+     → type: "stacked_bar"
+     → series: ["орлого", "зарлага"],  x: сар
+     → EXCLUDE "Дотоод шилжүүлэг" from both series
+
+  3. Category breakdown (ангиллаар задал, by category, хэмжээгээр)
+     → type: "donut"  if ≤ 6 unique categories
+     → type: "bar"    if > 6 unique categories
+     → x: ангилал,  y: SUM(дүн)
+     → EXCLUDE "Дотоод шилжүүлэг"
+
+  4. Top-N counterparties (харилцагчаар, by partner, top харилцагч)
+     → type: "horizontal_bar"
+     → x: харилцагч,  y: SUM(дүн),  LIMIT 10
+
+  5. Subcategory drill-down (дэд ангиллаар, by subcategory)
+     → type: "bar"
+     → x: дэд_ангилал,  y: SUM(дүн)
+
+  6. Single total (нийт дүн, total amount, one number)
+     → NO chart — return KPI text value only
+
+  ALWAYS include in the visual JSON:
+  - title: тайлбар Монгол хэлээр (e.g. "Сарын зарлага")
+  - Exclude "Дотоод шилжүүлэг" from P&L charts unless explicitly requested
+  - Amount axis label: "Дүн (₮)"
+
 finance_context: |
   You are analyzing Mongolian business transaction data.
 
