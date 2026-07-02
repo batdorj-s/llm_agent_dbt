@@ -14,7 +14,7 @@ import { ensureProjectReady, runDbtForTable, runDbtTest } from "./setup/init.js"
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent } from "./db/data-lake.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { computeMetrics } from "./agents/reportMetrics.js";
@@ -378,7 +378,7 @@ app.delete("/api/admin/files/:id", async (req, res) => {
   try {
     if (file.type === "dataset") {
       const tableName = file.id || file.filename;
-      await getPool().query(`DROP TABLE IF EXISTS "${tableName}" CASCADE`);
+      await getPool().query(`DROP TABLE IF EXISTS ${quoteIdent(tableName)} CASCADE`);
       await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [tableName]);
       await removeDocumentsByPrefix(`uploaded_${tableName}_`);
       await removeDocumentsByPrefix(`dbt_warning_${tableName}`);
@@ -412,7 +412,7 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
 
     if (file.type === "dataset") {
       const tableName = file.id || file.filename;
-      const previewResult = await getPool().query(`SELECT * FROM "${tableName}" LIMIT 20`);
+      const previewResult = await getPool().query(`SELECT * FROM ${quoteIdent(tableName)} LIMIT 20`);
       let columns: string[] = [];
       try {
         const catalogResult = await getPool().query(
@@ -447,6 +447,7 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
       hasDownload: fs.existsSync(path.join(DOCUMENTS_DIR, `${id}_${file.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`)),
     });
   } catch (err: any) {
+    console.error(`[API] Preview failed for file ${id}:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -471,6 +472,7 @@ app.get("/api/admin/files/:id/download", async (req, res) => {
 
     res.download(filePath, file.filename);
   } catch (err: any) {
+    console.error(`[API] Download failed for file ${id}:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });

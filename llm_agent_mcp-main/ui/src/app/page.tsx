@@ -269,7 +269,15 @@ export default function Home() {
     if (!token) return;
     try {
       const res = await fetch(`/api/admin/files/${file.id}/preview`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error("Failed to fetch preview");
+      if (!res.ok) {
+        let errMsg = `Preview failed (${res.status})`;
+        try { const errBody = await res.json(); if (errBody.error) errMsg += `: ${errBody.error}`; } catch {}
+        if (res.status === 401) {
+          setToken(null);
+          errMsg = "Session expired. Please log in again.";
+        }
+        throw new Error(errMsg);
+      }
       const data = await res.json();
       setPreviewData(data.preview || null);
       setPreviewColumns(data.columns || []);
