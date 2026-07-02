@@ -104,6 +104,11 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
   const topCategory = computedMetrics?.topCategory ?? null;
   const growthDirection = computedMetrics?.growthDirection ?? "up";
 
+  const isFinance = computedMetrics?.isFinance ?? false;
+  const totalExpense = computedMetrics?.totalExpense ?? 0;
+  const operatingProfit = computedMetrics?.operatingProfit ?? 0;
+  const expenseRatio = salesKpi && salesKpi.current > 0 ? (totalExpense / salesKpi.current * 100) : 0;
+
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -129,32 +134,54 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
           ) : undefined}
           progress={salesKpi ? { current: salesKpi.current, target: salesKpi.target } : undefined}
         />,
-        <KpiCard key="users"
-          label="Харилцагчид"
-          value={usersKpi ? usersKpi.current.toLocaleString() : "—"}
-          subLabel="Зорилт"
-          subValue={usersKpi ? usersKpi.target.toLocaleString() : "—"}
-          color={chartTheme.colors.semantic.line}
-          progress={usersKpi ? { current: usersKpi.current, target: usersKpi.target } : undefined}
-        />,
-        <KpiCard key="churn"
-          label="Зарлагын хувь"
-          value={churnKpi ? `${churnKpi.current.toFixed(1)}%` : "—"}
-          subLabel="Хязгаар"
-          subValue={churnKpi ? `${churnKpi.target}%` : "—"}
-          color={churnColor}
-          progress={churnKpi ? { current: churnKpi.current, target: churnKpi.target, invert: true } : undefined}
-        />,
+        isFinance ? (
+          <KpiCard key="users"
+            label="Нийт зарлага"
+            value={totalExpense > 0 ? `₮${Math.round(totalExpense).toLocaleString()}` : "—"}
+            subLabel="ҮА зарлага"
+            subValue={topCategory !== null ? topCategory : "—"}
+            color="#ef4444"
+          />
+        ) : (
+          <KpiCard key="users"
+            label="Харилцагчид"
+            value={usersKpi ? usersKpi.current.toLocaleString() : "—"}
+            subLabel="Зорилт"
+            subValue={usersKpi ? usersKpi.target.toLocaleString() : "—"}
+            color={chartTheme.colors.semantic.line}
+            progress={usersKpi ? { current: usersKpi.current, target: usersKpi.target } : undefined}
+          />
+        ),
+        isFinance ? (
+          <KpiCard key="churn"
+            label="Зардлын харьцаа"
+            value={expenseRatio > 0 ? `${expenseRatio.toFixed(1)}%` : "—"}
+            subLabel="Орлогод эзлэх хувь"
+            subValue={salesKpi ? `₮${salesKpi.current.toLocaleString()}` : "—"}
+            color={expenseRatio > 100 ? "#ef4444" : "#f59e0b"}
+          />
+        ) : (
+          <KpiCard key="churn"
+            label="Зарлагын хувь"
+            value={churnKpi ? `${churnKpi.current.toFixed(1)}%` : "—"}
+            subLabel="Хязгаар"
+            subValue={churnKpi ? `${churnKpi.target}%` : "—"}
+            color={churnColor}
+            progress={churnKpi ? { current: churnKpi.current, target: churnKpi.target, invert: true } : undefined}
+          />
+        ),
         <KpiCard key="aov"
-          label="Дундаж гүйлгээ"
-          value={aov !== null ? `₮${Math.round(aov).toLocaleString()}` : "—"}
-          subLabel="Хамгийн их зарлага"
-          subValue={topCategory !== null && aov !== null ? topCategory : "—"}
-          color={chartTheme.colors.semantic.area}
+          label={isFinance ? "ҮА ашиг/алдагдал" : "Дундаж гүйлгээ"}
+          value={isFinance
+            ? (operatingProfit !== 0 ? `₮${Math.round(operatingProfit).toLocaleString()}` : "—")
+            : (aov !== null ? `₮${Math.round(aov).toLocaleString()}` : "—")}
+          subLabel={isFinance ? "Санхүүгийн үр дүн" : "Хамгийн их зарлага"}
+          subValue={topCategory !== null ? topCategory : "—"}
+          color={isFinance ? (operatingProfit >= 0 ? "#10b981" : "#ef4444") : chartTheme.colors.semantic.area}
           trend={growthRate !== null ? { direction: growthDirection, label: `${Math.abs(growthRate).toFixed(1)}%` } : undefined}
         />,
       ].map((card, i) => (
-        <div key={card.key} className="animate-fade-in-up" style={{ animationDelay: `${i * 50}ms` }}>
+        <div key={(card as any).key ?? i} className="animate-fade-in-up" style={{ animationDelay: `${i * 50}ms` }}>
           {card}
         </div>
       ))}

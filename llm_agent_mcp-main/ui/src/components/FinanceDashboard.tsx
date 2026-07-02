@@ -15,6 +15,11 @@ interface FinanceChartsResponse {
   isFinance: boolean;
   tableName?: string;
   charts?: FinanceChart[];
+  summary?: {
+    totalIncome: number;
+    totalExpense: number;
+    operatingProfit: number;
+  };
 }
 
 interface Props {
@@ -73,6 +78,25 @@ export function FinanceDashboard({ token }: Props) {
           </span>
         )}
       </div>
+
+      {data.summary && (
+        <div className="grid grid-cols-3 gap-3 mb-1">
+          {[
+            { label: "Нийт орлого", value: data.summary.totalIncome, color: "#3b82f6" },
+            { label: "Нийт зарлага", value: data.summary.totalExpense, color: "#ef4444" },
+            { label: "ҮА ашиг/алдагдал", value: data.summary.operatingProfit, color: data.summary.operatingProfit >= 0 ? "#10b981" : "#ef4444" },
+          ].map((item) => (
+            <div key={item.label} className="rounded-xl border border-border/80 bg-card p-4">
+              <div className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider mb-1">
+                {item.label}
+              </div>
+              <div className="text-base font-extrabold" style={{ color: item.color }}>
+                ₮{Math.round(item.value).toLocaleString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {data.charts.map((chart) => {

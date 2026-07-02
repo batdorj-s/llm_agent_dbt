@@ -414,15 +414,21 @@ app.get("/api/finance-charts", async (req, res) => {
       }
     } catch {}
 
-    // 2. Monthly cashflow — operating income vs operating expense
+    // Helper: format "YYYY-MM" → "N-р сар"
+    function formatMonthLabel(yyyyMM: string): string {
+      const m = parseInt((yyyyMM || "").split("-")[1] || "1", 10);
+      return `${m}-р сар`;
+    }
+
+    // 2. Monthly cashflow — operating income vs operating expense (grouped bar)
     if (dateCol) {
       try {
         const qDate = quoteIdent(dateCol);
         const r = await pool.query(`
           SELECT
             TO_CHAR(${qDate}::DATE, 'YYYY-MM') AS label,
-            SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) AS value,
-            SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS value2
+            SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) AS "Орлого",
+            SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS "Зарлага"
           FROM ${qTbl}
           WHERE ${qDate} IS NOT NULL AND ${notNoise}
           GROUP BY 1 ORDER BY 1
@@ -431,13 +437,13 @@ app.get("/api/finance-charts", async (req, res) => {
           charts.push({
             id: "monthly_cashflow",
             title: "Сарын орлого / зарлага",
-            type: "stacked_bar",
+            type: "bar",
             data: r.rows.map((row: any) => ({
-              label: String(row.label ?? ""),
-              value: Number(row.value ?? 0),
-              value2: Number(row.value2 ?? 0),
+              label: formatMonthLabel(String(row.label ?? "")),
+              "Орлого": Number(row["Орлого"] ?? 0),
+              "Зарлага": Number(row["Зарлага"] ?? 0),
             })),
-            config: { xAxis: "label", yAxis: "value", series: ["value", "value2"], stacked: true, seriesLabels: ["Орлого", "Зарлага"] },
+            config: { xAxis: "label", yAxis: "value", series: ["Орлого", "Зарлага"], stacked: false },
           });
         }
       } catch {}
@@ -490,7 +496,109 @@ app.get("/api/finance-charts", async (req, res) => {
       } catch {}
     }
 
-    res.json({ isFinance: charts.length > 0, tableName: table, charts });
+    // 5. Monthly operating profit/loss
+    if (dateCol) {
+      try {
+        const qDate = quoteIdent(dateCol);
+        const r = await pool.query(`
+          SELECT
+            TO_CHAR(${qDate}::DATE, 'YYYY-MM') AS label,
+            SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) -
+            SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS value
+          FROM ${qTbl}
+          WHERE ${notNoise} AND ${qDate} IS NOT NULL
+          GROUP BY 1 ORDER BY 1
+        `);
+        if (r.rows.length > 0) {
+          charts.push({
+            id: "monthly_profit",
+            title: "Сарын үйл ажиллагааны ашиг/алдагдал",
+            type: "bar",
+            data: r.rows.map((row: any) => ({
+              label: formatMonthLabel(String(row.label ?? "")),
+              value: Number(row.value ?? 0),
+            })),
+            config: { xAxis: "label", yAxis: "value" },
+          });
+        }
+      } catch {}
+    }
+
+    // 6. Monthly expense breakdown by subcategory (stacked bar)
+    if (dateCol && subCatCol) {
+      try {
+        const qDate = quoteIdent(dateCol);
+        const qSub  = quoteIdent(subCatCol);
+        const r = await pool.query(`
+          SELECT
+            TO_CHAR(${qDate}::DATE, 'YYYY-MM') AS month,
+            ${qSub} AS subcat,
+            SUM(${qAmt}) AS total
+          FROM ${qTbl}
+          WHERE ${isOpExpense} AND ${qSub} IS NOT NULL AND ${qDate} IS NOT NULL
+          GROUP BY 1, 2
+          ORDER BY 1
+        `);
+        if (r.rows.length > 0) {
+          // Find top 5 subcats by total amount
+          const subcatTotals: Record<string, number> = {};
+          for (const row of r.rows as any[]) {
+            const s = String(row.subcat ?? "");
+            subcatTotals[s] = (subcatTotals[s] || 0) + Number(row.total ?? 0);
+          }
+          const topSubcats = Object.entries(subcatTotals)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([k]) => k);
+
+          // Pivot: month → { label, subcat1: total, subcat2: total, ... }
+          const monthMap: Record<string, Record<string, number>> = {};
+          for (const row of r.rows as any[]) {
+            const m = String(row.month ?? "");
+            const s = String(row.subcat ?? "");
+            if (!topSubcats.includes(s)) continue;
+            if (!monthMap[m]) monthMap[m] = {};
+            monthMap[m][s] = Number(row.total ?? 0);
+          }
+
+          const pivotData = Object.entries(monthMap)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([month, vals]) => {
+              const entry: Record<string, string | number> = { label: formatMonthLabel(month) };
+              for (const s of topSubcats) {
+                entry[s] = vals[s] || 0;
+              }
+              return entry;
+            });
+
+          charts.push({
+            id: "expense_breakdown_monthly",
+            title: "Зарлагын бүтэц сараар",
+            type: "stacked_bar",
+            data: pivotData as any,
+            config: { xAxis: "label", yAxis: "value", series: topSubcats, stacked: true },
+          });
+        }
+      } catch {}
+    }
+
+    // Compute P&L summary
+    const summaryRes = await pool.query(`
+      SELECT
+        SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) AS total_income,
+        SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS total_expense
+      FROM ${qTbl}
+    `);
+    const totalIncome    = Math.round(Number(summaryRes.rows[0]?.total_income  || 0));
+    const totalExpense   = Math.round(Number(summaryRes.rows[0]?.total_expense || 0));
+    const operatingProfit = totalIncome - totalExpense;
+
+    return res.json({
+      isFinance: charts.length > 0,
+      tableName: table,
+      charts,
+      summary: { totalIncome, totalExpense, operatingProfit },
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -35,6 +35,9 @@ export interface ComputedMetrics {
   topCategory: string;
   topCategoryValue: number;
   topCategoryUnit: string;
+  isFinance?: boolean;
+  totalExpense?: number;
+  operatingProfit?: number;
 }
 
 export interface ServerStatus {

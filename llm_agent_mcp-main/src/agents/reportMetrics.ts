@@ -12,6 +12,9 @@ export interface ComputedMetrics {
   topCategory: string;
   topCategoryValue: number;
   topCategoryUnit: string;
+  isFinance: boolean;
+  totalExpense: number;
+  operatingProfit: number;
 }
 
 async function getActiveTableInfo(userId: string): Promise<{
@@ -224,13 +227,39 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
     }
   }
 
+  // For finance tables: compute total operating expense and operating profit
+  let totalExpense = 0;
+  if (salesCol && isFinanceTable && rawMainCatCol) {
+    try {
+      const rawSubCatCol = findConceptColumn(columns, "finance_subcategory", tableName);
+      const opExpenseWhere = rawSubCatCol
+        ? `${quoteIdent(rawMainCatCol)} ILIKE '%зарлага%' AND ${quoteIdent(rawSubCatCol)} NOT ILIKE '%зээл%' AND ${quoteIdent(rawSubCatCol)} NOT ILIKE '%бусад%'`
+        : `${quoteIdent(rawMainCatCol)} ILIKE '%зарлага%'`;
+      const expResult = await getPool().query(
+        `SELECT COALESCE(SUM(${amountExpr(salesCol)}), 0) AS total_expense
+         FROM ${quoteIdent(tableName)}
+         WHERE ${opExpenseWhere}${dateWhere}`,
+        dateParams
+      );
+      totalExpense = Math.round(Number(expResult.rows[0]?.total_expense || 0));
+    } catch (err) {
+      console.error("[Metrics] totalExpense query failed:", err);
+    }
+  }
+
+  const totalIncomeForCalc = isFinanceTable ? Math.round(aov * 100) / 100 : 0;
+  const operatingProfit = isFinanceTable ? Math.round((aov - totalExpense) * 100) / 100 : 0;
+
   return {
-    aov: Math.round(aov * 100) / 100,
+    aov: isFinanceTable ? operatingProfit : Math.round(aov * 100) / 100,
     aovUnit: "₮",
     growthRate: Math.round(growthRate * 100) / 100,
     growthDirection: growthRate >= 0 ? "up" : "down",
     topCategory,
     topCategoryValue: Math.round(topCategoryValue * 100) / 100,
     topCategoryUnit: "₮",
+    isFinance: isFinanceTable,
+    totalExpense: Math.round(totalExpense * 100) / 100,
+    operatingProfit,
   };
 }
