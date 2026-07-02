@@ -126,14 +126,15 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
 
       {/* Хамрах хувь — ant-design-pro Progress style gradient bar */}
       <ChartCard
-        title="Орлогын хамрах хувь"
+        title="Ашгийн хувь"
         avatar={<AvatarRate />}
-        action="Нийт орлогын зорилтын гүйцэтгэл"
-        total={`${campaignEffect}%`}
+        action="Үйл ажиллагааны ашиг / нийт орлого"
+        total={campaignEffect !== undefined ? `${campaignEffect}%` : "—"}
         footer={
           <div className="flex gap-4">
-            <Trend flag="up">3-р сар <span className="font-bold">+63%</span></Trend>
-            <Trend flag="down">Q1 алдагдал <span className="font-bold">₮24M</span></Trend>
+            <Trend flag={campaignEffect !== undefined && campaignEffect >= 10 ? "up" : "down"}>
+              Q1 ашиг <span className="font-bold">{campaignEffect ?? 0}%</span>
+            </Trend>
           </div>
         }
         contentHeight={72}
@@ -143,7 +144,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
           <div className="w-full">
             <div className="flex justify-between text-[10px] text-foreground/40 mb-1.5">
               <span>0%</span>
-              <span className="font-semibold text-foreground/60">{campaignEffect}%</span>
+              <span className="font-semibold text-foreground/60">{campaignEffect ?? 0}%</span>
               <span>100%</span>
             </div>
             {/* Ant-design-pro strokeColor gradient progress */}
@@ -151,12 +152,16 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
               <div
                 className="h-full rounded-full transition-all duration-700"
                 style={{
-                  width: `${campaignEffect}%`,
-                  background: "linear-gradient(90deg, #108ee9 0%, #87d068 100%)",
+                  width: `${campaignEffect ?? 0}%`,
+                  background: (campaignEffect ?? 0) >= 15
+                    ? "linear-gradient(90deg, #108ee9 0%, #87d068 100%)"
+                    : "linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)",
                 }}
               />
             </div>
-            <div className="mt-1.5 text-[9px] text-foreground/40 text-right">{100 - campaignEffect}% үлдсэн</div>
+            <div className="mt-1.5 text-[9px] text-foreground/40 text-right">
+              {(campaignEffect ?? 0) >= 10 ? "Ашигтай" : "Алдагдалтай"}
+            </div>
           </div>
         </div>
       </ChartCard>

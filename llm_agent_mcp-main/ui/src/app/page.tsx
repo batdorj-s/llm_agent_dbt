@@ -808,7 +808,9 @@ export default function Home() {
                         totalVisits={financeCounterparties?.length ?? usersKpi?.current}
                         totalPayments={financeExpenseCategories?.reduce((s, c) => s + Math.round(c.share * 1000), 0) || undefined}
                         visitData={financeMonthlyIncome ?? undefined}
-                        campaignEffect={financeSummary?.totalIncome ? Math.round((financeSummary.operatingProfit / financeSummary.totalIncome) * 100) : undefined}
+                        campaignEffect={financeSummary?.totalIncome
+                          ? Math.min(100, Math.max(0, Math.round((financeSummary.operatingProfit / financeSummary.totalIncome) * 100)))
+                          : undefined}
                       />
                     </div>
 
@@ -859,8 +861,26 @@ export default function Home() {
                       <div className="flex flex-col gap-4">
                         {/* Gauge */}
                         <div className="border border-border/60 rounded-xl p-4 bg-card shadow-sm flex flex-col items-center justify-center gap-3">
-                          <Gauge percent={salesKpi ? Math.min(100, Math.round((salesKpi.current / salesKpi.target) * 100)) : 89} title="Орлогын хамрах хувь" />
-                          <Liquid percent={salesKpi ? Math.min(1, salesKpi.current / (salesKpi.target * 1.15)) : 0.50} height={100} />
+                          <Gauge
+                            percent={
+                              financeSummary
+                                ? Math.min(100, Math.round((financeSummary.totalIncome / 200_000_000) * 100))
+                                : salesKpi
+                                  ? Math.min(100, Math.round((salesKpi.current / salesKpi.target) * 100))
+                                  : 89
+                            }
+                            title="Орлогын гүйцэтгэл"
+                          />
+                          <Liquid
+                            percent={
+                              financeSummary
+                                ? Math.min(1, financeSummary.totalIncome / 200_000_000)
+                                : salesKpi
+                                  ? Math.min(1, salesKpi.current / (salesKpi.target * 1.15))
+                                  : 0.50
+                            }
+                            height={100}
+                          />
                         </div>
                         {/* Radar */}
                         <div className="border border-border/60 rounded-xl p-4 bg-card shadow-sm flex-1 flex flex-col">

@@ -8,14 +8,17 @@ interface GaugeProps {
   color?: string;
   size?: number;
   strokeWidth?: number;
+  /** Optional label shown below the percent (e.g. "200M зорилгоос") */
+  subLabel?: string;
 }
 
 export const Gauge: React.FC<GaugeProps> = ({
   percent = 89,
-  title = "Орлогын хамрах хувь",
+  title = "Орлогын гүйцэтгэл",
   color = "#3b82f6",
   size = 180,
   strokeWidth = 12,
+  subLabel,
 }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = Math.PI * radius;
@@ -23,36 +26,36 @@ export const Gauge: React.FC<GaugeProps> = ({
   const offset = circumference * (1 - progress / 100);
   const center = size / 2;
 
-  const thresholdColors = [
-    { max: 40, color: "#ef4444" },
-    { max: 70, color: "#f59e0b" },
-    { max: 100, color: "#10b981" },
-  ];
-  const gaugeColor = thresholdColors.find((t) => progress <= t.max)?.color || color;
+  const gaugeColor =
+    progress >= 80 ? "#10b981" :
+    progress >= 50 ? "#f59e0b" :
+    "#ef4444";
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-2">
       {title && (
-        <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">
+        <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider text-center">
           {title}
         </span>
       )}
-      <svg width={size} height={size / 2 + strokeWidth} viewBox={`0 0 ${size} ${size / 2 + strokeWidth}`}>
+      <svg width={size} height={size / 2 + strokeWidth + 4} viewBox={`0 0 ${size} ${size / 2 + strokeWidth + 4}`}>
         <defs>
           <linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={gaugeColor} stopOpacity={0.6} />
+            <stop offset="0%" stopColor={gaugeColor} stopOpacity={0.5} />
             <stop offset="100%" stopColor={gaugeColor} />
           </linearGradient>
         </defs>
 
+        {/* Track */}
         <path
           d={`M ${strokeWidth} ${center} A ${radius} ${radius} 0 0 1 ${size - strokeWidth} ${center}`}
           fill="none"
-          stroke="var(--color-border, #e2e8f0)"
+          stroke="var(--border, #e2e8f0)"
           strokeWidth={strokeWidth}
           strokeLinecap="round"
         />
 
+        {/* Progress */}
         <path
           d={`M ${strokeWidth} ${center} A ${radius} ${radius} 0 0 1 ${size - strokeWidth} ${center}`}
           fill="none"
@@ -64,26 +67,35 @@ export const Gauge: React.FC<GaugeProps> = ({
           style={{ transition: "stroke-dashoffset 0.8s ease" }}
         />
 
+        {/* Center value */}
         <text
           x={center}
-          y={center - 4}
+          y={center - 6}
           textAnchor="middle"
-          fill="var(--color-foreground)"
-          fontSize={28}
+          fill={gaugeColor}
+          fontSize={30}
           fontWeight={800}
+          fontFamily="inherit"
         >
           {progress}%
         </text>
+
+        {/* Sub label */}
         <text
           x={center}
-          y={center + 18}
+          y={center + 16}
           textAnchor="middle"
-          fill="var(--color-foreground)"
-          opacity={0.4}
-          fontSize={10}
+          fill="currentColor"
+          opacity={0.35}
+          fontSize={9}
+          fontFamily="inherit"
         >
-          Q1 2026
+          {subLabel ?? "200M зорилгоос"}
         </text>
+
+        {/* Scale ticks */}
+        <text x={strokeWidth - 2} y={center + 18} textAnchor="middle" fontSize={8} fill="currentColor" opacity={0.3}>0</text>
+        <text x={size - strokeWidth + 2} y={center + 18} textAnchor="middle" fontSize={8} fill="currentColor" opacity={0.3}>100</text>
       </svg>
     </div>
   );
