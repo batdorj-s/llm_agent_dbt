@@ -1,8 +1,19 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { initDataLake, getActiveCatalogEntry, getCatalog, ensureUploadedFilesSynced, isPgAvailable, getPool, executeSql } from "../db/data-lake.js";
 
 describe("Data Lake — Active Catalog Entry", () => {
-    const testUserId = "data_lake_test_user";
+    const runSuffix = Date.now();
+    const testUserId = `data_lake_test_user_${runSuffix}`;
+    const testCreated: string[] = [];
+
+    afterAll(async () => {
+        if (!isPgAvailable()) return;
+        for (const name of testCreated) {
+            await getPool().query(`DROP TABLE IF EXISTS "${name}" CASCADE`).catch(() => {});
+            await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [name]).catch(() => {});
+            await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [name]).catch(() => {});
+        }
+    });
 
     beforeAll(async () => {
         await initDataLake();
@@ -17,7 +28,7 @@ describe("Data Lake — Active Catalog Entry", () => {
         const catalog = await getCatalog("system");
         expect(catalog.length).toBeGreaterThan(0);
 
-        const saved = await getPool().query(`SELECT id FROM uploaded_files WHERE type = 'dataset'`);
+        const saved = await getPool().query(`SELECT id FROM uploaded_files WHERE type = 'dataset' AND (visibility = 'shared' OR owner_id = 'system')`);
         const savedIds = saved.rows.map((r: any) => r.id);
         try {
             if (savedIds.length > 0) {
@@ -27,7 +38,6 @@ describe("Data Lake — Active Catalog Entry", () => {
             const activeEntry = await getActiveCatalogEntry("system");
             expect(activeEntry).not.toBeNull();
             expect(activeEntry!.table_name).toBe(catalog[0].table_name);
-            console.log(`[TEST] BUG-SCENARIO: uploaded_files empty → catalog[0] = '${catalog[0].table_name}'`);
         } finally {
             for (const id of savedIds) {
                 await getPool().query(
@@ -44,7 +54,8 @@ describe("Data Lake — Active Catalog Entry", () => {
         if (!isPgAvailable()) return;
 
         const testName = `_test_fix_scenario_${Date.now()}`;
-        const userId = "fix_scenario_user";
+        const userId = `fix_scenario_user_${runSuffix}`;
+        testCreated.push(testName);
         try {
             await getPool().query(`CREATE TABLE IF NOT EXISTS "${testName}" (id INT)`);
             await getPool().query(
@@ -63,7 +74,6 @@ describe("Data Lake — Active Catalog Entry", () => {
             expect(activeEntry!.table_name).toBe(testName);
 
             const isSameAsCatalogFirst = activeEntry!.table_name === catalog[0].table_name;
-            console.log(`[TEST] FIX-SCENARIO: catalog[0]='${catalog[0].table_name}', activeEntry='${activeEntry!.table_name}', sameAsCatalogFirst=${isSameAsCatalogFirst}`);
         } finally {
             await getPool().query(`DROP TABLE IF EXISTS "${testName}" CASCADE`).catch(() => {});
             await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [testName]).catch(() => {});
@@ -75,6 +85,7 @@ describe("Data Lake — Active Catalog Entry", () => {
         if (!isPgAvailable()) return;
 
         const testName = `_test_active_${Date.now()}`;
+        testCreated.push(testName);
         let restoredPrev = "";
         try {
             const before = await getActiveCatalogEntry(testUserId);
@@ -99,7 +110,6 @@ describe("Data Lake — Active Catalog Entry", () => {
             expect(afterEntry!.table_name).toBe(testName);
             const otherUserEntry = await getActiveCatalogEntry("different_user");
             expect(otherUserEntry?.table_name).not.toBe(testName);
-            console.log(`[TEST] NEW TABLE: active entry changed from '${restoredPrev}' to '${testName}'`);
         } finally {
             try {
                 await getPool().query(`DROP TABLE IF EXISTS "${testName}" CASCADE`);

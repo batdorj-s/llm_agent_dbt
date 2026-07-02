@@ -82,6 +82,8 @@ describe("KPI Repository Factory — isSupabaseConfigured logic", () => {
         expect(result).toBeNull();
     });
 
+
+
     describe("Positive path — Supabase configured", () => {
         beforeEach(() => {
             process.env.SUPABASE_URL = "https://real-project.supabase.co";

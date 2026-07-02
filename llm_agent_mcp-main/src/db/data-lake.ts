@@ -509,71 +509,114 @@ export async function computeTableKpis(
     });
 
     try {
-        // 0. Data quality stats for all columns (null %, distinct ratio)
-        const totalCount = numericCols.length > 0 ? await pool.query(`SELECT COUNT(*) AS cnt FROM ${quoteIdent(tableName)}`) : null;
-        const rowCount = totalCount?.rows?.[0]?.cnt ? Number(totalCount.rows[0].cnt) : 0;
-        const dqParts: string[] = [];
-        for (const col of columns.slice(0, 10)) {
-            const nullResult = await pool.query(`SELECT COUNT(*) AS cnt FROM ${quoteIdent(tableName)} WHERE "${col}" IS NULL`);
-            const nullCount = Number(nullResult.rows[0]?.cnt || 0);
-            const nullPct = rowCount > 0 ? ((nullCount / rowCount) * 100).toFixed(1) : "0";
-            const p = profile[col];
-            const distinctInfo = p?.distinct !== undefined && rowCount > 0 ? `, distinct=${p.distinct} (${(p.distinct / rowCount * 100).toFixed(1)}%)` : "";
-            const nullLabel = Number(nullPct) > 0 ? `, null=${nullPct}%` : "";
-            dqParts.push(`${col}${nullLabel}${distinctInfo}`);
-        }
-        if (dqParts.length > 0) {
-            kpiLines.push(`[DATA QUALITY] Table '${tableName}' (${rowCount} rows): ${dqParts.join("; ")}`);
-        }
+        // 0. Get total row count
+        const totalResult = await pool.query(`SELECT COUNT(*) AS cnt FROM ${quoteIdent(tableName)}`);
+        const rowCount = Number(totalResult.rows[0]?.cnt || 0);
 
-        // 1. Aggregations for each numeric column
-        const aggParts: string[] = [];
-        for (const col of numericCols.slice(0, 5)) {
-            const result = await pool.query(
-                `SELECT COUNT("${col}") AS cnt, SUM("${col}") AS total, AVG("${col}") AS avg, MIN("${col}") AS min, MAX("${col}") AS max FROM ${quoteIdent(tableName)}`
+        // 1. Data quality stats for all columns (null %, distinct ratio) — batched
+        const batchCols = columns.slice(0, 10);
+        if (batchCols.length > 0) {
+            const nullSelects = batchCols.map((col, i) =>
+                `COUNT(*) FILTER (WHERE ${quoteIdent(col)} IS NULL) AS c${i}`
+            ).join(", ");
+            const nullResult = await pool.query(
+                `SELECT ${nullSelects} FROM ${quoteIdent(tableName)}`
             );
-            const r = result.rows[0];
-            if (r) {
-                aggParts.push(`${col}: count=${r.cnt}, sum=${Number(r.total).toFixed(2)}, avg=${Number(r.avg).toFixed(2)}, min=${Number(r.min).toFixed(2)}, max=${Number(r.max).toFixed(2)}`);
+            const dqParts: string[] = [];
+            const nullRow = nullResult.rows[0];
+            for (let i = 0; i < batchCols.length; i++) {
+                const col = batchCols[i];
+                const nullCount = Number(nullRow?.[`c${i}`] || 0);
+                const nullPct = rowCount > 0 ? ((nullCount / rowCount) * 100).toFixed(1) : "0";
+                const p = profile[col];
+                const distinctInfo = p?.distinct !== undefined && rowCount > 0
+                    ? `, distinct=${p.distinct} (${(p.distinct / rowCount * 100).toFixed(1)}%)` : "";
+                const nullLabel = Number(nullPct) > 0 ? `, null=${nullPct}%` : "";
+                dqParts.push(`${col}${nullLabel}${distinctInfo}`);
+            }
+            if (dqParts.length > 0) {
+                kpiLines.push(`[DATA QUALITY] Table '${tableName}' (${rowCount} rows): ${dqParts.join("; ")}`);
             }
         }
-        if (aggParts.length > 0) {
-            kpiLines.push(`[KPI] Table '${tableName}' aggregations:\n${aggParts.join("\n")}`);
+
+        // 2. Aggregations for all numeric columns — batched
+        const topNums = numericCols.slice(0, 5);
+        if (topNums.length > 0) {
+            const aggSelects = topNums.map((col, i) =>
+                `COUNT(${quoteIdent(col)}) AS cnt_${i}, SUM(${quoteIdent(col)}) AS total_${i}, AVG(${quoteIdent(col)}) AS avg_${i}, MIN(${quoteIdent(col)}) AS min_${i}, MAX(${quoteIdent(col)}) AS max_${i}`
+            ).join(", ");
+            const aggResult = await pool.query(
+                `SELECT ${aggSelects} FROM ${quoteIdent(tableName)}`
+            );
+            const aggParts: string[] = [];
+            const aggRow = aggResult.rows[0];
+            for (let i = 0; i < topNums.length; i++) {
+                const col = topNums[i];
+                if (aggRow) {
+                    aggParts.push(`${col}: count=${aggRow[`cnt_${i}`]}, sum=${Number(aggRow[`total_${i}`]).toFixed(2)}, avg=${Number(aggRow[`avg_${i}`]).toFixed(2)}, min=${Number(aggRow[`min_${i}`]).toFixed(2)}, max=${Number(aggRow[`max_${i}`]).toFixed(2)}`);
+                }
+            }
+            if (aggParts.length > 0) {
+                kpiLines.push(`[KPI] Table '${tableName}' aggregations:\n${aggParts.join("\n")}`);
+            }
         }
 
-        // 1b. Outlier detection for numeric columns (values > 3 stddev from mean)
-        const outlierParts: string[] = [];
-        for (const col of numericCols.slice(0, 3)) {
-            const stats = await pool.query(
-                `SELECT AVG("${col}") AS mean, STDDEV("${col}") AS stddev, MIN("${col}") AS min, MAX("${col}") AS max FROM ${quoteIdent(tableName)}`
+        // 3. Outlier detection for numeric columns (values > 3 stddev from mean) — batched
+        const topOutliers = numericCols.slice(0, 3);
+        if (topOutliers.length > 0) {
+            const statsSelects = topOutliers.map((col, i) =>
+                `AVG(${quoteIdent(col)}) AS mean_${i}, STDDEV(${quoteIdent(col)}) AS stddev_${i}`
+            ).join(", ");
+            const statsResult = await pool.query(
+                `SELECT ${statsSelects} FROM ${quoteIdent(tableName)}`
             );
-            const s = stats.rows[0];
-            if (s && s.stddev && Number(s.stddev) > 0) {
-                const mean = Number(s.mean);
-                const stddev = Number(s.stddev);
-                const upper = mean + 3 * stddev;
-                const lower = mean - 3 * stddev;
-                const outlierResult = await pool.query(
-                    `SELECT COUNT(*) AS cnt FROM ${quoteIdent(tableName)} WHERE "${col}" < $1 OR "${col}" > $2`,
-                    [lower, upper]
-                );
-                const outlierCount = Number(outlierResult.rows[0]?.cnt || 0);
-                const outlierPct = rowCount > 0 ? ((outlierCount / rowCount) * 100).toFixed(1) : "0";
-                if (Number(outlierPct) > 0) {
-                    outlierParts.push(`${col}: ${outlierCount} outliers (${outlierPct}%)`);
+            const s = statsResult.rows[0];
+            if (s) {
+                const outlierConditions: string[] = [];
+                const outlierParams: number[] = [];
+                const colIndices: number[] = [];
+                for (let i = 0; i < topOutliers.length; i++) {
+                    const col = topOutliers[i];
+                    const mean = Number(s[`mean_${i}`]);
+                    const stddev = Number(s[`stddev_${i}`]);
+                    if (stddev > 0) {
+                        const upper = mean + 3 * stddev;
+                        const lower = mean - 3 * stddev;
+                        outlierConditions.push(
+                            `COUNT(*) FILTER (WHERE ${quoteIdent(col)} < $${outlierParams.length + 1} OR ${quoteIdent(col)} > $${outlierParams.length + 2}) AS o_${i}`
+                        );
+                        outlierParams.push(lower, upper);
+                        colIndices.push(i);
+                    }
+                }
+                if (outlierConditions.length > 0) {
+                    const outlierResult = await pool.query(
+                        `SELECT ${outlierConditions.join(", ")} FROM ${quoteIdent(tableName)}`,
+                        outlierParams
+                    );
+                    const outlierParts: string[] = [];
+                    const oRow = outlierResult.rows[0];
+                    for (const idx of colIndices) {
+                        const col = topOutliers[idx];
+                        const outlierCount = Number(oRow?.[`o_${idx}`] || 0);
+                        const outlierPct = rowCount > 0 ? ((outlierCount / rowCount) * 100).toFixed(1) : "0";
+                        if (Number(outlierPct) > 0) {
+                            outlierParts.push(`${col}: ${outlierCount} outliers (${outlierPct}%)`);
+                        }
+                    }
+                    if (outlierParts.length > 0) {
+                        kpiLines.push(`[OUTLIERS] Table '${tableName}': ${outlierParts.join("; ")}`);
+                    }
                 }
             }
         }
-        if (outlierParts.length > 0) {
-            kpiLines.push(`[OUTLIERS] Table '${tableName}': ${outlierParts.join("; ")}`);
-        }
 
-        // 2. Top category breakdown (if a category column exists)
+        // 4. Top category breakdown (if a category column exists)
         if (catCols.length > 0 && numericCols.length > 0) {
             for (const cat of catCols.slice(0, 2)) {
                 for (const num of numericCols.slice(0, 2)) {
                     const result = await pool.query(
-                        `SELECT "${cat}", SUM("${num}") AS total FROM ${quoteIdent(tableName)} WHERE "${cat}" IS NOT NULL GROUP BY "${cat}" ORDER BY total DESC LIMIT 5`
+                        `SELECT ${quoteIdent(cat)}, SUM(${quoteIdent(num)}) AS total FROM ${quoteIdent(tableName)} WHERE ${quoteIdent(cat)} IS NOT NULL GROUP BY ${quoteIdent(cat)} ORDER BY total DESC LIMIT 5`
                     );
                     if (result.rows.length > 0) {
                         const breakdown = result.rows.map((r: any) => `${r[cat]}=${Number(r.total).toFixed(2)}`).join(", ");
@@ -583,12 +626,12 @@ export async function computeTableKpis(
             }
         }
 
-        // 3. Monthly trend (if a date column exists)
+        // 5. Monthly trend (if a date column exists)
         if (dateCols.length > 0 && numericCols.length > 0) {
             const dateCol = dateCols[0];
             for (const num of numericCols.slice(0, 2)) {
                 const result = await pool.query(
-                    `SELECT DATE_TRUNC('month', "${dateCol}"::timestamp) AS month, SUM("${num}") AS total FROM ${quoteIdent(tableName)} WHERE "${dateCol}" IS NOT NULL GROUP BY month ORDER BY month DESC LIMIT 6`
+                    `SELECT DATE_TRUNC('month', ${quoteIdent(dateCol)}::timestamp) AS month, SUM(${quoteIdent(num)}) AS total FROM ${quoteIdent(tableName)} WHERE ${quoteIdent(dateCol)} IS NOT NULL GROUP BY month ORDER BY month DESC LIMIT 6`
                 );
                 if (result.rows.length > 0) {
                     const trend = result.rows.map((r: any) => `${(r.month as Date).toISOString().slice(0, 7)}=${Number(r.total).toFixed(2)}`).join(" → ");

@@ -40,7 +40,8 @@ describe("runPythonCode — path selection", () => {
     });
 
     afterEach(() => {
-        // Restore env vars that might have been changed by individual tests
+        delete process.env.E2B_API_KEY;
+        delete process.env.ALLOW_LOCAL_PYTHON;
         process.env.NODE_ENV = "test";
     });
 

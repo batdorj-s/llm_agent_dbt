@@ -38,7 +38,7 @@ describe("Auth Integration — Real Login → Protected Endpoint", () => {
     afterAll(async () => {
         if (!isPgAvailable()) return;
         const { getPool } = await import("../db/data-lake.js");
-        await getPool().query("DELETE FROM users WHERE email LIKE $1", [`rbac_int_%`]);
+        await getPool().query("DELETE FROM users WHERE email LIKE $1", [`rbac\\_int\\_${suffix}%`]);
     });
 
     describe("POST /api/auth/login", () => {

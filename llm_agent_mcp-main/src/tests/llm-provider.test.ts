@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { detectProvider, isRateLimitError, DEFAULT_PROVIDER_ORDER } from "../llm-provider.js";
 
 // ── Mock LangChain packages ──────────────────────────────────
@@ -76,17 +76,12 @@ describe("isRateLimitError", () => {
 });
 
 describe("detectProvider", () => {
-    const OLD = { ...process.env };
+    const ENV_KEYS = ["GROQ_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"];
 
     afterEach(() => {
-        process.env.GROQ_API_KEY = OLD.GROQ_API_KEY;
-        process.env.GOOGLE_API_KEY = OLD.GOOGLE_API_KEY;
-        process.env.ANTHROPIC_API_KEY = OLD.ANTHROPIC_API_KEY;
-        process.env.OPENAI_API_KEY = OLD.OPENAI_API_KEY;
-        delete process.env.GROQ_API_KEY;
-        delete process.env.GOOGLE_API_KEY;
-        delete process.env.ANTHROPIC_API_KEY;
-        delete process.env.OPENAI_API_KEY;
+        for (const key of ENV_KEYS) {
+            delete process.env[key];
+        }
     });
 
     it("detects groq when GROQ_API_KEY is set", () => {
@@ -133,6 +128,25 @@ describe("detectProvider", () => {
 
 describe("invokeWithFallback", () => {
     let invokeWithFallback: typeof import("../llm-provider.js")["invokeWithFallback"];
+    const OLD_KEYS: Record<string, string | undefined> = {};
+    const ENV_KEYS = ["GROQ_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"];
+
+    beforeAll(() => {
+        for (const key of ENV_KEYS) {
+            OLD_KEYS[key] = process.env[key];
+        }
+    });
+
+    afterAll(() => {
+        for (const key of ENV_KEYS) {
+            const old = OLD_KEYS[key];
+            if (old !== undefined) {
+                process.env[key] = old;
+            } else {
+                delete process.env[key];
+            }
+        }
+    });
 
     beforeEach(async () => {
         // Set env so all providers are "available"
@@ -153,10 +167,9 @@ describe("invokeWithFallback", () => {
     });
 
     afterEach(() => {
-        delete process.env.GROQ_API_KEY;
-        delete process.env.GOOGLE_API_KEY;
-        delete process.env.ANTHROPIC_API_KEY;
-        delete process.env.OPENAI_API_KEY;
+        for (const key of ENV_KEYS) {
+            delete process.env[key];
+        }
     });
 
     const msg = [{ role: "user" as const, content: "hello" }];

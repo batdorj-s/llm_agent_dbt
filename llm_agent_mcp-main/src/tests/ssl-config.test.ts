@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -19,8 +19,18 @@ const REMOTE_URLS = [
 ];
 
 describe("buildSslConfig", () => {
+    const savedPgSslRootCert = process.env.PGSSLROOTCERT;
+
     beforeEach(() => {
         delete process.env.PGSSLROOTCERT;
+    });
+
+    afterAll(() => {
+        if (savedPgSslRootCert !== undefined) {
+            process.env.PGSSLROOTCERT = savedPgSslRootCert;
+        } else {
+            delete process.env.PGSSLROOTCERT;
+        }
     });
 
     it.each(LOCAL_URLS)("returns false for local URL: %s", (url) => {
