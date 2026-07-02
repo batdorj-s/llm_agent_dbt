@@ -717,10 +717,17 @@ async function processUploadedTable(
         try {
             runDbtFinanceModels(sanitizedTableName);
             dbtStatus = "ok";
-            console.log(`[Upload] Finance dbt pipeline complete for '${sanitizedTableName}' [OK]`);
         } catch (err) {
             dbtStatus = "error";
-            console.warn(`[Upload] Finance dbt pipeline error for '${sanitizedTableName}':`, (err as Error).message);
+            const errMsg = (err as Error).message;
+            console.warn(`[Upload] Finance dbt pipeline error for '${sanitizedTableName}':`, errMsg);
+            const warningText = `[АНХААР] FINANCE PIPELINE WARNING for table '${sanitizedTableName}': dbt finance models failed to run. Dashboard charts may be empty. Error: ${errMsg}`;
+            await addDocumentToCatalog(`dbt_warning_${sanitizedTableName}`, warningText, {
+                category: "data_catalog",
+                department: "analytics",
+                author: "system",
+                source_name: "Finance Pipeline Gate",
+            }, [sanitizedTableName, "dbt_warning", "finance", "data_quality"]).catch(() => {});
         }
     } else if (isSalesTable) {
         const mapping = buildColumnMapping(cols);
