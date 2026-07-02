@@ -15,7 +15,8 @@ import { formatMessageText } from "../components/ChatMessage";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { Footer } from "../components/Footer";
 import AvatarList from "../components/AvatarList";
-import { SalesCard, TopSearch, ProportionSales, ActiveChart, IntroduceRow, OfflineData, Gauge, Radar } from "../components/dashboard";
+import { SalesCard, TopSearch, ProportionSales, ActiveChart, IntroduceRow, OfflineData, Gauge, Radar, PageLoading, Liquid, EditableLinkGroup, PageHeaderContent, ExtraContent } from "../components/dashboard";
+import { getTimeDistance } from "../lib/getTimeDistance";
 
 export default function Home() {
   // ── Auth ──
@@ -633,16 +634,29 @@ export default function Home() {
                   <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Удирдлага</span>
                   <button onClick={() => setSidebarOpen(false)} className="text-foreground/50 hover:text-foreground text-xs p-1 cursor-pointer">✕</button>
                 </div>
-                <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Багийн гишүүд</span>
-                  <AvatarList maxLength={4}>
-                    <AvatarList.Item name="Admin" tips="Админ" onClick={() => {}} />
-                    <AvatarList.Item name="User" tips="Хэрэглэгч" />
-                    <AvatarList.Item name="Analyst" />
-                    <AvatarList.Item name="Viewer" />
-                    <AvatarList.Item name="Guest" />
-                  </AvatarList>
-                </div>
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Багийн гишүүд</span>
+                    <AvatarList maxLength={4}>
+                      <AvatarList.Item name="Admin" tips="Админ" onClick={() => {}} />
+                      <AvatarList.Item name="User" tips="Хэрэглэгч" />
+                      <AvatarList.Item name="Analyst" />
+                      <AvatarList.Item name="Viewer" />
+                      <AvatarList.Item name="Guest" />
+                    </AvatarList>
+                  </div>
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Хурдан холбоос</span>
+                    <EditableLinkGroup
+                      links={[
+                        { title: "Борлуулалт", href: "#" },
+                        { title: "Тайлан", href: "#" },
+                        { title: "Хэрэглэгчид", href: "#" },
+                        { title: "Бүтээгдэхүүн", href: "#" },
+                        { title: "Аналитик", href: "#" },
+                        { title: "Тохиргоо", href: "#" },
+                      ]}
+                    />
+                  </div>
 
                 <AdminPanel user={user}
                   adjustMetric={adjustMetric} newTargetValue={newTargetValue} isUpdatingTarget={isUpdatingTarget} salesUpdateSuccess={salesUpdateSuccess}
@@ -668,6 +682,8 @@ export default function Home() {
                       <p className="text-[10px] text-foreground/40 mt-1">Dashboard харахын тулд эхлээд зүүн талын самбараар дата оруулна уу.</p>
                     </div>
                   </div>
+                ) : isDashboardLoading ? (
+                  <PageLoading />
                 ) : (
                   <div className="space-y-6">
                     {/* Mobile sidebar toggle */}
@@ -676,6 +692,17 @@ export default function Home() {
                         className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-border rounded bg-sidebar text-foreground/60 hover:text-foreground transition-colors cursor-pointer">
                         Удирдлага
                       </button>
+                    </div>
+
+                    {/* PAGE HEADER */}
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-fade-in-up" style={{ animationDelay: "0ms" }}>
+                      <PageHeaderContent currentUser={{
+                        avatar: user?.email?.charAt(0).toUpperCase(),
+                        name: user?.email?.split('@')[0] || 'Хэрэглэгч',
+                        title: 'Өгөгдлийн шинжээч',
+                        group: 'Аналитик хэлтэс',
+                      }} />
+                      <ExtraContent />
                     </div>
 
                     {/* PERIOD SELECTOR */}
@@ -723,8 +750,9 @@ export default function Home() {
                         <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Үйл ажиллагааны идэвхжил</p>
                         <ActiveChart />
                       </div>
-                      <div className="border border-border/80 rounded-xl p-5 bg-card flex flex-col items-center justify-center">
+                      <div className="border border-border/80 rounded-xl p-5 bg-card flex flex-col items-center justify-center gap-4">
                         <Gauge percent={salesKpi ? Math.round((salesKpi.current / salesKpi.target) * 100) : 78} title="Зорилтын биелэлт" />
+                        <Liquid percent={salesKpi ? salesKpi.current / (salesKpi.target * 3) : 0.35} height={120} />
                       </div>
                     </div>
 
