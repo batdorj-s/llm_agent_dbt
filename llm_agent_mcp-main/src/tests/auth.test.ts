@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
 
 describe("auth token roundtrip", () => {
     it("createToken and verifyToken roundtrip works for admin", async () => {
@@ -149,5 +150,70 @@ describe("RBAC — requireRole", () => {
     it("requireRole fails for invalid token", async () => {
         const auth = await import("../auth.js");
         expect(() => auth.requireRole("bad.token.here", "admin")).toThrow(/Unauthorized/);
+    });
+});
+
+describe("hashPassword / verifyPassword — crypto path", () => {
+    const PASSWORD = "MySecurePass123!";
+
+    it("output format is salt:hash (hex:hex)", async () => {
+        const auth = await import("../auth.js");
+        const result = auth.hashPassword(PASSWORD);
+        expect(result).toMatch(/^[0-9a-f]{32}:[0-9a-f]{128}$/);
+    });
+
+    it("generates unique salt — two calls produce different hashes", async () => {
+        const auth = await import("../auth.js");
+        const hash1 = auth.hashPassword(PASSWORD);
+        const hash2 = auth.hashPassword(PASSWORD);
+        expect(hash1).not.toBe(hash2);
+    });
+
+    it("roundtrip — correct password returns true", async () => {
+        const auth = await import("../auth.js");
+        const stored = auth.hashPassword(PASSWORD);
+        expect(auth.verifyPassword(PASSWORD, stored)).toBe(true);
+    });
+
+    it("wrong password returns false", async () => {
+        const auth = await import("../auth.js");
+        const stored = auth.hashPassword(PASSWORD);
+        expect(auth.verifyPassword("WrongPassword!", stored)).toBe(false);
+    });
+
+    it("empty password produces valid hash and verifies", async () => {
+        const auth = await import("../auth.js");
+        const stored = auth.hashPassword("");
+        expect(stored).toMatch(/^[0-9a-f]{32}:[0-9a-f]{128}$/);
+        expect(auth.verifyPassword("", stored)).toBe(true);
+    });
+
+    it("very long password (1KB) produces valid hash and verifies", async () => {
+        const auth = await import("../auth.js");
+        const longPw = "a".repeat(1024);
+        const stored = auth.hashPassword(longPw);
+        expect(stored).toMatch(/^[0-9a-f]{32}:[0-9a-f]{128}$/);
+        expect(auth.verifyPassword(longPw, stored)).toBe(true);
+    });
+
+    it("corrupted hash format (no colon) returns false — no throw", async () => {
+        const auth = await import("../auth.js");
+        expect(auth.verifyPassword(PASSWORD, "justahexstring")).toBe(false);
+    });
+
+    it("corrupted hash format (extra colon) returns false — no throw", async () => {
+        const auth = await import("../auth.js");
+        expect(auth.verifyPassword(PASSWORD, "aa:bb:cc")).toBe(false);
+    });
+
+    it("empty stored hash returns false — no throw", async () => {
+        const auth = await import("../auth.js");
+        expect(auth.verifyPassword(PASSWORD, "")).toBe(false);
+    });
+
+    it("uses timingSafeEqual — source code static analysis", async () => {
+        const src = readFileSync("src/auth.ts", "utf8");
+        expect(src).toContain("timingSafeEqual");
+        expect(src).not.toMatch(/derivedHex\s*===\s*hash/);
     });
 });
