@@ -12,6 +12,9 @@ import { AdminPanel } from "../components/AdminPanel";
 import { ChatInput } from "../components/ChatInput";
 import { PreviewDrawer } from "../components/PreviewDrawer";
 import { formatMessageText } from "../components/ChatMessage";
+import { OfflineBanner } from "../components/OfflineBanner";
+import { Footer } from "../components/Footer";
+import AvatarList from "../components/AvatarList";
 import { SalesCard, TopSearch, ProportionSales, ActiveChart, IntroduceRow, OfflineData, Gauge, Radar } from "../components/dashboard";
 
 export default function Home() {
@@ -509,6 +512,8 @@ export default function Home() {
         activeTab={activeTab} onTabChange={setActiveTab}
  />
 
+      <OfflineBanner />
+
       {!isLoggedIn ? (
         <LoginForm email={email} password={password} isAuthLoading={isAuthLoading}
           onEmailChange={setEmail} onPasswordChange={setPassword} onLogin={handleLogin} />
@@ -628,6 +633,17 @@ export default function Home() {
                   <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Удирдлага</span>
                   <button onClick={() => setSidebarOpen(false)} className="text-foreground/50 hover:text-foreground text-xs p-1 cursor-pointer">✕</button>
                 </div>
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Багийн гишүүд</span>
+                  <AvatarList maxLength={4}>
+                    <AvatarList.Item name="Admin" tips="Админ" onClick={() => {}} />
+                    <AvatarList.Item name="User" tips="Хэрэглэгч" />
+                    <AvatarList.Item name="Analyst" />
+                    <AvatarList.Item name="Viewer" />
+                    <AvatarList.Item name="Guest" />
+                  </AvatarList>
+                </div>
+
                 <AdminPanel user={user}
                   adjustMetric={adjustMetric} newTargetValue={newTargetValue} isUpdatingTarget={isUpdatingTarget} salesUpdateSuccess={salesUpdateSuccess}
                   onAdjustMetricChange={setAdjustMetric} onNewTargetValueChange={setNewTargetValue} onUpdateKpiTarget={handleUpdateKpiTarget}
@@ -722,6 +738,8 @@ export default function Home() {
                         <Radar />
                       </div>
                     </div>
+
+                    <Footer />
                   </div>
                 )}
               </section>
