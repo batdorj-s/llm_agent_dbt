@@ -827,19 +827,16 @@ export default function Home() {
                       <TopSearch counterparties={financeCounterparties ?? undefined} />
                     </div>
 
-                    {/* ACTIVE CHART + GAUGE + RADAR */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-up" style={{ animationDelay: "250ms" }}>
-                      <div className="lg:col-span-2 border border-border/80 rounded-xl p-5 bg-card">
-                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">Мөнгөний үлдэгдлийн хөдөлгөөн — Q1 2026</p>
-                        <ActiveChart cashData={financeCashData ?? undefined} />
+                    {/* МӨНГӨН ҮЛДЭГДЭЛ — тусад нь бүтэн өргөний card */}
+                    <div className="border border-border/60 rounded-xl p-5 bg-card shadow-sm animate-fade-in-up" style={{ animationDelay: "250ms" }}>
+                      <div className="flex items-center gap-2 mb-4">
+                        <span className="block w-0.5 h-4 rounded-full bg-blue-500" />
+                        <p className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider">Мөнгөний үлдэгдлийн хөдөлгөөн — Q1 2026</p>
                       </div>
-                      <div className="border border-border/80 rounded-xl p-5 bg-card flex flex-col items-center justify-center gap-4">
-                        <Gauge percent={salesKpi ? Math.min(100, Math.round((salesKpi.current / salesKpi.target) * 100)) : 89} title="Орлогын хамрах хувь" />
-                        <Liquid percent={salesKpi ? Math.min(1, salesKpi.current / (salesKpi.target * 1.15)) : 0.50} height={120} />
-                      </div>
+                      <ActiveChart cashData={financeCashData ?? undefined} />
                     </div>
 
-                    {/* OFFLINE DATA + RADAR — real expense data */}
+                    {/* OFFLINE DATA + GAUGE/RADAR */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-up" style={{ animationDelay: "300ms" }}>
                       <div className="lg:col-span-2">
                         <OfflineData
@@ -859,10 +856,21 @@ export default function Home() {
                           })()}
                         />
                       </div>
-                      <div className="border border-border/80 rounded-xl p-5 bg-card min-h-[360px] flex flex-col">
-                        <p className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-2">Үзүүлэлтийн харьцуулалт</p>
-                        <div className="flex-1">
-                          <Radar data={financeRadarData ?? undefined} height={300} />
+                      <div className="flex flex-col gap-4">
+                        {/* Gauge */}
+                        <div className="border border-border/60 rounded-xl p-4 bg-card shadow-sm flex flex-col items-center justify-center gap-3">
+                          <Gauge percent={salesKpi ? Math.min(100, Math.round((salesKpi.current / salesKpi.target) * 100)) : 89} title="Орлогын хамрах хувь" />
+                          <Liquid percent={salesKpi ? Math.min(1, salesKpi.current / (salesKpi.target * 1.15)) : 0.50} height={100} />
+                        </div>
+                        {/* Radar */}
+                        <div className="border border-border/60 rounded-xl p-4 bg-card shadow-sm flex-1 flex flex-col">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="block w-0.5 h-4 rounded-full bg-purple-500" />
+                            <p className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider">Үзүүлэлтийн харьцуулалт</p>
+                          </div>
+                          <div className="flex-1">
+                            <Radar data={financeRadarData ?? undefined} height={260} />
+                          </div>
                         </div>
                       </div>
                     </div>
