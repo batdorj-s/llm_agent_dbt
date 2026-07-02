@@ -41,24 +41,25 @@ async function getFinanceReportData(userId: string, startDate?: string, endDate?
     ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${qSubCat} NOT ILIKE '%бусад%')`
     : `${qCat} ILIKE '%зарлага%'`;
 
+  const qDateCol = dateCol ? `CAST(${quoteIdent(dateCol)} AS DATE)` : null;
+
   let dateWhere = "";
   const dParams: any[] = [];
-  if (dateCol && (startDate || endDate)) {
-    const qDate = quoteIdent(dateCol);
-    if (startDate) { dParams.push(startDate); dateWhere += ` AND ${qDate} >= $${dParams.length}`; }
-    if (endDate)   { dParams.push(endDate);   dateWhere += ` AND ${qDate} <= $${dParams.length}`; }
+  if (qDateCol && (startDate || endDate)) {
+    if (startDate) { dParams.push(startDate); dateWhere += ` AND ${qDateCol} >= $${dParams.length}`; }
+    if (endDate)   { dParams.push(endDate);   dateWhere += ` AND ${qDateCol} <= $${dParams.length}`; }
   }
 
   const [incomeRes, expenseRes, monthlyRes] = await Promise.all([
     getPool().query(`SELECT COALESCE(SUM(${qAmt}), 0) AS total FROM ${qTbl} WHERE ${isOpIncome}${dateWhere}`, dParams),
     getPool().query(`SELECT COALESCE(SUM(${qAmt}), 0) AS total FROM ${qTbl} WHERE ${isOpExpense}${dateWhere}`, dParams),
-    dateCol ? getPool().query(`
-      SELECT TO_CHAR(DATE_TRUNC('month', ${quoteIdent(dateCol)}), 'Mon YYYY') AS month,
+    qDateCol ? getPool().query(`
+      SELECT TO_CHAR(DATE_TRUNC('month', ${qDateCol}), 'Mon YYYY') AS month,
              SUM(CASE WHEN ${isOpIncome} THEN ${qAmt} ELSE 0 END) AS revenue
       FROM ${qTbl}
       WHERE ${qCat} NOT ILIKE '%шилжүүлэг%'${dateWhere}
-      GROUP BY 1, DATE_TRUNC('month', ${quoteIdent(dateCol)})
-      ORDER BY DATE_TRUNC('month', ${quoteIdent(dateCol)})`, dParams) : null,
+      GROUP BY 1, DATE_TRUNC('month', ${qDateCol})
+      ORDER BY DATE_TRUNC('month', ${qDateCol})`, dParams) : null,
   ]);
 
   const totalIncome  = Number(incomeRes.rows[0]?.total || 0);

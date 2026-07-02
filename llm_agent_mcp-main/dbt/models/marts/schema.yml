@@ -1,14 +1,14 @@
 version: 2
 models:
   - name: stg_sales
-    description: Cleaned sales data sourced from flow_test_1783007666826.
+    description: Cleaned sales data sourced from flow_test_1783008111884.
     columns:
       - name: date
-        description: Column from flow_test_1783007666826.date.
+        description: Column from flow_test_1783008111884.date.
       - name: amount
-        description: Column from flow_test_1783007666826.amount.
+        description: Column from flow_test_1783008111884.amount.
       - name: customer_id
-        description: Column from flow_test_1783007666826.customer_id.
+        description: Column from flow_test_1783008111884.customer_id.
         tests:
           - unique
           - not_null

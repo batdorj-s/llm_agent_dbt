@@ -29,7 +29,7 @@ export function sanitizeUserInput(input: string): string {
 
 // Unicode-aware: allows ASCII, Mongolian Cyrillic, and other Unicode letters/digits.
 // The u flag enables \p{L} (Letter) and \p{N} (Number) Unicode categories.
-const COLUMN_NAME_RE = /^[\p{L}_][\p{L}\p{N}_]*$/u;
+const COLUMN_NAME_RE = /^[\p{L}_][\p{L}\p{N}_ ]*$/u;
 
 /**
  * Validate a column name for safe use in SQL identifiers.
