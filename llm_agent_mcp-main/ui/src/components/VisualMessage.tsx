@@ -85,6 +85,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
   const [heatmapTip, setHeatmapTip] = useState<{ label: string; value: number; x: number; y: number } | null>(null);
   const [userType, setUserType] = useState<ChartType | null>(null);
   const [drillDown, setDrillDown] = useState<{ label: string; value: number; x: number; y: number } | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   let data: { title?: string; type?: string; data?: Record<string, unknown>[]; config?: Record<string, unknown> };
   try {
@@ -113,6 +114,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
   const colors = (config.colors as string[]) || DEFAULT_COLORS;
   const series = config.series as string[] | undefined;
   const stacked = config.stacked === true;
+  const description = config.description as string | undefined;
   const effectiveType: ChartType = userType || (data.type as ChartType) || "bar";
   const hasMultiNumeric = data.data.some((r: any) =>
     Object.keys(r).filter(k => k !== "label").length > 1
@@ -327,13 +329,31 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
 
   return (
     <div className="bg-card border border-border/60 rounded-xl p-4 mt-2 max-w-full sm:max-w-lg shadow-sm hover:shadow-md transition-all duration-200" ref={chartRef}>
-      <div className="flex items-center justify-between mb-3">
-        {/* Ant-design-pro style: colored accent bar + title */}
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="block w-0.5 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: colors[0] }} />
           <h4 className="text-[11px] font-semibold text-foreground/80 truncate">{data.title || "Дүн шинжилгээ"}</h4>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Info / тайлбар button */}
+          {description && (
+            <button
+              onClick={() => setInfoOpen(v => !v)}
+              title="Тайлбар харах"
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold border transition-all duration-150 ${
+                infoOpen
+                  ? "bg-blue-500 border-blue-500 text-white"
+                  : "bg-blue-500/10 border-blue-500/30 text-blue-500 hover:bg-blue-500/20"
+              }`}
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 flex-shrink-0">
+                <path d="M8 15A7 7 0 118 1a7 7 0 010 14zm0-1A6 6 0 108 2a6 6 0 000 12zM7.002 11V7h1.996v4H7.002zm0-5.5V4h1.996v1.5H7.002z"/>
+              </svg>
+              Тайлбар
+            </button>
+          )}
+          {/* Chart type switcher */}
           <div className="flex bg-background border border-border rounded text-[9px]">
             {compatible.slice(0, 5).map((t) => (
               <button
@@ -357,11 +377,25 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
               </select>
             )}
           </div>
-          <button onClick={handleExport} className="text-[9px] text-foreground/40 hover:text-foreground/70 px-1" title="PNG татах">
-            ⬇
+          {/* Export */}
+          <button onClick={handleExport} className="w-6 h-6 flex items-center justify-center rounded text-foreground/40 hover:text-foreground/70 hover:bg-foreground/8 transition-colors" title="PNG татах">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+              <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
+              <path d="M7.646 11.854a.5.5 0 00.708 0l3-3a.5.5 0 00-.708-.708L8.5 10.293V1.5a.5.5 0 00-1 0v8.793L5.354 8.146a.5.5 0 10-.708.708l3 3z"/>
+            </svg>
           </button>
         </div>
       </div>
+
+      {/* ── Тайлбар panel ── */}
+      {infoOpen && description && (
+        <div className="mb-3 flex items-start gap-2 px-3 py-2.5 bg-blue-500/8 border border-blue-500/20 rounded-lg">
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-blue-500 flex-shrink-0 mt-0.5">
+            <path d="M8 15A7 7 0 118 1a7 7 0 010 14zm0-1A6 6 0 108 2a6 6 0 000 12zM7.002 11V7h1.996v4H7.002zm0-5.5V4h1.996v1.5H7.002z"/>
+          </svg>
+          <p className="text-[10px] text-foreground/70 leading-relaxed">{description}</p>
+        </div>
+      )}
       {/* Ant-design-pro SalesCard style: horizontal_bar gets a rank list on the right */}
       {effectiveType === "horizontal_bar" && rows.length > 0 ? (
         <div className="flex gap-3">
@@ -413,6 +447,7 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
   const chartRef = useRef<HTMLDivElement>(null);
   const [heatmapTip, setHeatmapTip] = useState<{ label: string; value: number; x: number; y: number } | null>(null);
   const [ready, setReady] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setReady(true), 50);
@@ -609,11 +644,38 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
 
   return (
     <div className="bg-card border border-border/60 rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow duration-150" ref={chartRef}>
-      {/* Ant-design-pro style chart card header with accent */}
-      <div className="flex items-center gap-1.5 mb-2">
-        <span className="block w-0.5 h-3.5 rounded-full flex-shrink-0 bg-blue-500" />
-        <h5 className="text-[10px] font-semibold text-foreground/70 uppercase tracking-wide">{widget.title}</h5>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="block w-0.5 h-3.5 rounded-full flex-shrink-0 bg-blue-500" />
+          <h5 className="text-[10px] font-semibold text-foreground/70 uppercase tracking-wide truncate">{widget.title}</h5>
+        </div>
+        {widget.description && (
+          <button
+            onClick={() => setInfoOpen(v => !v)}
+            title="Тайлбар харах"
+            className={`flex-shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border transition-all duration-150 ${
+              infoOpen
+                ? "bg-blue-500 border-blue-500 text-white"
+                : "bg-blue-500/10 border-blue-500/30 text-blue-500 hover:bg-blue-500/20"
+            }`}
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
+              <path d="M8 15A7 7 0 118 1a7 7 0 010 14zm0-1A6 6 0 108 2a6 6 0 000 12zM7.002 11V7h1.996v4H7.002zm0-5.5V4h1.996v1.5H7.002z"/>
+            </svg>
+            Тайлбар
+          </button>
+        )}
       </div>
+      {/* Description panel */}
+      {infoOpen && widget.description && (
+        <div className="mb-2 flex items-start gap-2 px-2.5 py-2 bg-blue-500/8 border border-blue-500/20 rounded-lg">
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-blue-500 flex-shrink-0 mt-0.5">
+            <path d="M8 15A7 7 0 118 1a7 7 0 010 14zm0-1A6 6 0 108 2a6 6 0 000 12zM7.002 11V7h1.996v4H7.002zm0-5.5V4h1.996v1.5H7.002z"/>
+          </svg>
+          <p className="text-[10px] text-foreground/70 leading-relaxed">{widget.description}</p>
+        </div>
+      )}
       <div className="h-44 w-full min-w-0" style={{ minHeight: "176px" }}>
         {ready && (
           <ResponsiveContainer width="100%" height="100%">

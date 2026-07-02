@@ -28,6 +28,15 @@ interface Props {
 
 const fmtMnt = (v: number) => `₮${Math.round(v).toLocaleString()}`;
 
+const CHART_DESCRIPTIONS: Record<string, string> = {
+  category_breakdown: "Нийт зарлагыг ангилал тус бүрээр задлан харуулна. Аль ангилал хамгийн их зардал гаргаж байгааг харьцуулахад тохиромжтой.",
+  monthly_cashflow: "Сар бүрийн нийт орлого болон зарлагыг хамт харуулна. Мөнгөн урсгалын чиг хандлага болон орлого-зарлагын тэнцвэрийг тодорхойлоход туслана.",
+  top_parties: "Орлогоор хамгийн өндөр харилцагчдыг жагсааж харуулна. Гол хувь нэмэр оруулагч талуудыг тодорхойлоход ашиглана.",
+  daily_trend: "Өдөр бүрийн цэвэр орлогын хэлбэлзлийг харуулна. Богино хугацааны ерөнхий чиг хандлагыг шинжлэхэд тохиромжтой.",
+  monthly_profit: "Сар бүрийн үйл ажиллагааны ашиг эсвэл алдагдлыг харуулна. Ашигт ажиллагааны цаг хугацааны динамикийг тодорхойлоход ашиглана.",
+  monthly_expense_subcat: "Зарлагын дэд ангилал бүрийг сараар задлан харуулна. Зарлагын бүтэц хэрхэн өөрчлөгдөж байгааг сараар харьцуулан шинжлэхэд туслана.",
+};
+
 const ChartSkeleton = () => (
   <div className="rounded-xl border border-border/60 bg-card p-5 animate-pulse shadow-sm">
     <div className="h-3 w-1/3 bg-foreground/10 rounded mb-4" />
@@ -179,6 +188,7 @@ export function FinanceDashboard({ token }: Props) {
             config: {
               xAxis: "label",
               yAxis: "value",
+              description: CHART_DESCRIPTIONS[chart.id],
               ...chart.config,
             },
           });
