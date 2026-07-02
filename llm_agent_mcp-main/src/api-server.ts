@@ -271,9 +271,45 @@ app.get("/api/kpi/:metric", async (req, res) => {
 
   const repo = await getRepository();
   const dateFilter = extractDateFilter(req);
+  const userId = auth.payload.userId;
+
+  // Finance table override for "sales" metric
+  if (metric === "sales") {
+    try {
+      const entry = await getActiveCatalogEntry(userId);
+      if (entry) {
+        const cols: string[] = JSON.parse(entry.columns_info);
+        const amtCol = findConceptColumn(cols, "finance_amount", entry.table_name);
+        const catCol = findConceptColumn(cols, "finance_category", entry.table_name);
+        if (amtCol && catCol) {
+          const qAmt = buildMntAmountExpr(quoteIdent(amtCol));
+          const qCat = quoteIdent(catCol);
+          const qTbl = quoteIdent(entry.table_name);
+          const result = await getPool().query(`
+            SELECT COALESCE(SUM(${qAmt}), 0) as total
+            FROM ${qTbl}
+            WHERE ${qCat} ILIKE '%орлого%' AND ${qCat} NOT ILIKE '%зээл%'
+          `);
+          const current = Math.round(Number(result.rows[0]?.total || 0) * 100) / 100;
+          const targetResult = await getPool().query(
+            `SELECT target_value, unit FROM kpi_targets WHERE metric_name = $1`, ["sales"]
+          );
+          const targetRow = targetResult.rows[0] as any;
+          return res.json({
+            name: "sales", current,
+            target: targetRow?.target_value ?? 200000000,
+            unit: targetRow?.unit ?? "₮",
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[KPI] Finance sales override failed:", (err as Error).message);
+    }
+  }
 
   try {
-    const data = await repo.getKpi(metric as any, dateFilter, auth.payload.userId);
+    const data = await repo.getKpi(metric as any, dateFilter, userId);
     if (!data) return res.status(404).json({ error: `Metric '${metric}' not found` });
     res.json(data);
   } catch (err: any) {
@@ -331,31 +367,44 @@ app.get("/api/finance-charts", async (req, res) => {
     const columns: string[] = JSON.parse(entry.columns_info);
     const table = entry.table_name;
 
-    const amtCol  = findConceptColumn(columns, "finance_amount",      table);
-    const catCol  = findConceptColumn(columns, "finance_category",    table);
-    const dateCol = findConceptColumn(columns, "finance_date",        table);
-    const partyCol = findConceptColumn(columns, "finance_party",      table);
+    const amtCol    = findConceptColumn(columns, "finance_amount",      table);
+    const catCol    = findConceptColumn(columns, "finance_category",    table);
+    const subCatCol = findConceptColumn(columns, "finance_subcategory", table);
+    const dateCol   = findConceptColumn(columns, "finance_date",        table);
+    const partyCol  = findConceptColumn(columns, "finance_party",       table);
 
     if (!amtCol || !catCol) return res.json({ isFinance: false });
 
-    const qAmt = buildMntAmountExpr(quoteIdent(amtCol));
-    const qCat  = quoteIdent(catCol);
-    const qTbl  = quoteIdent(table);
+    const qAmt    = buildMntAmountExpr(quoteIdent(amtCol));
+    const qCat    = quoteIdent(catCol);
+    const qSubCat = subCatCol ? quoteIdent(subCatCol) : null;
+    const qTbl    = quoteIdent(table);
+
+    // Shared filter expressions
+    // Operating income: ангилал ILIKE '%орлого%' AND NOT ILIKE '%зээл%'
+    const isOpIncome  = `(${qCat} ILIKE '%орлого%' AND ${qCat} NOT ILIKE '%зээл%')`;
+    // Operating expense: ангилал ILIKE '%зарлага%' AND дэд_ангилал NOT ILIKE '%зээл%'
+    const isOpExpense = qSubCat
+      ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%')`
+      : `${qCat} ILIKE '%зарлага%'`;
+    // Noise filter: exclude internal transfers and owner loans
+    const notNoise = `${qCat} NOT ILIKE '%шилжүүлэг%' AND ${qCat} NOT ILIKE '%эздийн зээл%'`;
 
     const charts: any[] = [];
 
-    // 1. Category breakdown — always available
+    // 1. Category breakdown — operating expense by subcategory (excl. loan repayments)
     try {
+      const groupCol = qSubCat ?? qCat;
       const r = await pool.query(`
-        SELECT ${qCat} AS label, SUM(${qAmt}) AS value
+        SELECT ${groupCol} AS label, SUM(${qAmt}) AS value
         FROM ${qTbl}
-        WHERE ${qCat} NOT ILIKE '%шилжүүлэг%' AND ${qCat} IS NOT NULL
-        GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 6
+        WHERE ${isOpExpense} AND ${groupCol} IS NOT NULL
+        GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 7
       `);
       if (r.rows.length > 0) {
         charts.push({
           id: "category_breakdown",
-          title: "Ангиллын задаргаа",
+          title: "Зарлагын бүтэц (үйл ажиллагааны)",
           type: "donut",
           data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
           config: { xAxis: "label", yAxis: "value" },
@@ -363,17 +412,17 @@ app.get("/api/finance-charts", async (req, res) => {
       }
     } catch {}
 
-    // 2. Monthly cashflow (stacked_bar) — requires date column
+    // 2. Monthly cashflow — operating income vs operating expense
     if (dateCol) {
       try {
         const qDate = quoteIdent(dateCol);
         const r = await pool.query(`
           SELECT
             TO_CHAR(${qDate}::DATE, 'YYYY-MM') AS label,
-            SUM(CASE WHEN ${qCat} ILIKE '%орлого%' THEN ${qAmt} ELSE 0 END) AS value,
-            SUM(CASE WHEN ${qCat} ILIKE '%зарлага%' THEN ${qAmt} ELSE 0 END) AS value2
+            SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) AS value,
+            SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS value2
           FROM ${qTbl}
-          WHERE ${qCat} NOT ILIKE '%шилжүүлэг%'
+          WHERE ${qDate} IS NOT NULL AND ${notNoise}
           GROUP BY 1 ORDER BY 1
         `);
         if (r.rows.length > 0) {
@@ -381,27 +430,31 @@ app.get("/api/finance-charts", async (req, res) => {
             id: "monthly_cashflow",
             title: "Сарын орлого / зарлага",
             type: "stacked_bar",
-            data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0), value2: Number(row.value2 ?? 0) })),
+            data: r.rows.map((row: any) => ({
+              label: String(row.label ?? ""),
+              value: Number(row.value ?? 0),
+              value2: Number(row.value2 ?? 0),
+            })),
             config: { xAxis: "label", yAxis: "value", series: ["value", "value2"], stacked: true, seriesLabels: ["Орлого", "Зарлага"] },
           });
         }
       } catch {}
     }
 
-    // 3. Top counterparties (horizontal_bar)
+    // 3. Income sources by counterparty (horizontal_bar)
     if (partyCol) {
       try {
         const qParty = quoteIdent(partyCol);
         const r = await pool.query(`
           SELECT ${qParty} AS label, SUM(${qAmt}) AS value
           FROM ${qTbl}
-          WHERE ${qParty} IS NOT NULL AND ${qParty} != ''
+          WHERE ${isOpIncome} AND ${qParty} IS NOT NULL AND ${qParty} != ''
           GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 10
         `);
         if (r.rows.length > 0) {
           charts.push({
             id: "top_parties",
-            title: "Харилцагчдын нийт дүн",
+            title: "Орлогын эх үүсвэр (харилцагчаар)",
             type: "horizontal_bar",
             data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
             config: { xAxis: "label", yAxis: "value" },
@@ -410,19 +463,23 @@ app.get("/api/finance-charts", async (req, res) => {
       } catch {}
     }
 
-    // 4. Daily trend (line)
+    // 4. Daily net cashflow (line) — income minus operating expense per day
     if (dateCol) {
       try {
         const qDate = quoteIdent(dateCol);
         const r = await pool.query(`
-          SELECT ${qDate}::DATE AS label, SUM(${qAmt}) AS value
+          SELECT
+            ${qDate}::DATE AS label,
+            SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) -
+            SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS value
           FROM ${qTbl}
+          WHERE ${qDate} IS NOT NULL AND ${notNoise}
           GROUP BY 1 ORDER BY 1
         `);
         if (r.rows.length > 0) {
           charts.push({
             id: "daily_trend",
-            title: "Өдрийн гүйлгээний дүн",
+            title: "Өдрийн цэвэр орлого",
             type: "line",
             data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
             config: { xAxis: "label", yAxis: "value" },

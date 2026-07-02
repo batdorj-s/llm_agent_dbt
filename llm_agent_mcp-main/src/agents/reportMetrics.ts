@@ -91,9 +91,9 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
     && !!findConceptColumn(columns, "finance_category", tableName);
 
   const salesCol = rawSalesCol ? sanitizeColumnName(rawSalesCol) : undefined;
-  const qtyCol = rawQtyCol ? sanitizeColumnName(rawQtyCol) : undefined;
-  const catCol = rawCatCol ? sanitizeColumnName(rawCatCol) : undefined;
-  const dateCol = rawDateCol ? sanitizeColumnName(rawDateCol) : undefined;
+  const qtyCol   = rawQtyCol   ? sanitizeColumnName(rawQtyCol)   : undefined;
+  const catCol   = rawCatCol   ? sanitizeColumnName(rawCatCol)   : undefined;
+  const dateCol  = rawDateCol  ? sanitizeColumnName(rawDateCol)  : undefined;
   // Use MNT-safe expression for finance tables; plain CAST otherwise
   const amountExpr = (col: string) => isFinanceTable
     ? buildMntAmountExpr(quoteIdent(col))
@@ -116,17 +116,29 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
 
   if (salesCol) {
     try {
-      // Дундаж гүйлгээний дүн (AOV): нийт орлого / гүйлгээний тоо
-      const incomeCond = rawMainCatCol
-        ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Орлого%' OR ${quoteIdent(rawMainCatCol)} LIKE '%орлого%' OR ${quoteIdent(rawMainCatCol)} LIKE '%ОРЛОГО%')`
-        : (qtyCol ? ` AND CAST(${quoteIdent(qtyCol)} AS NUMERIC) > 0` : "");
-      const result = await getPool().query(
-        `SELECT COALESCE(SUM(${amountExpr(salesCol)}) / NULLIF(COUNT(*), 0), 0) as aov
-         FROM ${quoteIdent(tableName)}
-         WHERE 1=1${dateWhere}${incomeCond}`,
-        dateParams
-      );
-      aov = Number(result.rows[0]?.aov || 0);
+      if (isFinanceTable && rawMainCatCol) {
+        // Finance: aov = total operating income (not per-transaction average)
+        const result = await getPool().query(
+          `SELECT COALESCE(SUM(${amountExpr(salesCol)}), 0) as aov
+           FROM ${quoteIdent(tableName)}
+           WHERE ${quoteIdent(rawMainCatCol)} ILIKE '%орлого%'
+             AND ${quoteIdent(rawMainCatCol)} NOT ILIKE '%зээл%'
+             ${dateWhere}`,
+          dateParams
+        );
+        aov = Number(result.rows[0]?.aov || 0);
+      } else {
+        const incomeCond = rawMainCatCol
+          ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Орлого%' OR ${quoteIdent(rawMainCatCol)} LIKE '%орлого%')`
+          : (qtyCol ? ` AND CAST(${quoteIdent(qtyCol)} AS NUMERIC) > 0` : "");
+        const result = await getPool().query(
+          `SELECT COALESCE(SUM(${amountExpr(salesCol)}) / NULLIF(COUNT(*), 0), 0) as aov
+           FROM ${quoteIdent(tableName)}
+           WHERE 1=1${dateWhere}${incomeCond}`,
+          dateParams
+        );
+        aov = Number(result.rows[0]?.aov || 0);
+      }
     } catch (err) {
       console.error("[Metrics] AOV query failed:", err);
     }
@@ -134,29 +146,41 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
 
   if (salesCol && dateCast) {
     try {
-      const { clause: filterClause, params: filterParams } = startDate && endDate
-        ? buildDateWhere(dateCol || "", dateCast, startDate, endDate, 0)
-        : { clause: `${dateCast} >= CURRENT_DATE - INTERVAL '60 days'`, params: [] as any[] };
+      let filterClause: string;
+      let filterParams: any[];
+
+      if (startDate && endDate) {
+        ({ clause: filterClause, params: filterParams } = buildDateWhere(dateCol || "", dateCast, startDate, endDate, 0));
+      } else if (isFinanceTable && rawMainCatCol) {
+        // Finance: month-over-month growth using the data's own last 2 months
+        filterClause = `${dateCast} >= DATE_TRUNC('month', (SELECT MAX(${dateCast}) FROM ${quoteIdent(tableName)})) - INTERVAL '1 month'`;
+        filterParams = [];
+      } else {
+        filterClause = `${dateCast} >= CURRENT_DATE - INTERVAL '60 days'`;
+        filterParams = [];
+      }
+
+      const incomeCond = (isFinanceTable && rawMainCatCol)
+        ? ` AND ${quoteIdent(rawMainCatCol)} ILIKE '%орлого%' AND ${quoteIdent(rawMainCatCol)} NOT ILIKE '%зээл%'`
+        : "";
+      const periodExpr = (isFinanceTable && dateCast)
+        ? `CASE WHEN DATE_TRUNC('month', ${dateCast}) = DATE_TRUNC('month', (SELECT MAX(${dateCast}) FROM ${quoteIdent(tableName)})) THEN 'current' ELSE 'previous' END`
+        : `CASE WHEN ${dateCast} >= CURRENT_DATE - INTERVAL '30 days' THEN 'current' ELSE 'previous' END`;
 
       const result = await getPool().query(`
         WITH periods AS (
-          SELECT
-            CASE WHEN ${dateCast} >= CURRENT_DATE - INTERVAL '30 days'
-              THEN 'current' ELSE 'previous'
-            END AS period,
+          SELECT ${periodExpr} AS period,
             SUM(${amountExpr(salesCol)}) AS total
           FROM ${quoteIdent(tableName)}
-          WHERE ${filterClause}
+          WHERE ${filterClause}${incomeCond}
           GROUP BY period
         )
-        SELECT
-          COALESCE(
-            (MAX(CASE WHEN period = 'current' THEN total END) -
-             MAX(CASE WHEN period = 'previous' THEN total END)) /
-            NULLIF(MAX(CASE WHEN period = 'previous' THEN total END), 0) * 100,
-            0
-          ) as growth
-        FROM periods
+        SELECT COALESCE(
+          (MAX(CASE WHEN period = 'current' THEN total END) -
+           MAX(CASE WHEN period = 'previous' THEN total END)) /
+          NULLIF(MAX(CASE WHEN period = 'previous' THEN total END), 0) * 100,
+          0
+        ) as growth FROM periods
       `, filterParams);
       growthRate = Number(result.rows[0]?.growth || 0);
     } catch (err) {
@@ -166,18 +190,31 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
 
   if (catCol && salesCol) {
     try {
-      // Хамгийн их зарлага гарсан дэд ангилал
-      const expenseCond = rawMainCatCol
-        ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%ЗАРЛАГА%')`
-        : "";
-      const result = await getPool().query(
-        `SELECT ${quoteIdent(catCol)} as category, SUM(${amountExpr(salesCol)}) as total
-         FROM ${quoteIdent(tableName)}
-         WHERE 1=1${dateWhere}${expenseCond}
-         GROUP BY ${quoteIdent(catCol)}
-         ORDER BY total DESC LIMIT 1`,
-        dateParams
-      );
+      let topCatQuery: string;
+      if (isFinanceTable && rawMainCatCol) {
+        // Finance: top operating expense subcategory (exclude loan repayments)
+        const subCatQuoted = quoteIdent(catCol);
+        topCatQuery = `
+          SELECT ${subCatQuoted} as category, SUM(${amountExpr(salesCol)}) as total
+          FROM ${quoteIdent(tableName)}
+          WHERE ${quoteIdent(rawMainCatCol)} ILIKE '%зарлага%'
+            AND ${subCatQuoted} NOT ILIKE '%зээл%'
+            AND ${subCatQuoted} IS NOT NULL
+            ${dateWhere}
+          GROUP BY ${subCatQuoted}
+          ORDER BY total DESC LIMIT 1`;
+      } else {
+        const expenseCond = rawMainCatCol
+          ? ` AND (${quoteIdent(rawMainCatCol)} LIKE '%Зарлага%' OR ${quoteIdent(rawMainCatCol)} LIKE '%зарлага%')`
+          : "";
+        topCatQuery = `
+          SELECT ${quoteIdent(catCol)} as category, SUM(${amountExpr(salesCol)}) as total
+          FROM ${quoteIdent(tableName)}
+          WHERE 1=1${dateWhere}${expenseCond}
+          GROUP BY ${quoteIdent(catCol)}
+          ORDER BY total DESC LIMIT 1`;
+      }
+      const result = await getPool().query(topCatQuery, dateParams);
       if (result.rows.length > 0) {
         topCategory = String(result.rows[0].category);
         topCategoryValue = Number(result.rows[0].total || 0);
