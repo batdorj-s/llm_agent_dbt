@@ -72,20 +72,15 @@ export const TopSearch: React.FC<TopSearchProps> = ({
             gap={8}
           />
           <div className="mt-2 h-[45px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={45}>
               <AreaChart data={visitData2}>
-                <defs>
-                  <linearGradient id="searchGrad1" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="white" stopOpacity={0.01} />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.4} />
-                  </linearGradient>
-                </defs>
                 <Area
                   type="monotone"
                   dataKey="y"
                   stroke="#3b82f6"
                   strokeWidth={1.5}
-                  fill="url(#searchGrad1)"
+                  fill="#3b82f6"
+                  fillOpacity={0.15}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -107,20 +102,15 @@ export const TopSearch: React.FC<TopSearchProps> = ({
             gap={8}
           />
           <div className="mt-2 h-[45px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={45}>
               <AreaChart data={visitData2}>
-                <defs>
-                  <linearGradient id="searchGrad2" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="white" stopOpacity={0.01} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.4} />
-                  </linearGradient>
-                </defs>
                 <Area
                   type="monotone"
                   dataKey="y"
                   stroke="#10b981"
                   strokeWidth={1.5}
-                  fill="url(#searchGrad2)"
+                  fill="#10b981"
+                  fillOpacity={0.15}
                 />
               </AreaChart>
             </ResponsiveContainer>

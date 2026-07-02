@@ -64,20 +64,15 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         contentHeight={60}
         loading={loading}
       >
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={60}>
           <AreaChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id="visitGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#975FE4" stopOpacity={0.85} />
-                <stop offset="100%" stopColor="#975FE4" stopOpacity={0.05} />
-              </linearGradient>
-            </defs>
             <Area
               type="monotone"
               dataKey="y"
               stroke="#975FE4"
               strokeWidth={2}
-              fill="url(#visitGrad)"
+              fill="#975FE4"
+              fillOpacity={0.15}
               isAnimationActive={false}
             />
           </AreaChart>
@@ -92,17 +87,11 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         contentHeight={60}
         loading={loading}
       >
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={60}>
           <BarChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id="payGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#36A2EB" stopOpacity={1} />
-                <stop offset="100%" stopColor="#36A2EB" stopOpacity={0.3} />
-              </linearGradient>
-            </defs>
             <Bar
               dataKey="y"
-              fill="url(#payGrad)"
+              fill="#36A2EB"
               radius={[3, 3, 0, 0]}
               isAnimationActive={false}
             />

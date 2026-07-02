@@ -67,7 +67,7 @@ export const DashboardPanel = ({
           footer={<Field label="Зорилтот" value={formatCurrency(salesKpi?.target || 0)} />}
           contentHeight={80}
         >
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={80}>
             <BarChart data={salesHistory.slice(-6)}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border, #e2e8f0)" />
               <XAxis dataKey="month" hide />
@@ -91,7 +91,7 @@ export const DashboardPanel = ({
           footer={<Field label="Зорилго" value={usersKpi?.target.toLocaleString() || "—"} />}
           contentHeight={80}
         >
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={80}>
             <AreaChart data={salesHistory.slice(-6)}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border, #e2e8f0)" />
               <XAxis dataKey="month" hide />
@@ -127,7 +127,7 @@ export const DashboardPanel = ({
           }
           contentHeight={80}
         >
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={80}>
             <PieChart>
               <Pie
                 data={pieData}
@@ -200,18 +200,13 @@ export const DashboardPanel = ({
                   border: "1px solid var(--color-border)",
                 }}
               />
-              <defs>
-                <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
               <Area
                 type="monotone"
                 dataKey="revenue"
                 stroke="#3b82f6"
                 strokeWidth={2}
-                fill="url(#salesGradient)"
+                fill="#3b82f6"
+                fillOpacity={0.1}
               />
             </AreaChart>
           </ResponsiveContainer>

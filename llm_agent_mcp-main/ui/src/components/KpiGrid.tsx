@@ -18,14 +18,8 @@ function Sparkline({ data, dataKey, color }: { data: { month: string; revenue: n
   if (data.length === 0) return null;
   return (
     <div className="h-8 w-full">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={32}>
         <LineChart data={data}>
-          <defs>
-            <linearGradient id={`sparkGrad-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={color} stopOpacity={0.25} />
-              <stop offset="95%" stopColor={color} stopOpacity={0.01} />
-            </linearGradient>
-          </defs>
           <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5} dot={false} />
         </LineChart>
       </ResponsiveContainer>

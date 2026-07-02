@@ -52,20 +52,15 @@ export const ActiveChart = () => {
       </div>
 
       <div className="h-[84px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={84}>
           <AreaChart data={activeData}>
-            <defs>
-              <linearGradient id="activeChartGrad" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="white" stopOpacity={0.01} />
-                <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.6} />
-              </linearGradient>
-            </defs>
             <Area
               type="monotone"
               dataKey="y"
               stroke="#3b82f6"
               strokeWidth={1.5}
-              fill="url(#activeChartGrad)"
+              fill="#3b82f6"
+              fillOpacity={0.15}
             />
           </AreaChart>
         </ResponsiveContainer>

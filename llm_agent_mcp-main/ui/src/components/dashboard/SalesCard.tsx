@@ -106,12 +106,6 @@ export const SalesCard: React.FC<SalesCardProps> = ({
       {/* Chart + Ranking */}
       <div className="flex flex-col lg:flex-row">
         <div className="flex-1 p-5">
-          <defs>
-            <linearGradient id={`salesBar-${tab}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={barColor} stopOpacity={1} />
-              <stop offset="100%" stopColor={barColorLight} stopOpacity={0.4} />
-            </linearGradient>
-          </defs>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={salesData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
               <CartesianGrid
@@ -133,7 +127,7 @@ export const SalesCard: React.FC<SalesCardProps> = ({
                 tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
               />
               <Tooltip
-                formatter={(value: number | string) => formatCurrency(Number(value) || 0)}
+                formatter={(value) => formatCurrency(Number(value) || 0)}
                 contentStyle={{
                   fontSize: 11,
                   borderRadius: 8,
