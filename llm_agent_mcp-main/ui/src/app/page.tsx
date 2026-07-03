@@ -91,7 +91,7 @@ export default function Home() {
 
   // ── Admin: Target Manager ──
   const [adjustMetric, setAdjustMetric] = useState<"sales" | "users" | "churn_rate">("sales");
-  const [newTargetValue, setNewTargetValue] = useState<number>(200000);
+  const [newTargetValue, setNewTargetValue] = useState<number>(200000000);
   const [isUpdatingTarget, setIsUpdatingTarget] = useState<boolean>(false);
   const [salesUpdateSuccess, setSalesUpdateSuccess] = useState<string | null>(null);
 

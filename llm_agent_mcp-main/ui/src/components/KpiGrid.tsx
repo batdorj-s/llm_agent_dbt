@@ -102,12 +102,14 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
   const aov = computedMetrics?.aov ?? null;
   const growthRate = computedMetrics?.growthRate ?? null;
   const topCategory = computedMetrics?.topCategory ?? null;
+  const topCategoryValue = computedMetrics?.topCategoryValue ?? 0;
   const growthDirection = computedMetrics?.growthDirection ?? "up";
 
   const isFinance = computedMetrics?.isFinance ?? false;
   const totalExpense = computedMetrics?.totalExpense ?? 0;
   const operatingProfit = computedMetrics?.operatingProfit ?? 0;
   const expenseRatio = salesKpi && salesKpi.current > 0 ? (totalExpense / salesKpi.current * 100) : 0;
+  const topCategoryShare = isFinance && totalExpense > 0 ? (topCategoryValue / totalExpense) * 100 : 0;
 
   if (isLoading) {
     return (
@@ -178,7 +180,10 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
           subLabel={isFinance ? "Хамгийн их зардал" : "Хамгийн их зарлага"}
           subValue={topCategory !== null ? topCategory : "—"}
           color={isFinance ? (operatingProfit >= 0 ? "#10b981" : "#ef4444") : chartTheme.colors.semantic.area}
-          trend={growthRate !== null ? { direction: growthDirection, label: `${Math.abs(growthRate).toFixed(1)}%` } : undefined}
+          trend={isFinance
+            ? (topCategoryShare > 0 ? { direction: "up" as const, label: `${topCategoryShare.toFixed(1)}%` } : undefined)
+            : (growthRate !== null ? { direction: growthDirection, label: `${Math.abs(growthRate).toFixed(1)}%` } : undefined)
+          }
         />,
       ].map((card, i) => (
         <div key={(card as any).key ?? i} className="animate-fade-in-up" style={{ animationDelay: `${i * 50}ms` }}>

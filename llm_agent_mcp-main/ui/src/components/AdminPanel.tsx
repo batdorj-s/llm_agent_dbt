@@ -111,12 +111,20 @@ export const AdminPanel = ({
             <option value="users">Users</option>
             <option value="churn_rate">Churn</option>
           </select>
-          <input
-            type="number"
-            value={newTargetValue}
-            onChange={(e) => onNewTargetValueChange(Number(e.target.value))}
-            className="w-16 bg-background border border-border rounded px-2 py-1 text-center text-[10px] text-foreground focus:outline-none focus:border-foreground/30"
-          />
+          <div className="flex items-center gap-1">
+            {adjustMetric === "sales" && (
+              <span className="text-[10px] text-foreground/50 font-bold">₮</span>
+            )}
+            <input
+              type="number"
+              value={newTargetValue}
+              onChange={(e) => onNewTargetValueChange(Number(e.target.value))}
+              className="w-20 bg-background border border-border rounded px-2 py-1 text-center text-[10px] text-foreground focus:outline-none focus:border-foreground/30"
+            />
+            {adjustMetric === "churn_rate" && (
+              <span className="text-[10px] text-foreground/50 font-bold">%</span>
+            )}
+          </div>
         </div>
         <button
           onClick={onUpdateKpiTarget}
