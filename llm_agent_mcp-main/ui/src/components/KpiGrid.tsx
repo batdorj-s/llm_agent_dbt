@@ -161,9 +161,11 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
           <KpiCard key="churn"
             label="Зарлагын гүйлгээ"
             value={expenseTransactions > 0 ? expenseTransactions.toLocaleString() : "—"}
-            subLabel={totalTransactions > 0 ? `Нийт ${totalTransactions.toLocaleString()}` : "Нийт гүйлгээ"}
-            subValue={expenseTxnRatio > 0 ? `${expenseTxnRatio.toFixed(1)}%` : "—"}
-            color="#f59e0b"
+            subLabel={totalTransactions > 0 ? `Нийт гүйлгээ` : "Нийт гүйлгээ"}
+            subValue={totalTransactions > 0 ? totalTransactions.toLocaleString() : "—"}
+            color="#f97316"
+            progress={totalTransactions > 0 ? { current: expenseTransactions, target: totalTransactions } : undefined}
+            trend={expenseTxnRatio > 0 ? { direction: "up" as const, label: `${expenseTxnRatio.toFixed(1)}%` } : undefined}
           />
         ) : (
           <KpiCard key="churn"
