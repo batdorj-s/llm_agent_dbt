@@ -68,22 +68,22 @@ export const GLOBAL_CONCEPTS: ColumnConcept[] = [
     },
     {
         concept: "finance_category",
-        patterns: [/^ангилал$/i, /^төрөл$/i],
+        patterns: [/^ангилал$/i, /^category$/i, /^төрөл$/i],
         description: "Transaction category / Ангилал",
     },
     {
         concept: "finance_subcategory",
-        patterns: [/^дэд.ангилал$/i, /^subcategory$/i, /^дэд.төрөл$/i],
+        patterns: [/^дэд.ангилал$/i, /^дэд ангилал$/i, /^subcategory$/i, /^дэд.төрөл$/i],
         description: "Transaction subcategory / Дэд ангилал",
     },
     {
         concept: "finance_party",
-        patterns: [/^харилцагч$/i, /^counterparty$/i],
+        patterns: [/^харилцагч$/i, /^customer$/i, /^counterparty$/i],
         description: "Transaction counterparty / Харилцагч",
     },
     {
         concept: "finance_note",
-        patterns: [/^тайлбар$/i, /^утга$/i],
+        patterns: [/^тайлбар$/i, /^description$/i, /^утга$/i],
         description: "Transaction note / Тайлбар",
     },
 ];
