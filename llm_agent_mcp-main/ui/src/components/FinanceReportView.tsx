@@ -35,6 +35,56 @@ interface ComputedMetrics {
   operatingProfit?: number;
 }
 
+interface IncomeStatementRow {
+  subcategory: string;
+  amount: number;
+}
+
+interface IncomeStatementReport {
+  incomeRows: IncomeStatementRow[];
+  expenseRows: IncomeStatementRow[];
+  totalIncome: number;
+  totalExpense: number;
+  operatingProfit: number;
+}
+
+interface ExpenseBreakdownRow {
+  category: string;
+  monthly: number[];
+  total: number;
+  pct: number;
+}
+
+interface ExpenseBreakdownReport {
+  categories: string[];
+  months: string[];
+  rows: ExpenseBreakdownRow[];
+  grandTotal: number;
+}
+
+interface CashFlowItem {
+  name: string;
+  amount: number;
+}
+
+interface CashFlowSection {
+  name: string;
+  items: CashFlowItem[];
+  subtotal: number;
+}
+
+interface CashFlowReport {
+  sections: CashFlowSection[];
+  netCashFlow: number;
+}
+
+interface FinanceReportsResponse {
+  isFinance: boolean;
+  incomeStatement: IncomeStatementReport | null;
+  expenseBreakdown: ExpenseBreakdownReport | null;
+  cashFlow: CashFlowReport | null;
+}
+
 function SkeletonLine({ width }: { width: string }) {
   return <div className="h-3 bg-foreground/10 rounded animate-pulse" style={{ width }} />;
 }
@@ -104,6 +154,7 @@ const formatCurrency = (value: number) =>
 export const FinanceReportView = ({ token }: { token: string }) => {
   const [data, setData] = useState<FinanceChartsResponse | null>(null);
   const [metrics, setMetrics] = useState<ComputedMetrics | null>(null);
+  const [reports, setReports] = useState<FinanceReportsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,15 +168,18 @@ export const FinanceReportView = ({ token }: { token: string }) => {
     Promise.all([
       fetch("/api/finance-charts", { headers }),
       fetch("/api/dashboard/computed-metrics", { headers }),
-    ]).then(async ([chartsRes, metricsRes]) => {
+      fetch("/api/finance-reports", { headers }),
+    ]).then(async ([chartsRes, metricsRes, reportsRes]) => {
       if (cancelled) return;
-      const [chartsData, metricsData] = await Promise.all([
+      const [chartsData, metricsData, reportsData] = await Promise.all([
         chartsRes.ok ? chartsRes.json() : null,
         metricsRes.ok ? metricsRes.json() : null,
+        reportsRes.ok ? reportsRes.json() : null,
       ]);
       if (!cancelled) {
         setData(chartsData);
         setMetrics(metricsData);
+        setReports(reportsData);
         setIsLoading(false);
       }
     }).catch(() => {
@@ -316,6 +370,166 @@ export const FinanceReportView = ({ token }: { token: string }) => {
                 <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={1.5} fill="url(#netIncomeGrad)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* ── INCOME STATEMENT (tailan_orlog_zarlag) ── */}
+        {reports?.incomeStatement && (
+          <div className="border border-border/80 rounded-xl bg-card overflow-hidden">
+            <div className="p-4 border-b border-border/80">
+              <h2 className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider">Орлого, зарлагын тайлан</h2>
+            </div>
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-border/80 text-[10px] text-foreground/50 uppercase tracking-wider">
+                  <th className="text-left p-3 font-semibold">Үзүүлэлт</th>
+                  <th className="text-right p-3 font-semibold">Дүн</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.incomeStatement.incomeRows.length > 0 && (
+                  <>
+                    <tr className="border-b border-border/40 bg-foreground/5">
+                      <td className="p-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider" colSpan={2}>
+                        Орлого
+                      </td>
+                    </tr>
+                    {reports.incomeStatement.incomeRows.map((row) => (
+                      <tr key={row.subcategory} className="border-b border-border/30 hover:bg-foreground/5 transition-colors">
+                        <td className="p-3 pl-8 text-foreground/80">{row.subcategory}</td>
+                        <td className="p-3 text-right text-foreground font-mono font-bold">{formatCurrency(row.amount)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-b border-border/40 bg-foreground/[0.03]">
+                      <td className="p-3 pl-8 text-[10px] font-bold text-foreground/70 uppercase tracking-wider">Нийт орлого</td>
+                      <td className="p-3 text-right font-mono font-bold" style={{ color: "#3b82f6" }}>{formatCurrency(reports.incomeStatement.totalIncome)}</td>
+                    </tr>
+                  </>
+                )}
+                {reports.incomeStatement.expenseRows.length > 0 && (
+                  <>
+                    <tr className="border-b border-border/40 bg-foreground/5">
+                      <td className="p-3 text-[10px] font-bold text-red-500 uppercase tracking-wider" colSpan={2}>
+                        Зарлага
+                      </td>
+                    </tr>
+                    {reports.incomeStatement.expenseRows.map((row) => (
+                      <tr key={row.subcategory} className="border-b border-border/30 hover:bg-foreground/5 transition-colors">
+                        <td className="p-3 pl-8 text-foreground/80">{row.subcategory}</td>
+                        <td className="p-3 text-right text-foreground font-mono font-bold">{formatCurrency(row.amount)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-b border-border/40 bg-foreground/[0.03]">
+                      <td className="p-3 pl-8 text-[10px] font-bold text-foreground/70 uppercase tracking-wider">Нийт зарлага</td>
+                      <td className="p-3 text-right font-mono font-bold" style={{ color: "#ef4444" }}>{formatCurrency(reports.incomeStatement.totalExpense)}</td>
+                    </tr>
+                  </>
+                )}
+                <tr className="bg-foreground/[0.06]">
+                  <td className="p-3 pl-8 text-[10px] font-bold text-foreground uppercase tracking-wider">Үйл ажиллагааны ашиг/алдагдал</td>
+                  <td className={`p-3 text-right font-mono font-bold text-base ${reports.incomeStatement.operatingProfit >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                    {formatCurrency(reports.incomeStatement.operatingProfit)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ── EXPENSE BREAKDOWN WITH MONTHLY PIVOT (zardaliin_zadargaa) ── */}
+        {reports?.expenseBreakdown && reports.expenseBreakdown.rows.length > 0 && (
+          <div className="border border-border/80 rounded-xl bg-card overflow-hidden">
+            <div className="p-4 border-b border-border/80">
+              <h2 className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider">Зардлын задаргаа</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px] min-w-[500px]">
+                <thead>
+                  <tr className="border-b border-border/80 text-[10px] text-foreground/50 uppercase tracking-wider">
+                    <th className="text-left p-3 font-semibold">Ангилал</th>
+                    {reports.expenseBreakdown.months.map((m) => (
+                      <th key={m} className="text-right p-3 font-semibold">{m}</th>
+                    ))}
+                    <th className="text-right p-3 font-semibold">Нийт</th>
+                    <th className="text-right p-3 font-semibold">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reports.expenseBreakdown.rows.map((row, i) => (
+                    <tr key={row.category} className="border-b border-border/40 hover:bg-foreground/5 transition-colors">
+                      <td className="p-3 text-foreground/80 font-medium flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                        {row.category}
+                      </td>
+                      {row.monthly.map((val, mi) => (
+                        <td key={mi} className="p-3 text-right text-foreground font-mono">{formatCurrency(val)}</td>
+                      ))}
+                      <td className="p-3 text-right text-foreground font-mono font-bold">{formatCurrency(row.total)}</td>
+                      <td className="p-3 text-right text-foreground/60 font-mono">{row.pct}%</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-foreground/[0.04] border-t-2 border-border/60">
+                    <td className="p-3 text-[10px] font-bold text-foreground/70 uppercase tracking-wider">Нийт</td>
+                    {reports.expenseBreakdown.months.map((_m, mi) => {
+                      const monthTotal = reports.expenseBreakdown!.rows.reduce((s, r) => s + (r.monthly[mi] || 0), 0);
+                      return <td key={mi} className="p-3 text-right text-foreground font-mono font-bold">{formatCurrency(monthTotal)}</td>;
+                    })}
+                    <td className="p-3 text-right text-foreground font-mono font-bold">{formatCurrency(reports.expenseBreakdown.grandTotal)}</td>
+                    <td className="p-3 text-right text-foreground/60 font-mono">100%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── CASH FLOW STATEMENT (mungun_ursgal) ── */}
+        {reports?.cashFlow && reports.cashFlow.sections.length > 0 && (
+          <div className="border border-border/80 rounded-xl bg-card overflow-hidden">
+            <div className="p-4 border-b border-border/80">
+              <h2 className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider">Мөнгөн урсгалын тайлан</h2>
+            </div>
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-border/80 text-[10px] text-foreground/50 uppercase tracking-wider">
+                  <th className="text-left p-3 font-semibold">Үзүүлэлт</th>
+                  <th className="text-right p-3 font-semibold">Дүн</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.cashFlow.sections.map((section) => (
+                  <React.Fragment key={section.name}>
+                    <tr className="border-b border-border/40 bg-foreground/5">
+                      <td className="p-3 text-[10px] font-bold text-foreground/60 uppercase tracking-wider" colSpan={2}>
+                        {section.name}
+                      </td>
+                    </tr>
+                    {section.items.map((item) => (
+                      <tr key={item.name} className="border-b border-border/30 hover:bg-foreground/5 transition-colors">
+                        <td className="p-3 pl-8 text-foreground/80">{item.name}</td>
+                        <td className={`p-3 text-right font-mono font-bold ${section.subtotal < 0 ? "text-red-500" : "text-emerald-500"}`}>
+                          {section.subtotal < 0 ? `-${formatCurrency(Math.abs(item.amount))}` : formatCurrency(item.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-b border-border/40 bg-foreground/[0.03]">
+                      <td className="p-3 pl-8 text-[10px] font-bold text-foreground/70 uppercase tracking-wider">
+                        {section.subtotal < 0 ? "Нийт зарлага" : "Нийт орлого"}
+                      </td>
+                      <td className={`p-3 text-right font-mono font-bold ${section.subtotal < 0 ? "text-red-500" : "text-emerald-500"}`}>
+                        {section.subtotal < 0 ? `-${formatCurrency(Math.abs(section.subtotal))}` : formatCurrency(section.subtotal)}
+                      </td>
+                    </tr>
+                  </React.Fragment>
+                ))}
+                <tr className="bg-foreground/[0.06]">
+                  <td className="p-3 pl-8 text-[10px] font-bold text-foreground uppercase tracking-wider">Цэвэр мөнгөн урсгал</td>
+                  <td className={`p-3 text-right font-mono font-bold text-base ${reports.cashFlow.netCashFlow >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                    {formatCurrency(reports.cashFlow.netCashFlow)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         )}
 

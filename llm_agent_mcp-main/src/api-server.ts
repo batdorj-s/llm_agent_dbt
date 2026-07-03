@@ -761,6 +761,220 @@ app.get("/api/finance-charts", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// Finance Detailed Reports — Income Statement, Expense Breakdown, Cash Flow
+// ─────────────────────────────────────────────────────────────
+app.get("/api/finance-reports", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+
+  const userId = auth.payload.userId;
+  const pool = getPool();
+
+  try {
+    const entry = await getActiveCatalogEntry(userId);
+    if (!entry) return res.json({ isFinance: false });
+
+    const columns: string[] = JSON.parse(entry.columns_info);
+    const table = entry.table_name;
+
+    const amtCol    = findConceptColumn(columns, "finance_amount",      table);
+    const catCol    = findConceptColumn(columns, "finance_category",    table);
+    const subCatCol = findConceptColumn(columns, "finance_subcategory", table);
+    const dateCol   = findConceptColumn(columns, "finance_date",        table);
+
+    if (!amtCol || !catCol) return res.json({ isFinance: false });
+
+    const qAmt    = buildMntAmountExpr(quoteIdent(amtCol));
+    const qCat    = quoteIdent(catCol);
+    const qSubCat = subCatCol ? quoteIdent(subCatCol) : null;
+    const qDate   = dateCol  ? quoteIdent(dateCol) : null;
+    const qTbl    = quoteIdent(table);
+
+    const isOpIncome  = `(${qCat} ILIKE '%орлого%' AND ${qCat} NOT ILIKE '%зээл%')`;
+    const isOpExpense = qSubCat
+      ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${qSubCat} NOT ILIKE '%бусад%')`
+      : `${qCat} ILIKE '%зарлага%'`;
+    const notNoise = `${qCat} NOT ILIKE '%шилжүүлэг%' AND ${qCat} NOT ILIKE '%эздийн зээл%'`;
+
+    // ── 1. Income Statement (Орлого зарлагын тайлан) ──
+    let incomeStatement = null;
+    if (subCatCol) {
+      try {
+        const r = await pool.query(`
+          SELECT
+            CASE WHEN ${isOpIncome} THEN 'Орлого' ELSE 'Зарлага' END AS section,
+            ${qSubCat} AS subcat,
+            SUM(${qAmt}) AS total
+          FROM ${qTbl}
+          WHERE ${notNoise} AND (${isOpIncome} OR ${isOpExpense})
+            AND ${qSubCat} IS NOT NULL
+          GROUP BY 1, 2
+          ORDER BY 1, 3 DESC
+        `);
+        if (r.rows.length > 0) {
+          const incomeRows = r.rows
+            .filter((row: any) => row.section === "Орлого")
+            .map((row: any) => ({ subcategory: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+          const expenseRows = r.rows
+            .filter((row: any) => row.section === "Зарлага")
+            .map((row: any) => ({ subcategory: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+          const totalIncomeVal = incomeRows.reduce((s: number, r: any) => s + r.amount, 0);
+          const totalExpenseVal = expenseRows.reduce((s: number, r: any) => s + r.amount, 0);
+          incomeStatement = {
+            incomeRows,
+            expenseRows,
+            totalIncome: totalIncomeVal,
+            totalExpense: totalExpenseVal,
+            operatingProfit: totalIncomeVal - totalExpenseVal,
+          };
+        }
+      } catch {}
+    }
+
+    // ── 2. Expense Breakdown with Monthly Pivot (Зардлын задаргаа) ──
+    let expenseBreakdown = null;
+    if (subCatCol && dateCol) {
+      try {
+        const qD = quoteIdent(dateCol);
+        const r = await pool.query(`
+          SELECT
+            ${qSubCat} AS subcat,
+            TO_CHAR(${qD}::DATE, 'YYYY-MM') AS month,
+            SUM(${qAmt}) AS total
+          FROM ${qTbl}
+          WHERE ${isOpExpense} AND ${qSubCat} IS NOT NULL AND ${qD} IS NOT NULL
+          GROUP BY 1, 2
+          ORDER BY 1, 2
+        `);
+        if (r.rows.length > 0) {
+          // Aggregate by subcategory and month
+          const subcatTotals: Record<string, number> = {};
+          const monthMap: Record<string, Record<string, number>> = {};
+          const monthSet = new Set<string>();
+          for (const row of r.rows as any[]) {
+            const s = String(row.subcat ?? "");
+            const m = String(row.month ?? "");
+            const v = Math.round(Number(row.total ?? 0));
+            subcatTotals[s] = (subcatTotals[s] || 0) + v;
+            if (!monthMap[s]) monthMap[s] = {};
+            monthMap[s][m] = (monthMap[s][m] || 0) + v;
+            monthSet.add(m);
+          }
+
+          // Sort subcategories by total descending
+          const sortedSubcats = Object.entries(subcatTotals)
+            .sort((a, b) => b[1] - a[1])
+            .map(([k]) => k);
+
+          // Sort months
+          const sortedMonths = [...monthSet].sort();
+
+          const grandTotal = sortedSubcats.reduce((s, c) => s + (subcatTotals[c] || 0), 0);
+
+          const rows = sortedSubcats.map(cat => {
+            const monthly = sortedMonths.map(m => monthMap[cat]?.[m] ?? 0);
+            const total = subcatTotals[cat] || 0;
+            const pct = grandTotal > 0 ? Math.round((total / grandTotal) * 1000) / 10 : 0;
+            return { category: cat, monthly, total, pct };
+          });
+
+          const monthLabels = sortedMonths.map((m) => {
+            const parts = m.split("-");
+            return `${parseInt(parts[1], 10)}-р сар`;
+          });
+
+          expenseBreakdown = { categories: sortedSubcats, months: monthLabels, rows, grandTotal };
+        }
+      } catch {}
+    }
+
+    // ── 3. Cash Flow (Мөнгөн урсгал) ──
+    let cashFlow = null;
+    if (subCatCol) {
+      try {
+        // Income items (operating) + financing items (loans, investments) as inflows
+        // Expense items as outflows
+        const r = await pool.query(`
+          SELECT
+            ${qSubCat} AS subcat,
+            SUM(${qAmt}) AS total,
+            CASE
+              WHEN ${isOpIncome} THEN 'inflow'
+              WHEN ${qCat} ILIKE '%зээл%' OR ${qCat} ILIKE '%хөрөнгө оруулалт%' THEN 'financing'
+              WHEN ${isOpExpense} THEN 'outflow'
+              ELSE 'other'
+            END AS flow_type
+          FROM ${qTbl}
+          WHERE ${qSubCat} IS NOT NULL AND ${qCat} NOT ILIKE '%шилжүүлэг%'
+          GROUP BY 1, flow_type
+          ORDER BY flow_type, 2 DESC
+        `);
+        if (r.rows.length > 0) {
+          const inflowRows = r.rows
+            .filter((row: any) => row.flow_type === "inflow")
+            .map((row: any) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+          const financingRows = r.rows
+            .filter((row: any) => row.flow_type === "financing")
+            .map((row: any) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+          const outflowRows = r.rows
+            .filter((row: any) => row.flow_type === "outflow")
+            .map((row: any) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+          const otherRows = r.rows
+            .filter((row: any) => row.flow_type === "other")
+            .map((row: any) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+
+          const sections: Array<{ name: string; items: Array<{ name: string; amount: number }>; subtotal: number }> = [];
+          if (inflowRows.length > 0) {
+            sections.push({
+              name: "Үйл ажиллагааны орлого",
+              items: inflowRows,
+              subtotal: inflowRows.reduce((s: number, r: any) => s + Math.abs(r.amount), 0),
+            });
+          }
+          if (financingRows.length > 0) {
+            sections.push({
+              name: "Санхүүжилт",
+              items: financingRows,
+              subtotal: financingRows.reduce((s: number, r: any) => s + Math.abs(r.amount), 0),
+            });
+          }
+          if (outflowRows.length > 0) {
+            sections.push({
+              name: "Үйл ажиллагааны зарлага",
+              items: outflowRows,
+              subtotal: -outflowRows.reduce((s: number, r: any) => s + Math.abs(r.amount), 0),
+            });
+          }
+          if (otherRows.length > 0) {
+            sections.push({
+              name: "Бусад",
+              items: otherRows,
+              subtotal: otherRows.reduce((s: number, r: any) => s + r.amount, 0),
+            });
+          }
+
+          const totalInflow = inflowRows.reduce((s: number, r: any) => s + r.amount, 0)
+            + financingRows.reduce((s: number, r: any) => s + r.amount, 0);
+          const totalOutflow = outflowRows.reduce((s: number, r: any) => s + r.amount, 0);
+          const netCashFlow = totalInflow - totalOutflow;
+
+          cashFlow = { sections, netCashFlow };
+        }
+      } catch {}
+    }
+
+    return res.json({
+      isFinance: !!(incomeStatement || expenseBreakdown || cashFlow),
+      incomeStatement,
+      expenseBreakdown,
+      cashFlow,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 // Report Export — PDF / Excel (JWT-scoped userId)
 // ─────────────────────────────────────────────────────────────
 app.post("/api/report/export-pdf", async (req, res) => {
