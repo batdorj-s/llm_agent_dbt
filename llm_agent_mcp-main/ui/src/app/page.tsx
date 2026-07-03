@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { BarChart2, Activity, TrendingUp, PieChart as PieChartIcon, LayoutDashboard, Upload, ThumbsUp, ThumbsDown, FileText } from "lucide-react";
+import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, LayoutDashboard, ThumbsUp, ThumbsDown, FileText } from "lucide-react";
 
 import { Message, KpiData, SalesHistory, UploadedFile, ServerStatus, ComputedMetrics } from "../components/types";
 import { Header } from "../components/Header";
@@ -140,12 +140,12 @@ export default function Home() {
 
   // ── Suggestions ──
   const SUGGESTIONS_INITIAL: { label: string; query: string; icon: React.ReactNode }[] = [
-    { label: "Борлуулалтын тайлан", query: "Борлуулалтын тайлан гаргаж өгнө үү", icon: <BarChart2 className="w-3 h-3" /> },
-    { label: "KPI үзүүлэлт", query: "Гол KPI үзүүлэлтүүдийг харуул", icon: <Activity className="w-3 h-3" /> },
-    { label: "Сегментчлэл", query: "Хэрэглэгчдийн сегментчлэлийн шинжилгээ хий", icon: <PieChartIcon className="w-3 h-3" /> },
-    { label: "Таамаглал", query: "Дараагийн саруудын борлуулалтын таамаглал гарга", icon: <TrendingUp className="w-3 h-3" /> },
-    { label: "Dashboard", query: "Dashboard харуул", icon: <LayoutDashboard className="w-3 h-3" /> },
-    { label: "Upload", query: "Өгөгдөл Upload хэрхэн хийх вэ", icon: <Upload className="w-3 h-3" /> },
+    { label: "Нийт зарлага", query: "Нийт зарлага хэд вэ?", icon: <TrendingDown className="w-3 h-3" /> },
+    { label: "Нийт орлого", query: "Нийт орлого хэд вэ?", icon: <TrendingUp className="w-3 h-3" /> },
+    { label: "Зардлын задаргаа", query: "Зардлын задаргааг ангилалаар харуул", icon: <PieChartIcon className="w-3 h-3" /> },
+    { label: "Сараар харьцуулалт", query: "Сараар орлого зарлагын харьцуулалт харуул", icon: <BarChart2 className="w-3 h-3" /> },
+    { label: "Хамгийн их зардал", query: "Хамгийн их зардалтай ангилал юу вэ?", icon: <ArrowUp className="w-3 h-3" /> },
+    { label: "Тайлан", query: "Санхүүгийн тайлан гаргаж өгнө үү", icon: <Activity className="w-3 h-3" /> },
   ];
 
   const FOLLOW_UP_SUGGESTIONS: Record<string, { label: string; query: string }[]> = {
