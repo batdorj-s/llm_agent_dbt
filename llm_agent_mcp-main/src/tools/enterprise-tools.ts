@@ -89,13 +89,13 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
     try {
       const summaryResult = await executeSql(`
         SELECT
-          COALESCE(SUM(CASE WHEN "Ангилал" = 'орлого' THEN "Дүн" ELSE 0 END), 0) AS нийт_орлого,
-          COALESCE(SUM(CASE WHEN "Ангилал" = 'зарлага' THEN "Дүн" ELSE 0 END), 0) AS нийт_зарлага,
+          COALESCE(SUM(CASE WHEN category = 'орлого' THEN amount ELSE 0 END), 0) AS нийт_орлого,
+          COALESCE(SUM(CASE WHEN category = 'зарлага' THEN amount ELSE 0 END), 0) AS нийт_зарлага,
           COUNT(*) AS нийт_гүйлгээ,
-          MIN(TO_DATE("Өдөр", 'DD-Mon')) AS эхлэх_огноо,
-          MAX(TO_DATE("Өдөр", 'DD-Mon')) AS дуусах_огноо
+          MIN(date) AS эхлэх_огноо,
+          MAX(date) AS дуусах_огноо
         FROM finance_combined
-        WHERE "Ангилал" IN ('орлого', 'зарлага')
+        WHERE category IN ('орлого', 'зарлага')
       `, true, "system");
       if (summaryResult && summaryResult.length > 0) {
         const s = summaryResult[0] as any;
@@ -117,16 +117,16 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
 
     try {
       const expenseByCategory = await executeSql(`
-        SELECT "Дэд ангилал", SUM("Дүн") AS нийт,
-          ROUND(SUM("Дүн") * 100.0 / NULLIF((SELECT SUM("Дүн") FROM finance_combined WHERE "Ангилал" = 'зарлага'), 0), 1) AS хувь
+        SELECT subcategory, SUM(amount) AS нийт,
+          ROUND(SUM(amount) * 100.0 / NULLIF((SELECT SUM(amount) FROM finance_combined WHERE category = 'зарлага'), 0), 1) AS хувь
         FROM finance_combined
-        WHERE "Ангилал" = 'зарлага'
-        GROUP BY "Дэд ангилал"
+        WHERE category = 'зарлага'
+        GROUP BY subcategory
         ORDER BY нийт DESC
       `, true, "system");
       if (expenseByCategory && expenseByCategory.length > 0) {
         const lines = (expenseByCategory as any[]).map((r: any) =>
-          `  ${r["Дэд ангилал"] || "(тодорхойгүй)"}: ${Number(r.нийт || 0).toLocaleString()} ₮ (${r.хувь || 0}%)`
+          `  ${r.subcategory || "(тодорхойгүй)"}: ${Number(r.нийт || 0).toLocaleString()} ₮ (${r.хувь || 0}%)`
         );
         sections.push(`Зардлын задаргаа (дэд ангилалаар):\n${lines.join("\n")}`);
       }
@@ -136,15 +136,15 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
 
     try {
       const incomeByCategory = await executeSql(`
-        SELECT "Дэд ангилал", SUM("Дүн") AS нийт
+        SELECT subcategory, SUM(amount) AS нийт
         FROM finance_combined
-        WHERE "Ангилал" = 'орлого'
-        GROUP BY "Дэд ангилал"
+        WHERE category = 'орлого'
+        GROUP BY subcategory
         ORDER BY нийт DESC
       `, true, "system");
       if (incomeByCategory && incomeByCategory.length > 0) {
         const lines = (incomeByCategory as any[]).map((r: any) =>
-          `  ${r["Дэд ангилал"] || "(тодорхойгүй)"}: ${Number(r.нийт || 0).toLocaleString()} ₮`
+          `  ${r.subcategory || "(тодорхойгүй)"}: ${Number(r.нийт || 0).toLocaleString()} ₮`
         );
         sections.push(`Орлогын задаргаа (дэд ангилалаар):\n${lines.join("\n")}`);
       }

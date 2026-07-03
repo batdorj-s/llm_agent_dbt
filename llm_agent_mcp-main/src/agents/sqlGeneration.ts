@@ -189,10 +189,13 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
         ].join("\n");
       }
 
-      // Use TO_DATE for 'DD-Mon' formatted dates (Mongolian finance tables), ::DATE for others
+      // Use TO_DATE for 'DD-Mon' formatted dates (Mongolian finance tables mapped directly),
+      // direct column reference if already a DATE type, ::DATE cast as fallback.
       const dateExpr = dateCol2 === "Өдөр"
         ? `TO_DATE("${dateCol2}", 'DD-Mon')`
-        : `("${dateCol2}")::DATE`;
+        : dateCol2 === "date"
+          ? `"date"`
+          : `("${dateCol2}")::DATE`;
 
       if (/сараар|by.month|monthly|сар.тус.бүрээр/i.test(lowerQuery) && dateCol2) {
         return [

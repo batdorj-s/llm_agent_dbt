@@ -367,60 +367,70 @@ finance_context: |
   You are analyzing Mongolian business transaction data from the "finance_combined" table.
 
   ## Table name: finance_combined
-  Column names (MUST use exact capitalization with double quotes):
-  - "Өдөр": Transaction date as text (format: "5-Jan" → parse with TO_DATE("Өдөр", 'DD-Mon'))
-  - "Харилцагч": Business counterparty (person or company name in Mongolian)
-  - "Дүн": Transaction amount in MNT (Mongolian Tugrik ₮), stored as NUMERIC(18,2)
-  - "Ангилал": Transaction category
-  - "Дэд ангилал": Transaction subcategory
-  - "Тайлбар": Transaction description/note
+  Column names (all lowercase English, no quotes needed unless mixed-case):
+  - date: Transaction date as PostgreSQL DATE type (parsed from 'DD-Mon' text on ingest). Use DATE_TRUNC, EXTRACT, TO_CHAR directly.
+  - customer: Business counterparty (person or company name in Mongolian)
+  - amount: Transaction amount in MNT (Mongolian Tugrik ₮), stored as NUMERIC(18,2)
+  - category: Transaction category
+  - subcategory: Transaction subcategory
+  - description: Transaction description/note
 
-  ## Common categories (in "Ангилал" column):
+  ## Common categories (in category column):
   - 'орлого' or 'income': Business income/revenue
   - 'зарлага' or 'expense': Business expense (reduces profit)
   - 'дотоод шилжүүлэг' or 'internal transfer': NOT a P&L item (cash flow only)
-  - 'бусад орлого': Other income (increases profit)
 
-  ## Subcategories (in "Дэд ангилал" column):
+  ## Subcategories (in subcategory column):
   - 'цалин': Payroll/salary expense
   - 'маркетинг': Marketing/advertising expense
   - 'түрээс': Rent expense
   - 'нийтийн үйлчилгээ': Utilities expense
-  - 'зээл': Owner's loan to business (liability, NOT income)
+  - 'зээл', 'эздийн зээл': Owner's loan to business (liability, NOT income)
   - 'бусад зарлага': Other/miscellaneous expense
   - 'бусад орлого': Other income
-  - 'эздийн зээл': Owner's loan
   - 'шилжүүлэг': Transfer
   - 'дэд түрээс': Sub-rent income
 
   ## Important rules:
-  - CRITICAL — Date handling: "Өдөр" is TEXT in 'DD-Mon' format (e.g., '01-Jan', '15-Feb').
-    Use `TO_DATE("Өдөр", 'DD-Mon')` to convert, NOT `CAST()` or `::date`.
-    For year extraction: EXTRACT(YEAR FROM TO_DATE("Өдөр", 'DD-Mon'))
-    For month extraction: EXTRACT(MONTH FROM TO_DATE("Өдөр", 'DD-Mon'))
-    NEVER use DATE_TRUNC on "Өдөр" directly — it will fail.
-  - Amounts are in MNT (₮), stored as NUMERIC — use SUM("Дүн") for totals
-  - "Дотоод шилжүүлэг" must NOT be counted as expense or income
-  - "Эздийн зээл" is a liability, not income
-  - Always quote Mongolian identifiers with EXACT capitalization: "Дүн", "Ангилал", "Өдөр", "Харилцагч", "Дэд ангилал", "Тайлбар"
+  - date is already a DATE type — use DATE_TRUNC('month', date), EXTRACT(YEAR FROM date), TO_CHAR(date, 'YYYY-MM') directly.
+    Do NOT use TO_DATE() on the date column.
+  - Amounts are in MNT (₮), stored as NUMERIC — use SUM(amount) for totals
+  - 'Дотоод шилжүүлэг' / 'internal transfer' must NOT be counted as expense or income
+  - 'Эздийн зээл' / 'зээл' is a liability, not income
   - Use ILIKE for text/category filtering (case-insensitive Mongolian text)
-  - The table name is `finance_combined` — NOT `transactions`
+  - Use standard lowercase column names: date, customer, amount, category, subcategory, description
+  - The table name is `finance_combined`
 
   ## Example queries:
   User: "Нийт зарлага хэд вэ?" / "What is total expense?"
-  SQL: SELECT SUM("Дүн") FROM finance_combined WHERE "Ангилал" ILIKE '%зарлага%'
+  SQL: SELECT SUM(amount) FROM finance_combined WHERE category = 'зарлага'
+
+  User: "Нийт орлого хэд вэ?" / "What is total income?"
+  SQL: SELECT SUM(amount) FROM finance_combined WHERE category = 'орлого'
 
   User: "Цалин хэд вэ?" / "What is the payroll expense?"
-  SQL: SELECT SUM("Дүн") FROM finance_combined WHERE "Дэд ангилал" ILIKE '%цалин%'
+  SQL: SELECT SUM(amount) FROM finance_combined WHERE subcategory = 'цалин'
+
+  User: "Маркетингийн зардал хэд вэ?" / "What is marketing expense?"
+  SQL: SELECT SUM(amount) FROM finance_combined WHERE subcategory = 'маркетинг'
 
   User: "Харилцагчаар задал" / "Break down by partner"
-  SQL: SELECT "Харилцагч", SUM("Дүн") FROM finance_combined GROUP BY "Харилцагч" ORDER BY 2 DESC
+  SQL: SELECT customer, SUM(amount) AS нийт FROM finance_combined GROUP BY customer ORDER BY нийт DESC
 
   User: "Сараар орлого харуул" / "Show monthly income"
-  SQL: SELECT EXTRACT(YEAR FROM TO_DATE("Өдөр", 'DD-Mon')) AS year, EXTRACT(MONTH FROM TO_DATE("Өдөр", 'DD-Mon')) AS month, SUM("Дүн") FROM finance_combined WHERE "Ангилал" ILIKE '%орлого%' AND "Дэд ангилал" NOT ILIKE '%зээл%' GROUP BY year, month ORDER BY 1, 2
+  SQL: SELECT DATE_TRUNC('month', date) AS month, SUM(amount) FROM finance_combined WHERE category = 'орлого' GROUP BY month ORDER BY month
 
   User: "Орлого, зарлагын тайлан" / "Income and expense report"
-  SQL: SELECT EXTRACT(YEAR FROM TO_DATE("Өдөр", 'DD-Mon')) AS year, EXTRACT(MONTH FROM TO_DATE("Өдөр", 'DD-Mon')) AS month, SUM(CASE WHEN "Ангилал" = 'орлого' THEN "Дүн" ELSE 0 END) AS income, SUM(CASE WHEN "Ангилал" = 'зарлага' THEN "Дүн" ELSE 0 END) AS expense, SUM(CASE WHEN "Ангилал" = 'орлого' THEN "Дүн" ELSE 0 END) - SUM(CASE WHEN "Ангилал" = 'зарлага' THEN "Дүн" ELSE 0 END) AS profit FROM finance_combined WHERE "Ангилал" IN ('орлого', 'зарлага') GROUP BY year, month ORDER BY 1, 2
+  SQL: SELECT DATE_TRUNC('month', date) AS month, SUM(CASE WHEN category = 'орлого' THEN amount ELSE 0 END) AS income, SUM(CASE WHEN category = 'зарлага' THEN amount ELSE 0 END) AS expense, SUM(CASE WHEN category = 'орлого' THEN amount ELSE 0 END) - SUM(CASE WHEN category = 'зарлага' THEN amount ELSE 0 END) AS profit FROM finance_combined WHERE category IN ('орлого', 'зарлага') GROUP BY month ORDER BY month
 
   User: "Хамгийн их зардалтай ангилал" / "Top expense categories"
-  SQL: SELECT "Дэд ангилал", SUM("Дүн") AS total, ROUND(SUM("Дүн") * 100.0 / (SELECT SUM("Дүн") FROM finance_combined WHERE "Ангилал" = 'зарлага'), 1) AS pct FROM finance_combined WHERE "Ангилал" = 'зарлага' GROUP BY "Дэд ангилал" ORDER BY total DESC
+  SQL: SELECT subcategory, SUM(amount) AS total, ROUND(SUM(amount) * 100.0 / (SELECT SUM(amount) FROM finance_combined WHERE category = 'зарлага'), 1) AS pct FROM finance_combined WHERE category = 'зарлага' GROUP BY subcategory ORDER BY total DESC
+
+  User: "Бүх өгөгдөл харуул" / "Show all data"
+  SQL: SELECT * FROM finance_combined ORDER BY date LIMIT 20
+
+  User: "Нийт хэдэн гүйлгээ байна" / "How many transactions?"
+  SQL: SELECT COUNT(*) AS total FROM finance_combined
+
+  User: "Зарлагын дундаж хэд вэ?" / "Average expense?"
+  SQL: SELECT AVG(amount) FROM finance_combined WHERE category = 'зарлага'
