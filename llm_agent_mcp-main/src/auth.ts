@@ -20,18 +20,20 @@ export interface AuthResult {
 const DEV_JWT_SECRET_FALLBACK = "dev-secret-change-in-production-min-32-chars!!";
 const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET_FALLBACK;
 
+if (JWT_SECRET === DEV_JWT_SECRET_FALLBACK) {
+    if (process.env.NODE_ENV === "production") {
+        console.error("\n❌ FATAL: JWT_SECRET not set in production. Set JWT_SECRET env var.");
+        process.exit(1);
+    }
+    console.warn("\n⚠️  WARNING: Using development JWT_SECRET. Set JWT_SECRET before deploying.");
+}
+
 export function isUsingDevJwtSecret(): boolean {
     return JWT_SECRET === DEV_JWT_SECRET_FALLBACK;
 }
 
 export function requireJwtSecret(): void {
-    if (isUsingDevJwtSecret()) {
-        if (process.env.NODE_ENV === "production") {
-            console.error("\n❌ FATAL: JWT_SECRET not set in production.");
-            process.exit(1);
-        }
-        console.warn("\n⚠️  WARNING: Using development JWT_SECRET. Set JWT_SECRET in production.");
-    }
+    // Check is now performed eagerly at module load — this function is kept for backward compatibility.
 }
 
 const JWT_EXPIRES_IN_SECONDS = parseExpiry(process.env.JWT_EXPIRES_IN || "1h");

@@ -1,7 +1,9 @@
 import { Pool } from "pg";
 import fs from "fs";
+import path from "path";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import { parse as parseYaml } from "yaml";
 import { buildSemanticGroups, formatSemanticGroups } from "../utils.js";
 import { traceToolCall } from "../observability/tracer.js";
 import { hashPassword, verifyPassword } from "../auth.js";
@@ -32,25 +34,19 @@ export function quoteIdent(name: string): string {
     return `"${name.replace(/"/g, '""')}"`;
 }
 
-const MONGOLIAN_COLUMN_MAP: Record<string, string> = {
-    // Date/time
-    "огноо": "date", "он сар өдөр": "date", "хугацаа": "date", "өдөр": "date", "гүйлгээний өдөр": "date",
-    // Amount/revenue
-    "дүн": "amount", "орлого дүн": "amount", "зарлага дүн": "amount",
-    "нийт дүн": "amount", "үнэ": "price", "үнийн дүн": "amount",
-    // Category
-    "ангилал": "category", "үндсэн ангилал": "category",
-    "дэд ангилал": "subcategory", "төрөл": "type",
-    // Customer/counterparty
-    "харилцагч": "customer", "харилцагчийн нэр": "customer",
-    "нийлүүлэгч": "supplier", "байгууллага": "organization",
-    // Description/note
-    "тайлбар": "description", "тэмдэглэл": "note", "нэр": "name",
-    // Quantity
-    "тоо хэмжээ": "quantity", "тоо": "quantity",
-    // Account/code
-    "дансны дугаар": "account_number", "данс": "account", "код": "code",
-};
+function loadMongolianColumnMap(): Record<string, string> {
+    const configPath = path.resolve("config/mongolian-columns.yml");
+    try {
+        const raw = fs.readFileSync(configPath, "utf8");
+        const parsed = parseYaml(raw) as Record<string, string>;
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+        console.warn("[Data Lake] Could not load config/mongolian-columns.yml — using empty column map.");
+        return {};
+    }
+}
+
+const MONGOLIAN_COLUMN_MAP: Record<string, string> = loadMongolianColumnMap();
 
 export function normalizeColumnName(columnName: string): string {
     const trimmed = columnName.trim().replace(/^["']|["']$/g, "");
@@ -239,6 +235,8 @@ export async function initDataLake(): Promise<void> {
                 CREATE TABLE IF NOT EXISTS sql_gen_log (
                     id SERIAL PRIMARY KEY,
                     user_id TEXT,
+                    request_id TEXT,
+                    ip_address TEXT,
                     query TEXT,
                     outcome TEXT NOT NULL,
                     attempts INTEGER DEFAULT 1,
@@ -248,6 +246,9 @@ export async function initDataLake(): Promise<void> {
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 )
             `);
+            // Migrate existing tables that are missing the new audit columns
+            await pool.query(`ALTER TABLE sql_gen_log ADD COLUMN IF NOT EXISTS request_id TEXT`);
+            await pool.query(`ALTER TABLE sql_gen_log ADD COLUMN IF NOT EXISTS ip_address TEXT`);
             await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_created_at ON sql_gen_log (created_at DESC)`);
             await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_outcome ON sql_gen_log (outcome)`);
 
@@ -295,8 +296,10 @@ export async function initDataLake(): Promise<void> {
                 }
             }
 
-            // Update admin credentials from env vars on every startup
-            if (process.env.ADMIN_PASSWORD || process.env.ADMIN_EMAIL) {
+            // Update admin credentials from env vars only when RESET_ADMIN_ON_BOOT=true.
+            // Disabled by default to prevent credential hijacking if .env is leaked in production.
+            const resetOnBoot = process.env.RESET_ADMIN_ON_BOOT === "true";
+            if (resetOnBoot && (process.env.ADMIN_PASSWORD || process.env.ADMIN_EMAIL)) {
                 const adminId = "user-admin-001";
                 const sets: string[] = [];
                 const params: any[] = [];
@@ -314,7 +317,9 @@ export async function initDataLake(): Promise<void> {
                     `UPDATE users SET ${sets.join(", ")} WHERE id = $${idx}`,
                     params
                 );
-                console.log(`[Data Lake] Admin credentials updated from env vars`);
+                console.log(`[Data Lake] Admin credentials updated from env vars (RESET_ADMIN_ON_BOOT=true)`);
+            } else if (!resetOnBoot && (process.env.ADMIN_PASSWORD || process.env.ADMIN_EMAIL)) {
+                console.warn("[Data Lake] ADMIN_PASSWORD/ADMIN_EMAIL env vars set but RESET_ADMIN_ON_BOOT is not 'true' — skipping credential reset for security. Set RESET_ADMIN_ON_BOOT=true to apply.");
             }
 
             _pgAvailable = true;

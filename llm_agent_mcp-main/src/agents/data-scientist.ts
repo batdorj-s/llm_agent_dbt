@@ -161,7 +161,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
 
     try {
         const limiterKey = config?.configurable?.threadId || "data-scientist-global";
-        const limiterResult = sandboxLimiter.check(limiterKey);
+        const limiterResult = await sandboxLimiter.check(limiterKey);
         if (!limiterResult.allowed) {
             const waitMsg = `\n[АНХААР] Шинжилгээний хязгаарт хүрлээ. ${Math.ceil(limiterResult.resetInMs / 1000)} секунд хүлээнэ үү.\n`;
             if (onChunk) onChunk(waitMsg);
@@ -182,9 +182,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
                 providerOrder: ["groq", "gemini", "openai"]
             }
         );
-        if (!llmResult) {
-            throw new Error("All LLM providers failed for Python generation");
-        }
+        // AllProvidersExhaustedError is thrown by invokeWithFallback — propagates to outer catch block
 
         let rawCode = llmResult.content;
         let pythonCode = extractCodeBlock(rawCode, "python");

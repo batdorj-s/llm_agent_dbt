@@ -1,10 +1,18 @@
 /**
  * api-server.ts — Express REST API for the Chat UI
+ *
+ * Route modules:
+ *   /api/auth/*  → src/routes/auth.router.ts
+ *   /api/chat/*  → src/routes/chat.router.ts
+ *   (remaining routes pending extraction to kpi/admin/report routers)
  */
 
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { authRouter } from "./routes/auth.router.js";
+import { chatRouter } from "./routes/chat.router.js";
+import { requestContext } from "./context.js";
 import { createToken, requireJwtSecret, verifyBearerHeader, verifyToken, requireRole, roleAtLeast } from "./auth.js";
 import { agentLimiter, authLimiter } from "./rate-limiter.js";
 import { detectProvider } from "./llm-provider.js";
@@ -34,11 +42,11 @@ const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
 app.use(express.json({ limit: "50mb" }));
 
-// Request ID middleware
+// Request ID middleware — propagates requestId through the entire async call chain
 app.use((req, _res, next) => {
     const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     (req as any).reqId = reqId;
-    next();
+    requestContext.run({ requestId: reqId, ipAddress: req.ip }, next);
 });
 
 function log(level: "info" | "warn" | "error", msg: string, req?: any, meta?: Record<string, unknown>) {
@@ -79,6 +87,10 @@ const upload = multer({
   },
 });
 
+// ── Feature routers ──────────────────────────────────────────
+app.use("/api/auth", authRouter);
+app.use("/api/chat", chatRouter);
+
 // ─────────────────────────────────────────────────────────────
 // Health / Status
 // ─────────────────────────────────────────────────────────────
@@ -96,156 +108,7 @@ app.get("/api/status", (req, res) => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
-// Auth — Login (credential verification)
-// ─────────────────────────────────────────────────────────────
-app.post("/api/auth/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password required" });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: "Password must be at least 8 characters" });
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ error: "Invalid email format" });
-  }
-
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
-  const rl = authLimiter.check(ip);
-  if (!rl.allowed) {
-    return res.status(429).json({ error: rl.message });
-  }
-
-  try {
-    const user = await authenticateUser(email, password);
-    if (!user) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    const token = createToken(user.id, user.role);
-    res.json({
-      token,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
-      message: `Logged in as ${user.name}`,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────
-// Auth — Register (admin only)
-// ─────────────────────────────────────────────────────────────
-app.post("/api/auth/register", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-  if (auth.payload.role !== "admin") {
-    return res.status(403).json({ error: "Only admins can create new users" });
-  }
-
-  const { email, password, name, role } = req.body;
-  if (!email || !password || !name) {
-    return res.status(400).json({ error: "email, password, and name are required" });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: "Password must be at least 8 characters" });
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ error: "Invalid email format" });
-  }
-
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
-  const rl = authLimiter.check(ip);
-  if (!rl.allowed) {
-    return res.status(429).json({ error: rl.message });
-  }
-
-  const userRole: UserRole = role === "analyst" ? "analyst" : role === "admin" ? "admin" : "viewer";
-
-  try {
-    const userId = await createUser(email, password, name, userRole);
-    if (!userId) {
-      return res.status(409).json({ error: "Email already registered" });
-    }
-    res.status(201).json({ success: true, userId, role: userRole });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────
-// Chat — Standard (non-streaming)
-// ─────────────────────────────────────────────────────────────
-app.post("/api/chat", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
-  const { userId, role } = auth.payload;
-  const limit = agentLimiter.check(userId);
-  if (!limit.allowed) {
-    return res.status(429).json({ error: limit.message, resetInMs: limit.resetInMs });
-  }
-
-  const { message, threadId, visualRequest } = req.body;
-  if (!message) return res.status(400).json({ error: "message required" });
-
-  try {
-    const threadIdFinal = threadId ?? `thread_${Date.now()}`;
-    const response = await runMultiAgent(message, role, threadIdFinal, visualRequest, userId);
-
-    res.json({
-      response,
-      threadId: threadIdFinal,
-      role,
-      remaining: limit.remaining,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────
-// Chat Streaming — SSE (Server-Sent Events)
-// ─────────────────────────────────────────────────────────────
-app.post("/api/chat/stream", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
-  const { userId, role } = auth.payload;
-  const limit = agentLimiter.check(userId);
-  if (!limit.allowed) {
-    return res.status(429).json({ error: limit.message });
-  }
-
-  const { message, threadId, visualRequest } = req.body;
-  if (!message) return res.status(400).json({ error: "message required" });
-
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-
-  const threadIdFinal = threadId ?? `thread_${Date.now()}`;
-  let fullResponse = "";
-
-  try {
-    await runMultiAgentStream(message, role, threadIdFinal, (chunk) => {
-      fullResponse += chunk;
-      res.write(`data: ${JSON.stringify({ chunk, type: "delta" })}\n\n`);
-    }, visualRequest, userId);
-    res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);
-  } catch (err: any) {
-    res.write(`data: ${JSON.stringify({ type: "error", error: err.message })}\n\n`);
-  } finally {
-    res.end();
-  }
-});
+// Auth and Chat routes are handled by src/routes/auth.router.ts and src/routes/chat.router.ts
 
 // ─────────────────────────────────────────────────────────────
 function extractDateFilter(req: any): { startDate?: string; endDate?: string } {

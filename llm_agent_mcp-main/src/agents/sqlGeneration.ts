@@ -15,6 +15,8 @@ export type SqlOutcome =
 
 export async function logSqlOutcome(params: {
   userId?: string;
+  requestId?: string;
+  ipAddress?: string;
   query: string;
   outcome: SqlOutcome;
   attempts?: number;
@@ -25,8 +27,8 @@ export async function logSqlOutcome(params: {
   try {
     const pool = getPool();
     await pool.query(
-      `INSERT INTO sql_gen_log (user_id, query, outcome, attempts, table_name, error, duration_ms) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [params.userId ?? null, params.query.slice(0, 500), params.outcome, params.attempts ?? 1, params.tableName ?? null, params.error ?? null, params.durationMs ?? null]
+      `INSERT INTO sql_gen_log (user_id, request_id, ip_address, query, outcome, attempts, table_name, error, duration_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [params.userId ?? null, params.requestId ?? null, params.ipAddress ?? null, params.query.slice(0, 500), params.outcome, params.attempts ?? 1, params.tableName ?? null, params.error ?? null, params.durationMs ?? null]
     );
   } catch (err) {
     console.warn("[SqlGenLog] Failed to log outcome:", (err as Error).message);

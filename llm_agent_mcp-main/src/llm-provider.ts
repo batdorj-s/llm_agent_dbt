@@ -25,6 +25,16 @@ dotenv.config();
 
 export type LLMProvider = "gemini" | "groq" | "anthropic" | "openai" | "none";
 
+export class AllProvidersExhaustedError extends Error {
+    constructor(
+        public readonly lastError: Error | null,
+        public readonly attemptedProviders: LLMProvider[]
+    ) {
+        super(`All LLM providers failed (tried: ${attemptedProviders.join(", ")}). Last error: ${lastError?.message ?? "unknown"}`);
+        this.name = "AllProvidersExhaustedError";
+    }
+}
+
 export interface LLMInfo {
   provider: LLMProvider;
   model: string;
@@ -192,7 +202,7 @@ export async function invokeWithFallback(
         providerOrder?: LLMProvider[];
         timeout?: number;
     }
-): Promise<{ content: string; provider: LLMProvider } | null> {
+): Promise<{ content: string; provider: LLMProvider }> {
     const temp = options?.temperature ?? 0;
     const providerOrder = options?.providerOrder ?? DEFAULT_PROVIDER_ORDER;
     const orderedProviders = providerOrder
@@ -200,11 +210,11 @@ export async function invokeWithFallback(
         .filter((entry): entry is ProviderConfig => entry !== undefined && isKeySet(entry.envKey));
 
     if (orderedProviders.length === 0) {
-        console.warn("[LLM] No API keys configured for any provider.");
-        return null;
+        throw new AllProvidersExhaustedError(null, []);
     }
 
     let lastError: any = null;
+    const attempted: LLMProvider[] = [];
     for (const p of orderedProviders) {
         try {
             console.log(`[LLM] Invoking ${p.provider.toUpperCase()} — ${p.model}...`);
@@ -256,14 +266,15 @@ export async function invokeWithFallback(
             return { content: response.content as string, provider: p.provider };
         } catch (err: any) {
             lastError = err;
+            attempted.push(p.provider);
             const isRateLimit = isRateLimitError(err);
             console.warn(`[LLM] ${p.provider.toUpperCase()} failed: ${isRateLimit ? "RATE LIMIT" : err.message}`);
             console.log(`[LLM] Falling back to next provider after ${p.provider} failure...`);
         }
     }
 
-    console.error(`[LLM] All providers failed. Last error: ${lastError?.message}`);
-    return null;
+    console.error(`[LLM] All providers exhausted (tried: ${attempted.join(", ")}). Last error: ${lastError?.message}`);
+    throw new AllProvidersExhaustedError(lastError, attempted);
 }
 
 /**

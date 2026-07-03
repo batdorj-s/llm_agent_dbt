@@ -16,6 +16,60 @@ const SANDBOX_CREATE_TIMEOUT_MS = 60_000;
 const SANDBOX_MAX_OUTPUT_CHARS = 10_000;
 const TEMP_DIR = "/var/folders/9z/_bgsb1152n9g37m6xn9h8thc0000gn/T/opencode";
 
+// ─────────────────────────────────────────────────────────────
+// Static code analysis for local fallback only
+// E2B handles its own sandboxing; this is defense-in-depth for local mode.
+// ─────────────────────────────────────────────────────────────
+
+const BLOCKED_MODULES = [
+  "os", "subprocess", "socket", "sys", "shutil", "pathlib",
+  "pty", "tempfile", "ctypes", "cffi", "importlib", "pickle",
+  "marshal", "shelve", "multiprocessing", "threading", "asyncio",
+];
+
+const BLOCKED_PATTERNS = [
+  /\beval\s*\(/,
+  /\bexec\s*\(/,
+  /\b__import__\s*\(/,
+  /\bcompile\s*\(/,
+  /\bgetattr\s*\(/,
+  /\bsetattr\s*\(/,
+  /\bdelattr\s*\(/,
+  /\bopen\s*\([^)]*['"]\s*\/(?:etc|proc|sys|dev|root)/,
+  /\bos\.\w+/,
+  /\bsubprocess\.\w+/,
+];
+
+const ALLOWED_MODULES = new Set([
+  "pandas", "numpy", "matplotlib", "scipy", "sklearn",
+  "statsmodels", "json", "re", "math", "datetime", "collections",
+  "itertools", "functools", "string", "decimal", "fractions",
+  "random", "statistics", "csv", "io", "base64", "hashlib",
+  "typing", "dataclasses", "enum", "abc",
+]);
+
+export function validatePythonCode(code: string): { safe: boolean; reason?: string } {
+  const importRe = /^\s*(?:import|from)\s+([\w.]+)/gm;
+  let match: RegExpExecArray | null;
+  while ((match = importRe.exec(code)) !== null) {
+    const module = match[1].split(".")[0].toLowerCase();
+    if (BLOCKED_MODULES.includes(module)) {
+      return { safe: false, reason: `Import of blocked module '${module}' is not allowed in local execution mode.` };
+    }
+    if (!ALLOWED_MODULES.has(module)) {
+      return { safe: false, reason: `Import of unrecognized module '${module}' is not allowed. Allowed: ${[...ALLOWED_MODULES].join(", ")}.` };
+    }
+  }
+
+  for (const pattern of BLOCKED_PATTERNS) {
+    if (pattern.test(code)) {
+      return { safe: false, reason: `Detected dangerous pattern: ${pattern.source}` };
+    }
+  }
+
+  return { safe: true };
+}
+
 function preparePythonCode(code: string): string {
     const safeLines = [
         "# [WARN] Memory safety: sampling first rows to prevent OOM",
@@ -126,6 +180,10 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
             ].join("\n");
           }
           console.warn("[WARN] ALLOW_LOCAL_PYTHON=true — executing on host machine (INSECURE).");
+            const validation = validatePythonCode(code);
+            if (!validation.safe) {
+              return `[SECURITY] Code rejected by local sandbox policy:\n${validation.reason}`;
+            }
             const safeCode = skipMemorySafe ? code : preparePythonCode(code);
             return await runPythonLocally(safeCode, timeoutMs);
         }

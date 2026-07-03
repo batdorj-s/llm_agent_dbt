@@ -67,8 +67,8 @@ Respond with ONLY the raw JSON. No markdown, no code fences, no explanations.`;
       { role: "user", content: prompt }
     ], { temperature: 0.1, timeout: 30000 });
 
-    if (!result?.content) {
-      console.warn(`[DataProfiler] No LLM response for ${tableName}`);
+    if (!result.content) {
+      console.warn(`[DataProfiler] Empty LLM response for ${tableName}`);
       return null;
     }
 

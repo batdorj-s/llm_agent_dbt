@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, LayoutDashboard, ThumbsUp, ThumbsDown, FileText } from "lucide-react";
+import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, LayoutDashboard, ThumbsUp, ThumbsDown } from "lucide-react";
 
-import { Message, KpiData, SalesHistory, UploadedFile, ServerStatus, ComputedMetrics } from "../components/types";
 import { Header } from "../components/Header";
 import { LoginForm } from "../components/LoginForm";
 import { KpiGrid } from "../components/KpiGrid";
@@ -18,601 +17,210 @@ import AvatarList from "../components/AvatarList";
 import { SalesCard, TopSearch, ProportionSales, ActiveChart, IntroduceRow, OfflineData, Gauge, Radar, PageLoading, Liquid, EditableLinkGroup, PageHeaderContent, ExtraContent } from "../components/dashboard";
 import { FinanceDashboard } from "../components/FinanceDashboard";
 import { FinanceReportView } from "../components/FinanceReportView";
-import { getTimeDistance } from "../lib/getTimeDistance";
 
-export default function Home() {
-  // ── Auth ──
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<{ email: string; role: string } | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isAuthLoading, setIsAuthLoading] = useState(false);
-  const [threadId, setThreadId] = useState<string>("");
+import { useAuth } from "../hooks/useAuth";
+import { useTheme } from "../hooks/useTheme";
+import { useChat } from "../hooks/useChat";
+import { useDashboard, type Period } from "../hooks/useDashboard";
+import { useAdmin } from "../hooks/useAdmin";
+import { usePreview } from "../hooks/usePreview";
 
-  // ── Chat ──
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [isChatLoading, setIsChatLoading] = useState(false);
-  const [streamEnabled, setStreamEnabled] = useState(true);
-  const [lastAgentType, setLastAgentType] = useState<string | null>(null);
+// ─── Suggestion constants ─────────────────────────────────────────────────────
 
-  // ── Preview ──
-  const [previewData, setPreviewData] = useState<Record<string, unknown>[] | null>(null);
-  const [previewColumns, setPreviewColumns] = useState<string[]>([]);
-  const [previewTableName, setPreviewTableName] = useState("");
-  const [previewDescription, setPreviewDescription] = useState<string | null>(null);
-  const [previewContent, setPreviewContent] = useState<string | null>(null);
-  const [previewHasDownload, setPreviewHasDownload] = useState(false);
-  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+const SUGGESTIONS_INITIAL = [
+  { label: "Нийт зарлага",     query: "Нийт зарлага хэд вэ?",                     icon: <TrendingDown className="w-3 h-3" /> },
+  { label: "Нийт орлого",      query: "Нийт орлого хэд вэ?",                      icon: <TrendingUp   className="w-3 h-3" /> },
+  { label: "Зардлын задаргаа", query: "Зардлын задаргааг ангилалаар харуул",       icon: <PieChartIcon className="w-3 h-3" /> },
+  { label: "Сараар харьцуулалт", query: "Сараар орлого зарлагын харьцуулалт харуул", icon: <BarChart2     className="w-3 h-3" /> },
+  { label: "Хамгийн их зардал", query: "Хамгийн их зардалтай ангилал юу вэ?",     icon: <ArrowUp      className="w-3 h-3" /> },
+  { label: "Тайлан",           query: "Санхүүгийн тайлан гаргаж өгнө үү",         icon: <Activity     className="w-3 h-3" /> },
+];
 
-  // ── Dashboard / System ──
-  const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
-  const [salesKpi, setSalesKpi] = useState<KpiData | null>(null);
-  const [usersKpi, setUsersKpi] = useState<KpiData | null>(null);
-  const [churnKpi, setChurnKpi] = useState<KpiData | null>(null);
-  const [computedMetrics, setComputedMetrics] = useState<ComputedMetrics | null>(null);
-  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
-  const [salesHistory, setSalesHistory] = useState<SalesHistory[]>([]);
-  const [, setDashboardError] = useState<string | null>(null);
-  const [financeCharts, setFinanceCharts] = useState<any | null>(null);
-  type Period = "7d" | "1m" | "3m" | "6m" | "12m" | "all";
-  const [period, setPeriod] = useState<Period>("all");
+const FOLLOW_UP_SUGGESTIONS: Record<string, { label: string; query: string }[]> = {
+  "Finance Agent": [
+    { label: "Дэлгэрэнгүй мэдээлэл", query: "Өмнөх хариултаа дэлгэрэнгүй тайлбарла" },
+    { label: "Өмнөх сартай харьцуулах", query: "Өмнөх сарын үзүүлэлттэй харьцуул" },
+    { label: "Графикаар харуул", query: "Энэ өгөгдлийг графикаар харуул" },
+  ],
+  "Tech Agent": [
+    { label: "Top 5 харуул",  query: "Хамгийн их борлуулалттай эхний 5-ыг харуул" },
+    { label: "График зур",    query: "Өгөгдлийн график зурж харуул" },
+    { label: "Dashboard",     query: "Энэ өгөгдлийг dashboard болгож харуул" },
+  ],
+  "DataScientistAgent": [
+    { label: "Forecast шинэчлэх",  query: "Шинэ өгөгдлөөр таамаглалаа шинэчил" },
+    { label: "Cluster дэлгэрэнгүй", query: "Бүлэглэлтийн дэлгэрэнгүй шинжилгээ харуул" },
+    { label: "Корреляцийн матриц", query: "Корреляцийн матриц харуул" },
+  ],
+};
 
-  function periodToDateRange(p: Period): { startDate?: string; endDate?: string } {
-    const now = new Date();
-    const end = now.toISOString().split("T")[0];
-    const start = new Date(now);
-    switch (p) {
-      case "7d": start.setDate(start.getDate() - 7); break;
-      case "1m": start.setMonth(start.getMonth() - 1); break;
-      case "3m": start.setMonth(start.getMonth() - 3); break;
-      case "6m": start.setMonth(start.getMonth() - 6); break;
-      case "12m": start.setMonth(start.getMonth() - 12); break;
-      case "all": return {};
-    }
-    return { startDate: start.toISOString().split("T")[0], endDate: end };
-  }
+// ─── Finance data helpers ─────────────────────────────────────────────────────
 
-  function periodToHistoryLimit(p: Period): number {
-    switch (p) {
-      case "7d": return 7;
-      case "1m": return 30;
-      case "3m": return 90;
-      case "6m": return 180;
-      case "12m": return 365;
-      case "all": return 12;
-    }
-  }
+function useFinanceChartData(financeCharts: any, salesKpi: any) {
+  const financeSummary        = financeCharts?.summary ?? null;
+  const financePeriod         = financeCharts?.period;
+  const findChart             = (id: string) => financeCharts?.charts?.find((c: any) => c.id === id);
 
-  // ── Routing state ──
-  const [activeRoutingState, setActiveRoutingState] = useState<"idle" | "routing" | "finance" | "tech" | "done">("idle");
-  const [, setLastAgentResponded] = useState<string | null>(null);
-
-  // ── Admin: Target Manager ──
-  const [adjustMetric, setAdjustMetric] = useState<"sales" | "users" | "churn_rate">("sales");
-  const [newTargetValue, setNewTargetValue] = useState<number>(200000000);
-  const [isUpdatingTarget, setIsUpdatingTarget] = useState<boolean>(false);
-  const [salesUpdateSuccess, setSalesUpdateSuccess] = useState<string | null>(null);
-
-  // ── Upload: CSV ──
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [tableNameInput, setTableNameInput] = useState<string>("");
-  const [tableDescInput, setTableDescInput] = useState<string>("");
-  const [isUploadingCsv, setIsUploadingCsv] = useState<boolean>(false);
-  const [csvUploadMessage, setCsvUploadMessage] = useState<string | null>(null);
-
-  // ── Upload: Excel ──
-  const [excelFile, setExcelFile] = useState<File | null>(null);
-  const [excelTableNameInput, setExcelTableNameInput] = useState<string>("");
-  const [excelDescInput, setExcelDescInput] = useState<string>("");
-  const [isUploadingExcel, setIsUploadingExcel] = useState<boolean>(false);
-  const [excelUploadMessage, setExcelUploadMessage] = useState<string | null>(null);
-
-  // ── Upload: Document ──
-  const [docFile, setDocFile] = useState<File | null>(null);
-  const [docDescInput, setDocDescInput] = useState<string>("");
-  const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
-  const [docUploadMessage, setDocUploadMessage] = useState<string | null>(null);
-
-  // ── File Manager ──
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [, setIsFilesLoading] = useState(false);
-
-  // ── Feedback ──
-  const [feedbackState, setFeedbackState] = useState<Record<string, 'positive' | 'negative' | null>>({});
-  const [feedbackSentMsgs, setFeedbackSentMsgs] = useState<Record<string, string>>({});
-
-  // ── Graphic Mode ──
-  const [isGraphicModeEnabled, setIsGraphicModeEnabled] = useState<boolean>(false);
-
-  // ── Theme ──
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
-
-  // ── Tab navigation ──
-  const [activeTab, setActiveTab] = useState<"ask" | "dashboard" | "report">("ask");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [reportMode, setReportMode] = useState<"finance" | "sales">("finance");
-
-  // ── Refs ──
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  // ── Suggestions ──
-  const SUGGESTIONS_INITIAL: { label: string; query: string; icon: React.ReactNode }[] = [
-    { label: "Нийт зарлага", query: "Нийт зарлага хэд вэ?", icon: <TrendingDown className="w-3 h-3" /> },
-    { label: "Нийт орлого", query: "Нийт орлого хэд вэ?", icon: <TrendingUp className="w-3 h-3" /> },
-    { label: "Зардлын задаргаа", query: "Зардлын задаргааг ангилалаар харуул", icon: <PieChartIcon className="w-3 h-3" /> },
-    { label: "Сараар харьцуулалт", query: "Сараар орлого зарлагын харьцуулалт харуул", icon: <BarChart2 className="w-3 h-3" /> },
-    { label: "Хамгийн их зардал", query: "Хамгийн их зардалтай ангилал юу вэ?", icon: <ArrowUp className="w-3 h-3" /> },
-    { label: "Тайлан", query: "Санхүүгийн тайлан гаргаж өгнө үү", icon: <Activity className="w-3 h-3" /> },
-  ];
-
-  const FOLLOW_UP_SUGGESTIONS: Record<string, { label: string; query: string }[]> = {
-    "Finance Agent": [
-      { label: "Дэлгэрэнгүй мэдээлэл", query: "Өмнөх хариултаа дэлгэрэнгүй тайлбарла" },
-      { label: "Өмнөх сартай харьцуулах", query: "Өмнөх сарын үзүүлэлттэй харьцуул" },
-      { label: "Графикаар харуул", query: "Энэ өгөгдлийг графикаар харуул" },
-    ],
-    "Tech Agent": [
-      { label: "Top 5 харуул", query: "Хамгийн их борлуулалттай эхний 5-ыг харуул" },
-      { label: "График зур", query: "Өгөгдлийн график зурж харуул" },
-      { label: "Dashboard", query: "Энэ өгөгдлийг dashboard болгож харуул" },
-    ],
-    "DataScientistAgent": [
-      { label: "Forecast шинэчлэх", query: "Шинэ өгөгдлөөр таамаглалаа шинэчил" },
-      { label: "Cluster дэлгэрэнгүй", query: "Бүлэглэлтийн дэлгэрэнгүй шинжилгээ харуул" },
-      { label: "Корреляцийн матриц", query: "Корреляцийн матриц харуул" },
-    ],
-  };
-
-  // ── Theme effects ──
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-  }, [theme]);
-
-  useEffect(() => {
-    const storedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
-    if (storedTheme) setTheme(storedTheme);
-    else setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  }, []);
-
-  // ── Auth restore ──
-  useEffect(() => {
-    const storedToken = localStorage.getItem("agent_token");
-    const storedUser = localStorage.getItem("agent_user");
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-      setIsLoggedIn(true);
-      setThreadId(`thread_${Date.now()}`);
-    }
-  }, []);
-
-  // ── Server status ──
-  useEffect(() => { fetchServerStatus(); }, []);
-
-  // ── Dashboard data ──
-  useEffect(() => {
-    if (isLoggedIn && token) {
-      fetchDashboardData();
-      fetchUploadedFiles();
-    }
-  }, [isLoggedIn, token, period]);
-
-  // ── Auto-scroll ──
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // ── Theme helpers ──
-  const toggleTheme = () => {
-    const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
-    localStorage.setItem("theme", next);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("agent_token");
-    localStorage.removeItem("agent_user");
-    setToken(null); setUser(null); setIsLoggedIn(false);
-    setMessages([]); setSalesKpi(null); setUsersKpi(null); setChurnKpi(null); setComputedMetrics(null); setSalesHistory([]); setIsDashboardLoading(true);
-  };
-
-  // ── Data fetching ──
-  const fetchServerStatus = async () => {
-    try { const res = await fetch("/api/status"); if (res.ok) setServerStatus(await res.json()); } catch {}
-  };
-
-  const fetchDashboardData = async () => {
-    if (!token) { setIsDashboardLoading(false); return; }
-    setIsDashboardLoading(true);
-    try {
-      setDashboardError(null);
-      const headers = { Authorization: `Bearer ${token}` };
-      const dr = periodToDateRange(period);
-      const params = new URLSearchParams();
-      params.set("limit", String(periodToHistoryLimit(period)));
-      if (dr.startDate) params.set("startDate", dr.startDate);
-      if (dr.endDate) params.set("endDate", dr.endDate);
-      const qs = params.toString();
-
-      const [salesRes, usersRes, churnRes, historyRes, computedRes] = await Promise.all([
-        fetch(`/api/kpi/sales?${qs}`, { headers }),
-        fetch(`/api/kpi/users?${qs}`, { headers }),
-        fetch(`/api/kpi/churn_rate?${qs}`, { headers }),
-        fetch(`/api/kpi-history?${qs}`, { headers }),
-        fetch(`/api/dashboard/computed-metrics?${qs}`, { headers }),
-      ]);
-      if (salesRes.ok) setSalesKpi(await salesRes.json());
-      else if (salesRes.status === 401) { handleLogout(); return; }
-      if (usersRes.ok) setUsersKpi(await usersRes.json());
-      if (churnRes.ok) setChurnKpi(await churnRes.json());
-      if (historyRes.ok) setSalesHistory(await historyRes.json());
-      if (computedRes.ok) setComputedMetrics(await computedRes.json());
-      // Fetch finance-charts data for dashboard sub-components
-      try {
-        const finRes = await fetch(`/api/finance-charts`, { headers });
-        if (finRes.ok) setFinanceCharts(await finRes.json());
-      } catch {}
-    } catch { setDashboardError("Could not retrieve KPI data."); }
-    finally { setIsDashboardLoading(false); }
-  };
-
-  const fetchUploadedFiles = async () => {
-    if (!token) return;
-    setIsFilesLoading(true);
-    try {
-      const res = await fetch("/api/admin/files", { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) setUploadedFiles(await res.json());
-    } catch {} finally { setIsFilesLoading(false); }
-  };
-
-  // ── File ops ──
-  const handleDeleteFile = async (id: string) => {
-    if (!token || !confirm("Are you sure you want to delete this asset?")) return;
-    try {
-      const res = await fetch(`/api/admin/files/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) { fetchUploadedFiles(); fetchDashboardData(); }
-    } catch {}
-  };
-
-  const handleViewFile = async (file: UploadedFile) => {
-    if (!token) return;
-    try {
-      const res = await fetch(`/api/admin/files/${file.id}/preview`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) {
-        let errMsg = `Preview failed (${res.status})`;
-        try { const errBody = await res.json(); if (errBody.error) errMsg += `: ${errBody.error}`; } catch {}
-        if (res.status === 401) {
-          setToken(null);
-          errMsg = "Session expired. Please log in again.";
-        }
-        throw new Error(errMsg);
-      }
-      const data = await res.json();
-      setPreviewData(data.preview || null);
-      setPreviewColumns(data.columns || []);
-      setPreviewTableName(data.tableName || file.filename);
-      setPreviewDescription(data.description || null);
-      setPreviewContent(data.content || null);
-      setPreviewHasDownload(data.hasDownload === true);
-      setPreviewFileId(file.id);
-    } catch (e) { console.error("Failed to view file", e); }
-  };
-
-  // ── Auth ──
-  const handleLogin = async (e?: React.FormEvent, customCreds?: { email: string; role: string }) => {
-    if (e) e.preventDefault();
-    setIsAuthLoading(true);
-    setDashboardError(null);
-    const loginEmail = customCreds ? customCreds.email : email;
-    const loginPassword = customCreds ? "demopassword" : password;
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Login failed"); }
-      const data = await res.json();
-      localStorage.setItem("agent_token", data.token);
-      localStorage.setItem("agent_user", JSON.stringify(data.user));
-      setToken(data.token); setUser(data.user); setIsLoggedIn(true);
-      setThreadId(`thread_${Date.now()}`);
-      setSalesUpdateSuccess(null);
-      setMessages([{ id: "welcome", sender: "agent", text: "Сайн уу? Би **Шинжээч.ai** — таны өгөгдлийн шинжилгээний туслах. Надаас дата шинжилгээ, forecast, dashboard, эсвэл ерөнхий асуулт асууж болно.", timestamp: new Date(), agentName: "Шинжээч.ai" }]);
-    } catch (e: unknown) { alert(e instanceof Error ? e.message : "Connection to API Server failed."); }
-    finally { setIsAuthLoading(false); }
-  };
-
-  // ── Chat ──
-  const handleSendMessage = async (e?: React.FormEvent, customInput?: string) => {
-    if (e) e.preventDefault();
-    const query = customInput || input;
-    if (!query.trim() || isChatLoading || !token) return;
-    if (!threadId) setThreadId(`thread_${Date.now()}`);
-    if (!customInput) setInput("");
-    const userMsg: Message = { id: `user_${Date.now()}`, sender: "user", text: query, timestamp: new Date() };
-    setMessages(p => [...p, userMsg]);
-    setIsChatLoading(true);
-    setLastAgentResponded(null);
-    setActiveRoutingState("routing");
-    const agentMsgId = `agent_${Date.now()}`;
-    setMessages(p => [...p, { id: agentMsgId, sender: "agent", text: "", timestamp: new Date(), agentName: "Шинжээч.ai" }]);
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    try {
-      if (streamEnabled) {
-        const response = await fetch("/api/chat/stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ message: query, threadId, visualRequest: isGraphicModeEnabled }),
-          signal: controller.signal,
-        });
-        if (!response.ok) { const err = await response.json(); throw new Error(err.error || "Failed to initiate agent stream"); }
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        if (!reader) throw new Error("Response body is not readable");
-        let buffer = "", fullResponse = "";
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (line.trim().startsWith("data: ")) {
-              const jsonStr = line.replace("data: ", "").trim();
-              try {
-                const data = JSON.parse(jsonStr);
-                if (data.type === "delta") {
-                  fullResponse += data.chunk;
-                  let detectedAgent = "Шинжээч.ai";
-                  let nodeState: typeof activeRoutingState = "routing";
-                  if (fullResponse.includes("(Finance Agent)")) { detectedAgent = "Finance Agent"; nodeState = "finance"; }
-                  else if (fullResponse.includes("(Tech Agent)")) { detectedAgent = "Tech Agent"; nodeState = "tech"; }
-                  else if (fullResponse.includes("Security Alert")) { detectedAgent = "Security Manager"; nodeState = "idle"; }
-                  setActiveRoutingState(nodeState);
-                  setLastAgentResponded(detectedAgent);
-                  setLastAgentType(detectedAgent);
-                  setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: fullResponse, agentName: detectedAgent } : m));
-                } else if (data.type === "done") { setActiveRoutingState("done"); fetchDashboardData(); }
-                else if (data.type === "error") throw new Error(data.error || "Streaming error occurred");
-              } catch {}
-            }
-          }
-        }
-      } else {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ message: query, threadId, visualRequest: isGraphicModeEnabled }),
-          signal: controller.signal,
-        });
-        if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to get agent response"); }
-        await res.json();
-        setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: "Execution complete.", agentName: "Agent System" } : m));
-        setActiveRoutingState("done"); fetchDashboardData();
-      }
-    } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === "AbortError") {
-        setActiveRoutingState("idle");
-        setMessages(p => { const last = p[p.length - 1]; return last && last.sender === "agent" ? p.map(m => m.id === last.id ? { ...m, text: m.text ? m.text + "\n\n*Хүсэлтийг цуцаллаа.*" : "*Хүсэлтийг цуцаллаа.*" } : m) : p; });
-        return;
-      }
-      const errorMessage = e instanceof Error ? e.message : "An error occurred.";
-      setActiveRoutingState("idle");
-      setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: errorMessage, agentName: "System Error Handler", isError: true } : m));
-    } finally { setIsChatLoading(false); abortControllerRef.current = null; }
-  };
-
-  const handleCancelMessage = () => { abortControllerRef.current?.abort(); };
-
-  // ── Feedback ──
-  const handleFeedback = async (msgId: string, rating: 'positive' | 'negative') => {
-    if (!token || feedbackState[msgId]) return;
-    setFeedbackState(p => ({ ...p, [msgId]: rating }));
-    const msgIndex = messages.findIndex(m => m.id === msgId);
-    const agentMsg = messages[msgIndex];
-    const userMsg = msgIndex > 0 ? messages.slice(0, msgIndex).reverse().find(m => m.sender === 'user') : null;
-    try {
-      const res = await fetch("/api/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: userMsg?.text || agentMsg?.text || "", response: agentMsg?.text || "", rating, threadId }),
-      });
-      if (!res.ok) setFeedbackState(p => ({ ...p, [msgId]: null }));
-      const icon = rating === 'positive' ? '✓' : '✗';
-      setFeedbackSentMsgs(p => ({ ...p, [msgId]: icon }));
-      setTimeout(() => setFeedbackSentMsgs(p => { const n = { ...p }; delete n[msgId]; return n; }), 2000);
-    } catch { setFeedbackState(p => ({ ...p, [msgId]: null })); }
-  };
-
-  // ── Admin: Update KPI target ──
-  const handleUpdateKpiTarget = async () => {
-    if (newTargetValue === undefined || isNaN(newTargetValue) || isUpdatingTarget || !token) return;
-    setIsUpdatingTarget(true); setSalesUpdateSuccess(null);
-    try {
-      const res = await fetch(`/api/kpi/${adjustMetric}/target`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ target: newTargetValue }),
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Update failed"); }
-      setSalesUpdateSuccess("Target updated."); fetchDashboardData();
-    } catch (e: unknown) { setSalesUpdateSuccess(`Error: ${e instanceof Error ? e.message : e}`); }
-    finally { setIsUpdatingTarget(false); }
-  };
-
-  // ── Upload: CSV ──
-  const handleUploadCsv = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!csvFile || !tableNameInput.trim() || !tableDescInput.trim() || isUploadingCsv || !token) return;
-    setIsUploadingCsv(true); setCsvUploadMessage(null);
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const csvContent = event.target?.result as string;
-      try {
-        const res = await fetch("/api/admin/upload-csv", {
-          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ filename: csvFile.name, csvContent, tableName: tableNameInput, description: tableDescInput }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Upload failed");
-        setCsvUploadMessage(`Success: Table '${tableNameInput}' uploaded!`);
-        if (data.preview) { setPreviewData(data.preview); setPreviewColumns(data.columns || []); setPreviewTableName(tableNameInput); setPreviewDescription(null); setPreviewContent(null); setPreviewHasDownload(false); setPreviewFileId(null); }
-        setCsvFile(null); setTableNameInput(""); setTableDescInput("");
-        fetchDashboardData(); fetchUploadedFiles();
-      } catch (err: unknown) { setCsvUploadMessage(`Error: ${err instanceof Error ? err.message : err}`); }
-      finally { setIsUploadingCsv(false); }
-    };
-    reader.onerror = () => { setCsvUploadMessage("Error reading file."); setIsUploadingCsv(false); };
-    reader.readAsText(csvFile);
-  };
-
-  // ── Upload: Excel ──
-  const handleUploadExcel = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!excelFile || !excelTableNameInput.trim() || !excelDescInput.trim() || isUploadingExcel || !token) return;
-    setIsUploadingExcel(true); setExcelUploadMessage(null);
-    const formData = new FormData();
-    formData.append("file", excelFile); formData.append("tableName", excelTableNameInput); formData.append("description", excelDescInput);
-    try {
-      const res = await fetch("/api/admin/upload-excel", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      setExcelUploadMessage(`Success: Table '${excelTableNameInput}' imported!`);
-      if (data.preview) { setPreviewData(data.preview); setPreviewColumns(data.columns || []); setPreviewTableName(excelTableNameInput); setPreviewDescription(null); setPreviewContent(null); setPreviewHasDownload(false); setPreviewFileId(null); }
-      setExcelFile(null); setExcelTableNameInput(""); setExcelDescInput("");
-      fetchDashboardData(); fetchUploadedFiles();
-    } catch (err: unknown) { setExcelUploadMessage(`Error: ${err instanceof Error ? err.message : err}`); }
-    finally { setIsUploadingExcel(false); }
-  };
-
-  // ── Upload: Document ──
-  const handleUploadDoc = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!docFile || !docDescInput.trim() || isUploadingDoc || !token) return;
-    setIsUploadingDoc(true); setDocUploadMessage(null);
-    const formData = new FormData();
-    formData.append("file", docFile); formData.append("description", docDescInput); formData.append("category", "manual"); formData.append("department", "general");
-    try {
-      const res = await fetch("/api/admin/upload-doc", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      setDocUploadMessage(`Success: Document '${docFile.name}' indexed!`);
-      setDocFile(null); setDocDescInput(""); fetchUploadedFiles();
-    } catch (err: unknown) { setDocUploadMessage(`Error: ${err instanceof Error ? err.message : err}`); }
-    finally { setIsUploadingDoc(false); }
-  };
-
-  // ── Close preview ──
-  const closePreview = () => {
-    setPreviewData(null); setPreviewDescription(null); setPreviewContent(null); setPreviewHasDownload(false); setPreviewFileId(null);
-  };
-
-  // ── Finance data helpers for dashboard sub-components ──
-  const financeSummary = financeCharts?.summary ?? null;
-  const financePeriod = financeCharts?.period;
   const financeMonthlyIncome = (() => {
-    const cf = financeCharts?.charts?.find((c: any) => c.id === "monthly_cashflow");
-    if (!cf?.data) return null;
-    return cf.data.map((d: any) => ({ x: d.label, y: Number(d["Орлого"] ?? 0) }));
+    const cf = findChart("monthly_cashflow");
+    return cf?.data?.map((d: any) => ({ x: d.label, y: Number(d["Орлого"] ?? 0) })) ?? null;
   })();
+
   const financeMonthlyExpense = (() => {
-    const cf = financeCharts?.charts?.find((c: any) => c.id === "monthly_cashflow");
-    if (!cf?.data) return null;
-    return cf.data.map((d: any) => ({ x: d.label, y: Number(d["Зарлага"] ?? 0) }));
+    const cf = findChart("monthly_cashflow");
+    return cf?.data?.map((d: any) => ({ x: d.label, y: Number(d["Зарлага"] ?? 0) })) ?? null;
   })();
+
   const financeExpenseCategories: { name: string; share: number; color: string }[] | null = (() => {
-    const cb = financeCharts?.charts?.find((c: any) => c.id === "category_breakdown");
+    const cb = findChart("category_breakdown");
     if (!cb?.data) return null;
     const total = cb.data.reduce((s: number, d: any) => s + Number(d.value ?? 0), 0);
     return cb.data.map((d: any, i: number) => ({
-      name: String(d.label ?? ""),
-      share: total > 0 ? Number(d.value ?? 0) / total : 0,
-      color: ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"][i % 7],
+      name: String(d.label ?? ""), share: total > 0 ? Number(d.value ?? 0) / total : 0,
+      color: ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"][i % 7],
     }));
   })();
+
   const financeExpensePieData = (() => {
-    const cb = financeCharts?.charts?.find((c: any) => c.id === "category_breakdown");
-    if (!cb?.data) return null;
-    return cb.data.map((d: any) => ({ x: String(d.label ?? ""), y: Number(d.value ?? 0) }));
+    const cb = findChart("category_breakdown");
+    return cb?.data?.map((d: any) => ({ x: String(d.label ?? ""), y: Number(d.value ?? 0) })) ?? null;
   })();
+
   const financeCounterparties = (() => {
-    const tp = financeCharts?.charts?.find((c: any) => c.id === "top_parties");
+    const tp = findChart("top_parties");
     if (!tp?.data) return null;
     const total = tp.data.reduce((s: number, d: any) => s + Number(d.value ?? 0), 0);
     return tp.data.map((d: any, i: number) => ({
-      index: i + 1,
-      name: String(d.label ?? ""),
-      amount: Number(d.value ?? 0),
+      index: i + 1, name: String(d.label ?? ""), amount: Number(d.value ?? 0),
       share: total > 0 ? Math.round((Number(d.value ?? 0) / total) * 1000) / 10 : 0,
     }));
   })();
+
   const financeCashData = (() => {
-    const dt = financeCharts?.charts?.find((c: any) => c.id === "daily_trend");
+    const dt = findChart("daily_trend");
     if (!dt?.data) return null;
     let cumulative = 0;
-    return dt.data.map((d: any) => {
-      cumulative += Number(d.value ?? 0);
-      return { x: String(d.label ?? ""), y: cumulative };
-    });
+    return dt.data.map((d: any) => { cumulative += Number(d.value ?? 0); return { x: String(d.label ?? ""), y: cumulative }; });
   })();
+
   const financeRadarData = (() => {
     if (!financeSummary) return null;
-    const incomeScore = financeSummary.totalIncome > 0 ? Math.min(100, Math.round((financeSummary.totalIncome / (salesKpi?.target ?? 200_000_000)) * 100)) : 50;
+    const incomeScore  = financeSummary.totalIncome > 0 ? Math.min(100, Math.round((financeSummary.totalIncome / (salesKpi?.target ?? 200_000_000)) * 100)) : 50;
     const expenseRatio = financeSummary.totalIncome > 0 ? Math.round((1 - financeSummary.totalExpense / financeSummary.totalIncome) * 100) : 50;
-    const profitScore = financeSummary.totalIncome > 0 ? Math.min(100, Math.round((financeSummary.operatingProfit / financeSummary.totalIncome) * 100 * 5)) : 50;
+    const profitScore  = financeSummary.totalIncome > 0 ? Math.min(100, Math.round((financeSummary.operatingProfit / financeSummary.totalIncome) * 100 * 5)) : 50;
     return [
-      { label: "Нийт орлого", value: Math.min(100, incomeScore) },
-      { label: "Зарлагын хяналт", value: Math.min(100, expenseRatio) },
-      { label: "ҮА ашиг", value: Math.min(100, profitScore) },
-      { label: "Гүйлгээний тоо", value: 85 },
-      { label: "Мөнгөн урсгал", value: financeSummary.operatingProfit > 0 ? 70 : 40 },
+      { label: "Нийт орлого",               value: Math.min(100, incomeScore) },
+      { label: "Зарлагын хяналт",            value: Math.min(100, expenseRatio) },
+      { label: "ҮА ашиг",                    value: Math.min(100, profitScore) },
+      { label: "Гүйлгээний тоо",             value: 85 },
+      { label: "Мөнгөн урсгал",              value: financeSummary.operatingProfit > 0 ? 70 : 40 },
       { label: "Санхүүгийн тогтвортой байдал", value: Math.min(100, Math.round((incomeScore + expenseRatio + profitScore) / 3)) },
     ];
   })();
 
-  // ── Render ──
-  const hasDataset = uploadedFiles.length > 0;
+  return { financeSummary, financePeriod, financeMonthlyIncome, financeMonthlyExpense, financeExpenseCategories, financeExpensePieData, financeCounterparties, financeCashData, financeRadarData };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Root component
+// ─────────────────────────────────────────────────────────────────────────────
+
+export default function Home() {
+  const [activeTab, setActiveTab]             = useState<"ask" | "dashboard" | "report">("ask");
+  const [sidebarOpen, setSidebarOpen]         = useState(false);
+  const [reportMode, setReportMode]           = useState<"finance" | "sales">("finance");
+  const [isGraphicModeEnabled, setIsGraphicModeEnabled] = useState(false);
+  const [dashPeriod, setDashPeriod]           = useState<Period>("all");
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const { theme, toggleTheme }  = useTheme();
+  const auth                    = useAuth();
+  const preview                 = usePreview(auth.token);
+
+  const dashboard = useDashboard(auth.token, auth.isLoggedIn, () => {
+    auth.logout();
+  }, dashPeriod, setDashPeriod);
+
+  const admin = useAdmin(auth.token, dashboard.fetchDashboardData, preview.openRaw);
+
+  const chat = useChat(auth.token, auth.threadId, isGraphicModeEnabled, dashboard.fetchDashboardData);
+
+  const financeData = useFinanceChartData(dashboard.financeCharts, dashboard.salesKpi);
+
+  // ── Auth login wrapper ──
+  const handleLogin = async (e?: React.FormEvent, customCreds?: { email: string; role: string }) => {
+    if (e) e.preventDefault();
+    const email    = customCreds ? customCreds.email : loginEmail;
+    const password = customCreds ? "demopassword" : loginPassword;
+    const err = await auth.login(email, password);
+    if (err) { alert(err); return; }
+    chat.addWelcomeMessage();
+    admin.fetchUploadedFiles();
+  };
+
+  const handleLogout = () => {
+    auth.logout();
+    chat.clearMessages();
+    dashboard.resetDashboard();
+  };
+
+  // ── Local login form state (only needed until logged in) ──
+  const [loginEmail, setLoginEmail]       = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+
+  // ── Auto-scroll ──
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat.messages]);
+
+  // ── Fetch files on login ──
+  useEffect(() => {
+    if (auth.isLoggedIn && auth.token) admin.fetchUploadedFiles();
+  }, [auth.isLoggedIn, auth.token]);
+
+  const hasDataset = admin.uploadedFiles.length > 0;
 
   return (
     <div className="h-screen overflow-hidden bg-background text-foreground/80 font-sans antialiased text-xs flex flex-col transition-colors duration-200">
-      <Header serverStatus={serverStatus} isLoggedIn={isLoggedIn} user={user} theme={theme}
+      <Header
+        serverStatus={dashboard.serverStatus} isLoggedIn={auth.isLoggedIn} user={auth.user} theme={theme}
         onToggleTheme={toggleTheme} onLogout={handleLogout}
         activeTab={activeTab} onTabChange={setActiveTab}
- />
+      />
 
       <OfflineBanner />
 
-      {!isLoggedIn ? (
-        <LoginForm email={email} password={password} isAuthLoading={isAuthLoading}
-          onEmailChange={setEmail} onPasswordChange={setPassword} onLogin={handleLogin} />
+      {!auth.isLoggedIn ? (
+        <LoginForm
+          email={loginEmail} password={loginPassword} isAuthLoading={auth.isAuthLoading}
+          onEmailChange={setLoginEmail} onPasswordChange={setLoginPassword} onLogin={handleLogin}
+        />
       ) : (
         <div className="relative flex-1 flex flex-col min-h-0">
+
+          {/* ── ASK TAB ── */}
           {activeTab === "ask" && (
             <main key="tab-ask" className="flex-1 flex overflow-hidden min-h-0 animate-fade-in-up">
               <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background relative">
-                {/* ROUTING INDICATOR */}
+                {/* Routing indicator */}
                 <div className="border-b border-border py-2.5 px-6 flex items-center justify-between bg-sidebar/50 transition-colors duration-200">
                   <div className="flex items-center gap-1.5 text-foreground/50 text-[10px] uppercase font-bold tracking-wider">
-                    <span className={`w-1.5 h-1.5 rounded-full ${activeRoutingState !== "idle" && activeRoutingState !== "done" ? "bg-foreground animate-pulse" : "bg-foreground/30"}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${chat.activeRoutingState !== "idle" && chat.activeRoutingState !== "done" ? "bg-foreground animate-pulse" : "bg-foreground/30"}`} />
                     Шинжилгээний замнал
                   </div>
                   <div className="flex gap-4 items-center font-mono text-[9px]">
-                    <span className={`${activeRoutingState === "routing" ? "text-foreground font-bold" : "text-foreground/40"}`}>Router</span>
+                    <span className={chat.activeRoutingState === "routing" ? "text-foreground font-bold" : "text-foreground/40"}>Router</span>
                     <span className="text-foreground/30">→</span>
-                    <span className={`${activeRoutingState === "finance" ? "text-foreground font-bold" : "text-foreground/40"}`}>FinanceAgent</span>
+                    <span className={chat.activeRoutingState === "finance" ? "text-foreground font-bold" : "text-foreground/40"}>FinanceAgent</span>
                     <span className="text-foreground/30">/</span>
-                    <span className={`${activeRoutingState === "tech" ? "text-foreground font-bold" : "text-foreground/40"}`}>TechAgent</span>
+                    <span className={chat.activeRoutingState === "tech" ? "text-foreground font-bold" : "text-foreground/40"}>TechAgent</span>
                   </div>
                 </div>
 
-                {/* CHAT MESSAGES */}
+                {/* Chat messages */}
                 <div className="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-6 flex flex-col justify-start">
-                  {messages.length === 0 ? (
+                  {chat.messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center my-auto gap-6">
                       <div className="text-center text-foreground/40">
                         <p className="font-semibold">Шинжилгээний хэлхээ идэвхтэй.</p>
@@ -620,7 +228,7 @@ export default function Home() {
                       </div>
                       <div className="flex flex-wrap gap-2 justify-center max-w-lg">
                         {SUGGESTIONS_INITIAL.map((s, i) => (
-                          <button key={i} onClick={() => handleSendMessage(undefined, s.query)}
+                          <button key={i} onClick={() => chat.handleSendMessage(undefined, s.query)}
                             className="px-3 py-1.5 text-xs bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/70 transition-all cursor-pointer animate-fade-in-up inline-flex items-center gap-1.5"
                             style={{ animationDelay: `${i * 50}ms` }}>
                             {s.icon}<span>{s.label}</span>
@@ -629,7 +237,7 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    messages.map((msg) => (
+                    chat.messages.map((msg) => (
                       <div key={msg.id} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} animate-fade-in-up`}>
                         <div className="max-w-2xl w-full flex flex-col">
                           {msg.sender === "user" ? (
@@ -647,19 +255,21 @@ export default function Home() {
                                   </div>
                                 )}
                               </div>
-                              {msg.text && !isChatLoading && (
+                              {msg.text && !chat.isChatLoading && (
                                 <div className="flex items-center gap-1.5 mt-1">
-                                  <button onClick={() => handleFeedback(msg.id, 'positive')}
-                                    className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${feedbackState[msg.id] === 'positive' ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/30' : 'text-foreground/40 hover:text-emerald-500 hover:bg-emerald-500/5 border border-transparent'}`}
-                                    title="Сайн хариуллаа" disabled={!!feedbackState[msg.id]}>
+                                  <button onClick={() => chat.handleFeedback(msg.id, "positive")}
+                                    className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${chat.feedbackState[msg.id] === "positive" ? "text-emerald-500 bg-emerald-500/10 border border-emerald-500/30" : "text-foreground/40 hover:text-emerald-500 hover:bg-emerald-500/5 border border-transparent"}`}
+                                    title="Сайн хариуллаа" disabled={!!chat.feedbackState[msg.id]}>
                                     <ThumbsUp className="w-3 h-3" />
                                   </button>
-                                  <button onClick={() => handleFeedback(msg.id, 'negative')}
-                                    className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${feedbackState[msg.id] === 'negative' ? 'text-red-500 bg-red-500/10 border border-red-500/30' : 'text-foreground/40 hover:text-red-500 hover:bg-red-500/5 border border-transparent'}`}
-                                    title="Буруу хариуллаа" disabled={!!feedbackState[msg.id]}>
+                                  <button onClick={() => chat.handleFeedback(msg.id, "negative")}
+                                    className={`text-[10px] px-1.5 py-0.5 rounded transition-all cursor-pointer ${chat.feedbackState[msg.id] === "negative" ? "text-red-500 bg-red-500/10 border border-red-500/30" : "text-foreground/40 hover:text-red-500 hover:bg-red-500/5 border border-transparent"}`}
+                                    title="Буруу хариуллаа" disabled={!!chat.feedbackState[msg.id]}>
                                     <ThumbsDown className="w-3 h-3" />
                                   </button>
-                                  {feedbackSentMsgs[msg.id] && feedbackState[msg.id] && <span className="text-[9px] text-foreground/50 ml-1">{feedbackSentMsgs[msg.id]}</span>}
+                                  {chat.feedbackSentMsgs[msg.id] && chat.feedbackState[msg.id] && (
+                                    <span className="text-[9px] text-foreground/50 ml-1">{chat.feedbackSentMsgs[msg.id]}</span>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -668,10 +278,10 @@ export default function Home() {
                       </div>
                     ))
                   )}
-                  {messages.length > 0 && lastAgentType && FOLLOW_UP_SUGGESTIONS[lastAgentType] && !isChatLoading && (
+                  {chat.messages.length > 0 && chat.lastAgentType && FOLLOW_UP_SUGGESTIONS[chat.lastAgentType] && !chat.isChatLoading && (
                     <div className="flex flex-wrap gap-2 justify-start max-w-2xl pt-2">
-                      {FOLLOW_UP_SUGGESTIONS[lastAgentType].map((s, i) => (
-                        <button key={i} onClick={() => handleSendMessage(undefined, s.query)}
+                      {FOLLOW_UP_SUGGESTIONS[chat.lastAgentType].map((s, i) => (
+                        <button key={i} onClick={() => chat.handleSendMessage(undefined, s.query)}
                           className="px-2.5 py-1 text-[10px] bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/50 transition-all cursor-pointer animate-fade-in-up"
                           style={{ animationDelay: `${i * 50}ms` }}>{s.label}</button>
                       ))}
@@ -680,71 +290,71 @@ export default function Home() {
                   <div ref={messagesEndRef} />
                 </div>
 
-                <ChatInput input={input} isChatLoading={isChatLoading} streamEnabled={streamEnabled}
-                  isGraphicModeEnabled={isGraphicModeEnabled} threadId={threadId}
-                  onInputChange={setInput} onStreamEnabledChange={setStreamEnabled} onGraphicModeToggle={() => setIsGraphicModeEnabled(!isGraphicModeEnabled)}
-                  onSubmit={handleSendMessage} onCancel={handleCancelMessage} />
-
+                <ChatInput
+                  input={chat.input} isChatLoading={chat.isChatLoading} streamEnabled={chat.streamEnabled}
+                  isGraphicModeEnabled={isGraphicModeEnabled} threadId={auth.threadId}
+                  onInputChange={chat.setInput} onStreamEnabledChange={chat.setStreamEnabled}
+                  onGraphicModeToggle={() => setIsGraphicModeEnabled(!isGraphicModeEnabled)}
+                  onSubmit={chat.handleSendMessage} onCancel={chat.handleCancelMessage}
+                />
               </section>
             </main>
           )}
 
+          {/* ── DASHBOARD TAB ── */}
           {activeTab === "dashboard" && (
             <main key="tab-dashboard" className="flex-1 flex overflow-hidden min-h-0 relative animate-fade-in-up">
-              {/* Mobile sidebar overlay */}
-              {sidebarOpen && (
-                <div className="md:hidden fixed inset-0 z-40 bg-black/30" onClick={() => setSidebarOpen(false)} />
-              )}
+              {sidebarOpen && <div className="md:hidden fixed inset-0 z-40 bg-black/30" onClick={() => setSidebarOpen(false)} />}
 
-              {/* SIDEBAR - only AdminPanel */}
-              <section className={`shrink-0 border-r border-border bg-sidebar p-4 flex-col overflow-y-auto scrollbar-hide space-y-4 transition-all duration-200 md:w-[280px] md:flex md:relative ${
-                sidebarOpen
-                  ? "fixed inset-y-0 left-0 z-50 w-[280px] shadow-xl flex"
-                  : "hidden"
-              } md:inset-auto md:z-auto md:shadow-none`}>
+              {/* Sidebar */}
+              <section className={`shrink-0 border-r border-border bg-sidebar p-4 flex-col overflow-y-auto scrollbar-hide space-y-4 transition-all duration-200 md:w-[280px] md:flex md:relative ${sidebarOpen ? "fixed inset-y-0 left-0 z-50 w-[280px] shadow-xl flex" : "hidden"} md:inset-auto md:z-auto md:shadow-none`}>
                 <div className="flex items-center justify-between md:hidden">
                   <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Удирдлага</span>
                   <button onClick={() => setSidebarOpen(false)} className="text-foreground/50 hover:text-foreground text-xs p-1 cursor-pointer">✕</button>
                 </div>
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Багийн гишүүд</span>
-                    <AvatarList maxLength={4}>
-                      <AvatarList.Item name="Admin" tips="Админ" onClick={() => {}} />
-                      <AvatarList.Item name="User" tips="Хэрэглэгч" />
-                      <AvatarList.Item name="Analyst" />
-                      <AvatarList.Item name="Viewer" />
-                      <AvatarList.Item name="Guest" />
-                    </AvatarList>
-                  </div>
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Хурдан холбоос</span>
-                    <EditableLinkGroup
-                      links={[
-                        { title: "Борлуулалт", href: "#" },
-                        { title: "Тайлан", href: "#" },
-                        { title: "Хэрэглэгчид", href: "#" },
-                        { title: "Бүтээгдэхүүн", href: "#" },
-                        { title: "Аналитик", href: "#" },
-                        { title: "Тохиргоо", href: "#" },
-                      ]}
-                    />
-                  </div>
-
-                <AdminPanel user={user}
-                  adjustMetric={adjustMetric} newTargetValue={newTargetValue} isUpdatingTarget={isUpdatingTarget} salesUpdateSuccess={salesUpdateSuccess}
-                  onAdjustMetricChange={setAdjustMetric} onNewTargetValueChange={setNewTargetValue} onUpdateKpiTarget={handleUpdateKpiTarget}
-                  csvFile={csvFile} tableNameInput={tableNameInput} tableDescInput={tableDescInput}
-                  isUploadingCsv={isUploadingCsv} csvUploadMessage={csvUploadMessage}
-                  onCsvFileChange={setCsvFile} onTableNameInputChange={setTableNameInput} onTableDescInputChange={setTableDescInput} onUploadCsv={handleUploadCsv}
-                  excelFile={excelFile} excelTableNameInput={excelTableNameInput} excelDescInput={excelDescInput}
-                  isUploadingExcel={isUploadingExcel} excelUploadMessage={excelUploadMessage}
-                  onExcelFileChange={setExcelFile} onExcelTableNameInputChange={setExcelTableNameInput} onExcelDescInputChange={setExcelDescInput} onUploadExcel={handleUploadExcel}
-                  docFile={docFile} docDescInput={docDescInput} isUploadingDoc={isUploadingDoc} docUploadMessage={docUploadMessage}
-                  onDocFileChange={setDocFile} onDocDescInputChange={setDocDescInput} onUploadDoc={handleUploadDoc}
-                  uploadedFiles={uploadedFiles} onViewFile={handleViewFile} onDeleteFile={handleDeleteFile} />
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Багийн гишүүд</span>
+                  <AvatarList maxLength={4}>
+                    <AvatarList.Item name="Admin" tips="Админ" onClick={() => {}} />
+                    <AvatarList.Item name="User" tips="Хэрэглэгч" />
+                    <AvatarList.Item name="Analyst" />
+                    <AvatarList.Item name="Viewer" />
+                    <AvatarList.Item name="Guest" />
+                  </AvatarList>
+                </div>
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Хурдан холбоос</span>
+                  <EditableLinkGroup links={[
+                    { title: "Борлуулалт", href: "#" }, { title: "Тайлан", href: "#" },
+                    { title: "Хэрэглэгчид", href: "#" }, { title: "Бүтээгдэхүүн", href: "#" },
+                    { title: "Аналитик", href: "#" }, { title: "Тохиргоо", href: "#" },
+                  ]} />
+                </div>
+                <AdminPanel
+                  user={auth.user}
+                  adjustMetric={admin.adjustMetric} newTargetValue={admin.newTargetValue}
+                  isUpdatingTarget={admin.isUpdatingTarget} salesUpdateSuccess={admin.salesUpdateSuccess}
+                  onAdjustMetricChange={admin.setAdjustMetric} onNewTargetValueChange={admin.setNewTargetValue}
+                  onUpdateKpiTarget={admin.handleUpdateKpiTarget}
+                  csvFile={admin.csvFile} tableNameInput={admin.tableNameInput} tableDescInput={admin.tableDescInput}
+                  isUploadingCsv={admin.isUploadingCsv} csvUploadMessage={admin.csvUploadMessage}
+                  onCsvFileChange={admin.setCsvFile} onTableNameInputChange={admin.setTableNameInput}
+                  onTableDescInputChange={admin.setTableDescInput} onUploadCsv={admin.handleUploadCsv}
+                  excelFile={admin.excelFile} excelTableNameInput={admin.excelTableNameInput}
+                  excelDescInput={admin.excelDescInput} isUploadingExcel={admin.isUploadingExcel}
+                  excelUploadMessage={admin.excelUploadMessage} onExcelFileChange={admin.setExcelFile}
+                  onExcelTableNameInputChange={admin.setExcelTableNameInput}
+                  onExcelDescInputChange={admin.setExcelDescInput} onUploadExcel={admin.handleUploadExcel}
+                  docFile={admin.docFile} docDescInput={admin.docDescInput}
+                  isUploadingDoc={admin.isUploadingDoc} docUploadMessage={admin.docUploadMessage}
+                  onDocFileChange={admin.setDocFile} onDocDescInputChange={admin.setDocDescInput}
+                  onUploadDoc={admin.handleUploadDoc}
+                  uploadedFiles={admin.uploadedFiles} onViewFile={preview.open}
+                  onDeleteFile={admin.handleDeleteFile}
+                />
               </section>
 
-              {/* DASHBOARD CONTENT */}
+              {/* Dashboard content */}
               <section className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-background p-4 md:p-6">
                 {!hasDataset ? (
                   <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
@@ -754,11 +364,10 @@ export default function Home() {
                       <p className="text-[10px] text-foreground/40 mt-1">Dashboard харахын тулд эхлээд зүүн талын самбараар дата оруулна уу.</p>
                     </div>
                   </div>
-                ) : isDashboardLoading ? (
+                ) : dashboard.isDashboardLoading ? (
                   <PageLoading />
                 ) : (
                   <div className="space-y-6">
-                    {/* Mobile sidebar toggle */}
                     <div className="flex items-center gap-2 md:hidden">
                       <button onClick={() => setSidebarOpen(true)}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-border rounded bg-sidebar text-foreground/60 hover:text-foreground transition-colors cursor-pointer">
@@ -766,137 +375,113 @@ export default function Home() {
                       </button>
                     </div>
 
-                    {/* PAGE HEADER */}
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-fade-in-up" style={{ animationDelay: "0ms" }}>
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-fade-in-up">
                       <PageHeaderContent currentUser={{
-                        avatar: user?.email?.charAt(0).toUpperCase(),
-                        name: user?.email?.split('@')[0] || 'Хэрэглэгч',
-                        title: 'Өгөгдлийн шинжээч',
-                        group: 'Аналитик хэлтэс',
+                        avatar: auth.user?.email?.charAt(0).toUpperCase(),
+                        name: auth.user?.email?.split("@")[0] || "Хэрэглэгч",
+                        title: "Өгөгдлийн шинжээч", group: "Аналитик хэлтэс",
                       }} />
                       <ExtraContent />
                     </div>
 
-                    {/* PERIOD SELECTOR */}
-                    <div className="flex items-center gap-2 animate-fade-in-up" style={{ animationDelay: "0ms" }}>
+                    {/* Period selector */}
+                    <div className="flex items-center gap-2 animate-fade-in-up">
                       <span className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider">Хугацаа:</span>
                       <div className="flex items-center border border-border rounded overflow-hidden text-[10px] font-bold">
                         {(["7d", "1m", "3m", "6m", "12m", "all"] as Period[]).map((p) => (
-                          <button key={p} onClick={() => setPeriod(p)}
-                            className={`px-2 py-1 uppercase tracking-wider transition-colors cursor-pointer ${period === p ? "bg-foreground text-background" : "text-foreground/60 hover:text-foreground"}`}>
+                          <button key={p} onClick={() => dashboard.setPeriod(p)}
+                            className={`px-2 py-1 uppercase tracking-wider transition-colors cursor-pointer ${dashboard.period === p ? "bg-foreground text-background" : "text-foreground/60 hover:text-foreground"}`}>
                             {p === "all" ? "Бүгд" : p}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    {/* KPI GRID */}
                     <div className="animate-fade-in-up" style={{ animationDelay: "50ms" }}>
-                      <KpiGrid salesKpi={salesKpi} usersKpi={usersKpi} churnKpi={churnKpi} computedMetrics={computedMetrics} salesHistory={salesHistory} isLoading={isDashboardLoading} />
+                      <KpiGrid salesKpi={dashboard.salesKpi} usersKpi={dashboard.usersKpi} churnKpi={dashboard.churnKpi} computedMetrics={dashboard.computedMetrics} salesHistory={dashboard.salesHistory} isLoading={dashboard.isDashboardLoading} />
                     </div>
 
-                    {/* FINANCE DEFAULT CHARTS — transaction дата байвал автоматаар гарна */}
-                    {token && (
+                    {auth.token && (
                       <div className="animate-fade-in-up" style={{ animationDelay: "80ms" }}>
-                        <FinanceDashboard token={token} />
+                        <FinanceDashboard token={auth.token} />
                       </div>
                     )}
 
-                    {/* INTRODUCE ROW — real finance data */}
                     <div className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>
                       <IntroduceRow
-                        totalSales={financeSummary?.totalIncome ?? salesKpi?.current}
-                        totalVisits={financeCounterparties?.length ?? usersKpi?.current}
-                        transactionCount={financeSummary?.totalTransactions}
-                        operatingProfit={financeSummary?.operatingProfit}
-                        visitData={financeMonthlyIncome ?? undefined}
-                        campaignEffect={financeSummary?.totalIncome
-                          ? Math.min(100, Math.max(0, Math.round((financeSummary.operatingProfit / financeSummary.totalIncome) * 100)))
+                        totalSales={financeData.financeSummary?.totalIncome ?? dashboard.salesKpi?.current}
+                        totalVisits={financeData.financeCounterparties?.length ?? dashboard.usersKpi?.current}
+                        transactionCount={financeData.financeSummary?.totalTransactions}
+                        operatingProfit={financeData.financeSummary?.operatingProfit}
+                        visitData={financeData.financeMonthlyIncome ?? undefined}
+                        campaignEffect={financeData.financeSummary?.totalIncome
+                          ? Math.min(100, Math.max(0, Math.round((financeData.financeSummary.operatingProfit / financeData.financeSummary.totalIncome) * 100)))
                           : undefined}
                       />
                     </div>
 
-                    {/* SALES CARD — real finance income/expense data */}
                     <div className="animate-fade-in-up" style={{ animationDelay: "150ms" }}>
                       <SalesCard
-                        salesData={financeMonthlyIncome ?? (salesHistory.length > 0 ? salesHistory.map((h) => ({ x: h.month, y: h.revenue })) : undefined)}
-                        expenseData={financeMonthlyExpense ?? undefined}
-                        rankingData={financeExpenseCategories?.map(c => ({ title: c.name, total: Math.round(c.share * (financeSummary?.totalExpense ?? 0)) })) ?? undefined}
+                        salesData={financeData.financeMonthlyIncome ?? (dashboard.salesHistory.length > 0 ? dashboard.salesHistory.map(h => ({ x: h.month, y: h.revenue })) : undefined)}
+                        expenseData={financeData.financeMonthlyExpense ?? undefined}
+                        rankingData={financeData.financeExpenseCategories?.map(c => ({ title: c.name, total: Math.round(c.share * (financeData.financeSummary?.totalExpense ?? 0)) })) ?? undefined}
                       />
                     </div>
 
-                    {/* INSIGHTS ROW — real finance breakdown */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in-up" style={{ animationDelay: "200ms" }}>
-                      <ProportionSales salesPieData={financeExpensePieData ?? undefined} />
-                      <TopSearch counterparties={financeCounterparties ?? undefined} period={financePeriod} />
+                      <ProportionSales salesPieData={financeData.financeExpensePieData ?? undefined} />
+                      <TopSearch counterparties={financeData.financeCounterparties ?? undefined} period={financeData.financePeriod} />
                     </div>
 
-                    {/* МӨНГӨН ҮЛДЭГДЭЛ — тусад нь бүтэн өргөний card */}
                     <div className="border border-border/60 rounded-xl p-5 bg-card shadow-sm animate-fade-in-up" style={{ animationDelay: "250ms" }}>
                       <div className="flex items-center gap-2 mb-4">
                         <span className="block w-0.5 h-4 rounded-full bg-blue-500" />
-                        <p className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider">Мөнгөний үлдэгдлийн хөдөлгөөн — {financePeriod ?? `Q1 ${new Date().getFullYear()}`}</p>
+                        <p className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider">Мөнгөний үлдэгдлийн хөдөлгөөн — {financeData.financePeriod ?? `Q1 ${new Date().getFullYear()}`}</p>
                       </div>
-                      <ActiveChart cashData={financeCashData ?? undefined} />
+                      <ActiveChart cashData={financeData.financeCashData ?? undefined} />
                     </div>
 
-                    {/* OFFLINE DATA + GAUGE/RADAR */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-up" style={{ animationDelay: "300ms" }}>
                       <div className="lg:col-span-2">
                         <OfflineData
-                          categories={financeExpenseCategories ?? undefined}
+                          categories={financeData.financeExpenseCategories ?? undefined}
                           monthlyExpenses={(() => {
-                            const esc = financeCharts?.charts?.find((c: any) => c.id === "monthly_expense_subcat");
+                            const esc = dashboard.financeCharts?.charts?.find((c: any) => c.id === "monthly_expense_subcat");
                             if (!esc?.data) return undefined;
                             const result: Record<string, { month: string; amount: number }[]> = {};
-                            const subcats = Object.keys(esc.data[0] || {}).filter(k => k !== "label");
+                            const subcats = Object.keys(esc.data[0] || {}).filter((k: string) => k !== "label");
                             for (const sub of subcats) {
-                              result[sub] = esc.data.map((d: any) => ({
-                                month: String(d.label ?? ""),
-                                amount: Number(d[sub] ?? 0),
-                              }));
+                              result[sub] = esc.data.map((d: any) => ({ month: String(d.label ?? ""), amount: Number(d[sub] ?? 0) }));
                             }
                             return result;
                           })()}
                         />
                       </div>
                       <div className="flex flex-col gap-4">
-                        {/* Gauge */}
                         <div className="border border-border/60 rounded-xl p-6 bg-card shadow-sm flex flex-col items-center justify-center">
                           <Gauge
-                            percent={
-                              financeSummary
-                                ? Math.min(100, Math.round((financeSummary.totalIncome / (salesKpi?.target ?? 200_000_000)) * 100))
-                                : salesKpi
-                                  ? Math.min(100, Math.round((salesKpi.current / salesKpi.target) * 100))
-                                  : 89
-                            }
-                            title="Орлогын гүйцэтгэл"
-                            size={210}
+                            percent={financeData.financeSummary
+                              ? Math.min(100, Math.round((financeData.financeSummary.totalIncome / (dashboard.salesKpi?.target ?? 200_000_000)) * 100))
+                              : dashboard.salesKpi ? Math.min(100, Math.round((dashboard.salesKpi.current / dashboard.salesKpi.target) * 100)) : 89}
+                            title="Орлогын гүйцэтгэл" size={210}
                           />
                         </div>
-                        {/* Liquid */}
                         <div className="border border-border/60 rounded-xl p-6 bg-card shadow-sm flex flex-col items-center justify-center gap-3">
                           <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Дүүргэлт</span>
                           <Liquid
-                            percent={
-                              financeSummary
-                                ? Math.min(1, financeSummary.totalIncome / (salesKpi?.target ?? 200_000_000))
-                                : salesKpi
-                                  ? Math.min(1, salesKpi.current / (salesKpi.target * 1.15))
-                                  : 0.50
-                            }
+                            percent={financeData.financeSummary
+                              ? Math.min(1, financeData.financeSummary.totalIncome / (dashboard.salesKpi?.target ?? 200_000_000))
+                              : dashboard.salesKpi ? Math.min(1, dashboard.salesKpi.current / (dashboard.salesKpi.target * 1.15)) : 0.50}
                             height={130}
                           />
                         </div>
-                        {/* Radar */}
                         <div className="border border-border/60 rounded-xl p-4 bg-card shadow-sm flex-1 flex flex-col">
                           <div className="flex items-center gap-2 mb-3">
                             <span className="block w-0.5 h-4 rounded-full bg-purple-500" />
                             <p className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider">Үзүүлэлтийн харьцуулалт</p>
                           </div>
                           <div className="flex-1">
-                            <Radar data={financeRadarData ?? undefined} height={260} />
+                            <Radar data={financeData.financeRadarData ?? undefined} height={260} />
                           </div>
                         </div>
                       </div>
@@ -909,6 +494,7 @@ export default function Home() {
             </main>
           )}
 
+          {/* ── REPORT TAB ── */}
           {activeTab === "report" && (
             <main key="tab-report" className="flex-1 flex flex-col overflow-hidden min-h-0 animate-fade-in-up">
               <div className="border-b border-border px-6 py-2 flex items-center gap-2 bg-sidebar/30">
@@ -925,14 +511,17 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-                {reportMode === "finance" ? <FinanceReportView token={token!} /> : <ReportView token={token!} />}
+                {reportMode === "finance" ? <FinanceReportView token={auth.token!} /> : <ReportView token={auth.token!} />}
               </div>
             </main>
           )}
 
-          <PreviewDrawer previewData={previewData} previewColumns={previewColumns} previewTableName={previewTableName}
-            previewDescription={previewDescription} previewContent={previewContent} previewHasDownload={previewHasDownload} previewFileId={previewFileId}
-            onClose={closePreview} />
+          <PreviewDrawer
+            previewData={preview.preview.data} previewColumns={preview.preview.columns}
+            previewTableName={preview.preview.tableName} previewDescription={preview.preview.description}
+            previewContent={preview.preview.content} previewHasDownload={preview.preview.hasDownload}
+            previewFileId={preview.preview.fileId} onClose={preview.close}
+          />
         </div>
       )}
     </div>

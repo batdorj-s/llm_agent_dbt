@@ -33,7 +33,7 @@ async function main() {
   console.log("\n─── Rate Limiter ───");
   const limiter = new RateLimiter({ maxRequests: 3, windowMs: 5000 });
   for (let i = 1; i <= 5; i++) {
-    const res = limiter.check("test-user");
+    const res = await limiter.check("test-user");
     console.log(`  Request ${i}: ${res.allowed ? `[OK] allowed (remaining: ${res.remaining})` : `[FAIL] blocked — ${res.message}`}`);
   }
 
