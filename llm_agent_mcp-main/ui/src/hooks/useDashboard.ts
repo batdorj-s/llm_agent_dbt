@@ -4,6 +4,18 @@ import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { KpiData, SalesHistory, ComputedMetrics, ServerStatus } from "../components/types";
 
+export interface FinanceAudit {
+  available: boolean;
+  tableName?: string;
+  incomeRows?: number;
+  expenseRows?: number;
+  noiseRows?: number;
+  unclassifiedRows?: number;
+  totalRows?: number;
+  incomeTotal?: number;
+  expenseTotal?: number;
+}
+
 export type Period = "7d" | "1m" | "3m" | "6m" | "12m" | "all";
 
 function periodToDateRange(p: Period): { startDate?: string; endDate?: string } {
@@ -104,6 +116,13 @@ export function useDashboard(
     enabled,
   });
 
+  const { data: financeAudit } = useQuery<FinanceAudit>({
+    queryKey: ["financeAudit"],
+    queryFn: () => fetchJson(`/api/finance-audit`, token!, onUnauthorized),
+    enabled,
+    staleTime: 60_000,
+  });
+
   // isDashboardLoading: true while any primary KPI query is pending on first load
   const isDashboardLoading = enabled && (
     salesKpi === undefined || usersKpi === undefined || churnKpi === undefined
@@ -115,6 +134,7 @@ export function useDashboard(
     queryClient.invalidateQueries({ queryKey: ["kpiHistory"] });
     queryClient.invalidateQueries({ queryKey: ["computedMetrics"] });
     queryClient.invalidateQueries({ queryKey: ["financeCharts"] });
+    queryClient.invalidateQueries({ queryKey: ["financeAudit"] });
   }, [queryClient]);
 
   const resetDashboard = useCallback(() => {
@@ -122,6 +142,7 @@ export function useDashboard(
     queryClient.removeQueries({ queryKey: ["kpiHistory"] });
     queryClient.removeQueries({ queryKey: ["computedMetrics"] });
     queryClient.removeQueries({ queryKey: ["financeCharts"] });
+    queryClient.removeQueries({ queryKey: ["financeAudit"] });
   }, [queryClient]);
 
   return {
@@ -132,6 +153,7 @@ export function useDashboard(
     computedMetrics: computedMetrics ?? null,
     salesHistory,
     financeCharts: financeCharts ?? null,
+    financeAudit: financeAudit ?? null,
     isDashboardLoading,
     period,
     setPeriod,

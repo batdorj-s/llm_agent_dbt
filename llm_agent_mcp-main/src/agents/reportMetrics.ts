@@ -1,4 +1,4 @@
-import { getPool, quoteIdent } from "../db/data-lake.js";
+import { getPool, quoteIdent, buildNoiseSubcategoryFilter } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { detectDateColumn } from "./dateColumnHelper.js";
 import { sanitizeColumnName } from "./sanitize.js";
@@ -157,8 +157,10 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
       if (startDate && endDate) {
         ({ clause: filterClause, params: filterParams } = buildDateWhere(dateCol || "", dateCast, startDate, endDate, 0));
       } else if (isFinanceTable && rawMainCatCol) {
-        // Finance: month-over-month growth using the data's own last 2 months
-        filterClause = `${dateCast} >= DATE_TRUNC('month', (SELECT MAX(${dateCast}) FROM ${quoteIdent(tableName)})) - INTERVAL '1 month'`;
+        // Finance: month-over-month growth using the data's own last 2 months.
+        // Both the WHERE and the CASE WHEN use the same MAX(date) subquery so
+        // they stay in sync even when datasets spanning multiple years are merged.
+        filterClause = `DATE_TRUNC('month', ${dateCast}) >= DATE_TRUNC('month', (SELECT MAX(${dateCast}) FROM ${quoteIdent(tableName)})) - INTERVAL '1 month'`;
         filterParams = [];
       } else {
         filterClause = `${dateCast} >= CURRENT_DATE - INTERVAL '60 days'`;
@@ -235,7 +237,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
     try {
       const rawSubCatCol = findConceptColumn(columns, "finance_subcategory", tableName);
       const opExpenseWhere = rawSubCatCol
-        ? `${quoteIdent(rawMainCatCol)} ILIKE '%зарлага%' AND ${quoteIdent(rawSubCatCol)} NOT ILIKE '%зээл%' AND ${quoteIdent(rawSubCatCol)} NOT ILIKE '%бусад%'`
+        ? `${quoteIdent(rawMainCatCol)} ILIKE '%зарлага%' AND ${quoteIdent(rawSubCatCol)} NOT ILIKE '%зээл%' AND ${buildNoiseSubcategoryFilter(quoteIdent(rawSubCatCol))}`
         : `${quoteIdent(rawMainCatCol)} ILIKE '%зарлага%'`;
       const expResult = await getPool().query(
         `SELECT COALESCE(SUM(${amountExpr(salesCol)}), 0) AS total_expense

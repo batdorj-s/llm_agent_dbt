@@ -401,6 +401,38 @@ export default function Home() {
                       <KpiGrid salesKpi={dashboard.salesKpi} usersKpi={dashboard.usersKpi} churnKpi={dashboard.churnKpi} computedMetrics={dashboard.computedMetrics} salesHistory={dashboard.salesHistory} isLoading={dashboard.isDashboardLoading} />
                     </div>
 
+                    {dashboard.financeAudit?.available && (
+                      <div className="animate-fade-in-up border border-border/60 rounded-xl p-4 bg-card shadow-sm text-[11px]" style={{ animationDelay: "60ms" }}>
+                        <p className="font-bold text-foreground/50 uppercase tracking-wider mb-2.5">Дата тоймлол — {dashboard.financeAudit.tableName}</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-green-500">✓</span>
+                            <span className="text-foreground/60">Орлогын мөр:</span>
+                            <span className="font-semibold text-foreground">{dashboard.financeAudit.incomeRows}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-blue-500">✓</span>
+                            <span className="text-foreground/60">Зарлагын мөр:</span>
+                            <span className="font-semibold text-foreground">{dashboard.financeAudit.expenseRows}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-yellow-500">⚠</span>
+                            <span className="text-foreground/60">Шүүгдсэн (noise):</span>
+                            <span className="font-semibold text-foreground">{dashboard.financeAudit.noiseRows}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className={(dashboard.financeAudit.unclassifiedRows ?? 0) > 0 ? "text-red-500" : "text-foreground/40"}>
+                              {(dashboard.financeAudit.unclassifiedRows ?? 0) > 0 ? "⚠" : "✓"}
+                            </span>
+                            <span className="text-foreground/60">Ангилагдаагүй:</span>
+                            <span className={`font-semibold ${(dashboard.financeAudit.unclassifiedRows ?? 0) > 0 ? "text-red-500" : "text-foreground"}`}>
+                              {dashboard.financeAudit.unclassifiedRows}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {auth.token && (
                       <div className="animate-fade-in-up" style={{ animationDelay: "80ms" }}>
                         <FinanceDashboard token={auth.token} />

@@ -1,0 +1,8 @@
+# Subcategories excluded from operating expense totals.
+# These are internal transfers or owner loan movements that are
+# misclassified under "Зарлага" in source data.
+# Edit this file to add/remove noise subcategories without code changes.
+noise_subcategories:
+  - Бусад
+  - Касс руу хийв
+  - Дотоод шилжүүлэг

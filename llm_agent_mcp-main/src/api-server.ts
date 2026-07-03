@@ -22,7 +22,7 @@ import { ensureProjectReady, runDbtForTable, runDbtTest, runDbtFinanceModels } f
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent, mergeIntoCombined } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent, mergeIntoCombined, buildNoiseSubcategoryFilter } from "./db/data-lake.js";
 import { findConceptColumn } from "./agents/columnSynonyms.js";
 import { buildMntAmountExpr } from "./utils/sqlHelpers.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
@@ -246,11 +246,11 @@ app.get("/api/finance-charts", async (req, res) => {
     // Shared filter expressions
     // Operating income: ангилал ILIKE '%орлого%' AND NOT '%зээл%'
     const isOpIncome  = `(${qCat} ILIKE '%орлого%' AND ${qCat} NOT ILIKE '%зээл%')`;
-    // Operating expense: only known operating subcategories.
-    // Excludes Зарлага/Зээл (loan repayments) and Зарлага/Бусад (catches misclassified
-    // internal transfers like "КАСС РУУ ХИЙВ" that should be Дотоод шилжүүлэг).
+    // Operating expense: exclude loan repayments (%зээл%) and exact noise subcategories
+    // (config/noise-subcategories.yml). Uses exact LOWER() match instead of fuzzy %бусад%
+    // to avoid dropping legitimate expenses whose name happens to contain "бусад".
     const isOpExpense = qSubCat
-      ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${qSubCat} NOT ILIKE '%бусад%')`
+      ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${buildNoiseSubcategoryFilter(qSubCat)})`
       : `${qCat} ILIKE '%зарлага%'`;
     // Noise filter: exclude internal transfers and owner loans (Дотоод шилжүүлэг, Эздийн зээл)
     const notNoise = `${qCat} NOT ILIKE '%шилжүүлэг%' AND ${qCat} NOT ILIKE '%эздийн зээл%'`;
@@ -624,6 +624,71 @@ app.get("/api/finance-charts", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// Finance Audit — row-level classification breakdown for transparency
+// ─────────────────────────────────────────────────────────────
+app.get("/api/finance-audit", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+
+  const userId = auth.payload.userId;
+
+  try {
+    const pool = getPool();
+    if (!pool) return res.status(503).json({ error: "DB unavailable" });
+
+    const entry = await getActiveCatalogEntry(userId);
+    if (!entry) return res.json({ available: false });
+
+    const table    = entry.table_name;
+    const columns: string[] = JSON.parse(entry.columns_info);
+    const catCol   = findConceptColumn(columns, "finance_category",    table);
+    const subCatCol = findConceptColumn(columns, "finance_subcategory", table);
+    const amtCol   = findConceptColumn(columns, "finance_amount",       table);
+
+    if (!catCol || !amtCol) return res.json({ available: false });
+
+    const qCat    = quoteIdent(catCol);
+    const qSubCat = subCatCol ? quoteIdent(subCatCol) : null;
+    const qAmt    = buildMntAmountExpr(quoteIdent(amtCol));
+    const qTbl    = quoteIdent(table);
+
+    const noiseFilter = buildNoiseSubcategoryFilter(qSubCat ?? qCat);
+    const isOpIncome  = `(${qCat} ILIKE '%орлого%' AND ${qCat} NOT ILIKE '%зээл%')`;
+    const isOpExpense = qSubCat
+      ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${noiseFilter})`
+      : `${qCat} ILIKE '%зарлага%'`;
+    const isNoise = `(${qCat} ILIKE '%шилжүүлэг%' OR ${qCat} ILIKE '%эздийн зээл%'${qSubCat ? ` OR (${qCat} ILIKE '%зарлага%' AND NOT ${noiseFilter})` : ""})`;
+
+    const result = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE ${isOpIncome})                         AS income_rows,
+        COUNT(*) FILTER (WHERE ${isOpExpense})                        AS expense_rows,
+        COUNT(*) FILTER (WHERE ${isNoise})                            AS noise_rows,
+        COUNT(*) FILTER (WHERE NOT ${isOpIncome} AND NOT ${isOpExpense} AND NOT ${isNoise}) AS unclassified_rows,
+        COUNT(*)                                                       AS total_rows,
+        COALESCE(SUM(${qAmt}) FILTER (WHERE ${isOpIncome}),  0)      AS income_total,
+        COALESCE(SUM(${qAmt}) FILTER (WHERE ${isOpExpense}), 0)      AS expense_total
+      FROM ${qTbl}
+    `);
+
+    const row = result.rows[0];
+    return res.json({
+      available: true,
+      tableName: table,
+      incomeRows:       Number(row.income_rows),
+      expenseRows:      Number(row.expense_rows),
+      noiseRows:        Number(row.noise_rows),
+      unclassifiedRows: Number(row.unclassified_rows),
+      totalRows:        Number(row.total_rows),
+      incomeTotal:      Math.round(Number(row.income_total)),
+      expenseTotal:     Math.round(Number(row.expense_total)),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 // Finance Detailed Reports — Income Statement, Expense Breakdown, Cash Flow
 // ─────────────────────────────────────────────────────────────
 app.get("/api/finance-reports", async (req, res) => {
@@ -655,7 +720,7 @@ app.get("/api/finance-reports", async (req, res) => {
 
     const isOpIncome  = `(${qCat} ILIKE '%орлого%' AND ${qCat} NOT ILIKE '%зээл%')`;
     const isOpExpense = qSubCat
-      ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${qSubCat} NOT ILIKE '%бусад%')`
+      ? `(${qCat} ILIKE '%зарлага%' AND ${qSubCat} NOT ILIKE '%зээл%' AND ${buildNoiseSubcategoryFilter(qSubCat)})`
       : `${qCat} ILIKE '%зарлага%'`;
     const notNoise = `${qCat} NOT ILIKE '%шилжүүлэг%' AND ${qCat} NOT ILIKE '%эздийн зээл%'`;
 

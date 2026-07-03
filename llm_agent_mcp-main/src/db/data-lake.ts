@@ -48,6 +48,26 @@ function loadMongolianColumnMap(): Record<string, string> {
 
 const MONGOLIAN_COLUMN_MAP: Record<string, string> = loadMongolianColumnMap();
 
+function loadNoiseSubcategoriesRaw(): string[] {
+    const configPath = path.resolve("config/noise-subcategories.yml");
+    try {
+        const raw = fs.readFileSync(configPath, "utf8");
+        const parsed = parseYaml(raw) as { noise_subcategories?: string[] };
+        return Array.isArray(parsed?.noise_subcategories) ? parsed.noise_subcategories : [];
+    } catch {
+        console.warn("[Data Lake] Could not load config/noise-subcategories.yml — using default noise list.");
+        return ["Бусад", "Касс руу хийв", "Дотоод шилжүүлэг"];
+    }
+}
+
+const NOISE_SUBCATEGORIES: string[] = loadNoiseSubcategoriesRaw();
+
+/** Returns SQL fragment: `LOWER(col) NOT IN ('бусад', 'касс руу хийв', ...)` */
+export function buildNoiseSubcategoryFilter(quotedCol: string): string {
+    const list = NOISE_SUBCATEGORIES.map(s => `'${s.toLowerCase().replace(/'/g, "''")}'`).join(", ");
+    return `LOWER(${quotedCol}) NOT IN (${list})`;
+}
+
 export function normalizeColumnName(columnName: string): string {
     const trimmed = columnName.trim().replace(/^["']|["']$/g, "");
     const lowerTrimmed = trimmed.toLowerCase();

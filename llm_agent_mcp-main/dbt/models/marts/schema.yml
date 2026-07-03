@@ -1,14 +1,14 @@
 version: 2
 models:
   - name: stg_sales
-    description: Cleaned sales data sourced from flow_test_1783065164556.
+    description: Cleaned sales data sourced from flow_test_1783066788822.
     columns:
       - name: date
-        description: Column from flow_test_1783065164556.date.
+        description: Column from flow_test_1783066788822.date.
       - name: amount
-        description: Column from flow_test_1783065164556.amount.
+        description: Column from flow_test_1783066788822.amount.
       - name: customer_id
-        description: Column from flow_test_1783065164556.customer_id.
+        description: Column from flow_test_1783066788822.customer_id.
         tests:
           - unique
           - not_null
@@ -51,4 +51,3 @@ models:
       - assert_true:
           expression: total_spend >= 0
           severity: error
-: error
