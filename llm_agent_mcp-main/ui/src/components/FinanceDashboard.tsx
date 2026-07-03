@@ -19,6 +19,7 @@ interface FinanceChartsResponse {
     totalIncome: number;
     totalExpense: number;
     operatingProfit: number;
+    totalTransactions: number;
   };
 }
 

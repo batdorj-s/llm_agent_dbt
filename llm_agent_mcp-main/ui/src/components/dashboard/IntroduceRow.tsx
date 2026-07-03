@@ -14,6 +14,8 @@ interface IntroduceRowProps {
   totalVisits?: number;
   totalPayments?: number;
   campaignEffect?: number;
+  operatingProfit?: number;
+  transactionCount?: number;
 }
 
 const defaultVisitData: DataItem[] = [
@@ -60,11 +62,28 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
   visitData = defaultVisitData,
   totalSales = 190624000,
   totalVisits = 4,
-  totalPayments = 186,
+  totalPayments,
   campaignEffect = 89,
+  operatingProfit,
+  transactionCount,
 }) => {
   const fmtCurrency = (v: number) => `₮${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
   const fmtNum = (v: number) => v.toLocaleString();
+
+  const months = visitData.length > 0 ? visitData.length : 3;
+  const avgMonthlyIncome = totalSales ? Math.round(totalSales / months) : 0;
+
+  const firstMonthIncome = visitData[0]?.y ?? 0;
+  const lastMonthIncome  = visitData[visitData.length - 1]?.y ?? 0;
+  const incomeGrowthPct  = firstMonthIncome > 0
+    ? Math.round(((lastMonthIncome - firstMonthIncome) / firstMonthIncome) * 100)
+    : 0;
+
+  const expenseRatioPct = totalSales && operatingProfit !== undefined
+    ? Math.round(((totalSales - operatingProfit) / totalSales) * 100)
+    : totalPayments;
+
+  const displayTransactionCount = transactionCount ?? totalPayments ?? 0;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -72,15 +91,23 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
       <ChartCard
         title="Нийт орлого"
         avatar={<AvatarSales />}
-        action="Q1 2024 нийт орлого"
+        action="Нийт орлого"
         total={fmtCurrency(totalSales)}
-        footer={<Field label="Дундаж сарын орлого" value={fmtCurrency(63541333)} />}
+        footer={<Field label="Дундаж сарын орлого" value={fmtCurrency(avgMonthlyIncome)} />}
         contentHeight={72}
         loading={loading}
       >
         <div className="flex gap-4 mt-1 h-full items-center">
-          <Trend flag="up">1→3-р сар <span className="font-bold">+121%</span></Trend>
-          <Trend flag="down">Q1 алдагдал <span className="font-bold">₮24M</span></Trend>
+          {incomeGrowthPct !== 0 && (
+            <Trend flag={incomeGrowthPct >= 0 ? "up" : "down"}>
+              1→{months}-р сар <span className="font-bold">{incomeGrowthPct >= 0 ? "+" : ""}{incomeGrowthPct}%</span>
+            </Trend>
+          )}
+          {operatingProfit !== undefined && (
+            <Trend flag={operatingProfit >= 0 ? "up" : "down"}>
+              {operatingProfit >= 0 ? "ҮА ашиг" : "ҮА алдагдал"} <span className="font-bold">₮{Math.abs(Math.round(operatingProfit / 1_000_000)).toLocaleString()}M</span>
+            </Trend>
+          )}
         </div>
       </ChartCard>
 
@@ -90,7 +117,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         avatar={<AvatarCustomer />}
         action="Орлоготой харилцагчдын тоо"
         total={fmtNum(totalVisits)}
-        footer={<Field label="Гол харилцагч" value="ВАЙРАЛ ПИКСЕЛЬ" />}
+        footer={<Field label="Харилцагчийн тоо" value={String(totalVisits)} />}
         contentHeight={72}
         loading={loading}
       >
@@ -111,9 +138,9 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
       <ChartCard
         title="Гүйлгээний тоо"
         avatar={<AvatarTxn />}
-        action="Нийт орлого + зарлага гүйлгээ"
-        total={fmtNum(totalPayments)}
-        footer={<Field label="Орлого/зарлага харьцаа" value="88.7%" />}
+        action="Нийт гүйлгээний тоо"
+        total={fmtNum(displayTransactionCount)}
+        footer={<Field label="Зарлагын харьцаа" value={expenseRatioPct !== undefined ? `${expenseRatioPct}%` : "—"} />}
         contentHeight={72}
         loading={loading}
       >

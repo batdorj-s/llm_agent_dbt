@@ -156,7 +156,7 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
           <KpiCard key="churn"
             label="Зардлын харьцаа"
             value={expenseRatio > 0 ? `${expenseRatio.toFixed(1)}%` : "—"}
-            subLabel="Орлогод эзлэх хувь"
+            subLabel="Нийт орлого"
             subValue={salesKpi ? `₮${salesKpi.current.toLocaleString()}` : "—"}
             color={expenseRatio > 100 ? "#ef4444" : "#f59e0b"}
           />
@@ -175,7 +175,7 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
           value={isFinance
             ? (operatingProfit !== 0 ? `₮${Math.round(operatingProfit).toLocaleString()}` : "—")
             : (aov !== null ? `₮${Math.round(aov).toLocaleString()}` : "—")}
-          subLabel={isFinance ? "Санхүүгийн үр дүн" : "Хамгийн их зарлага"}
+          subLabel={isFinance ? "Хамгийн их зардал" : "Хамгийн их зарлага"}
           subValue={topCategory !== null ? topCategory : "—"}
           color={isFinance ? (operatingProfit >= 0 ? "#10b981" : "#ef4444") : chartTheme.colors.semantic.area}
           trend={growthRate !== null ? { direction: growthDirection, label: `${Math.abs(growthRate).toFixed(1)}%` } : undefined}

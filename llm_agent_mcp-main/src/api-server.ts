@@ -586,18 +586,20 @@ app.get("/api/finance-charts", async (req, res) => {
     const summaryRes = await pool.query(`
       SELECT
         SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) AS total_income,
-        SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS total_expense
+        SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS total_expense,
+        COUNT(*) FILTER (WHERE ${notNoise}) AS total_transactions
       FROM ${qTbl}
     `);
-    const totalIncome    = Math.round(Number(summaryRes.rows[0]?.total_income  || 0));
-    const totalExpense   = Math.round(Number(summaryRes.rows[0]?.total_expense || 0));
-    const operatingProfit = totalIncome - totalExpense;
+    const totalIncome       = Math.round(Number(summaryRes.rows[0]?.total_income    || 0));
+    const totalExpense      = Math.round(Number(summaryRes.rows[0]?.total_expense   || 0));
+    const totalTransactions = Number(summaryRes.rows[0]?.total_transactions || 0);
+    const operatingProfit   = totalIncome - totalExpense;
 
     return res.json({
       isFinance: charts.length > 0,
       tableName: table,
       charts,
-      summary: { totalIncome, totalExpense, operatingProfit },
+      summary: { totalIncome, totalExpense, operatingProfit, totalTransactions },
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1014,7 +1016,22 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
     const workbook = xlsxMod.readFile(tempPath);
     const firstSheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[firstSheetName];
-    const jsonData = xlsxMod.utils.sheet_to_json(sheet, { defval: "" });
+    // Read all rows as raw arrays to skip title/blank rows and find the real header row
+    const rawRows = xlsxMod.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
+    const headerRowIdx = rawRows.findIndex(
+      (row) => Array.isArray(row) && (row as unknown[]).filter((c) => c !== "" && c != null).length >= 3
+    );
+    if (headerRowIdx === -1) throw new Error("Cannot find header row in Excel file.");
+    const headerRow = (rawRows[headerRowIdx] as unknown[]).map((h, i) => String(h ?? `col_${i}`));
+    const dataRows = rawRows.slice(headerRowIdx + 1).filter(
+      (row) => (row as unknown[]).some((c) => c !== "" && c != null)
+    );
+    if (dataRows.length === 0) throw new Error("No data rows found after header.");
+    const jsonData = dataRows.map((row) => {
+      const obj: Record<string, unknown> = {};
+      headerRow.forEach((h, i) => { obj[h] = (row as unknown[])[i] ?? ""; });
+      return obj;
+    });
 
     if (jsonData.length === 0) {
       throw new Error("Excel file is empty or has no data rows.");

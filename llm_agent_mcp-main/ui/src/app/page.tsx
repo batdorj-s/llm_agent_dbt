@@ -570,7 +570,7 @@ export default function Home() {
       { label: "ҮА ашиг", value: Math.min(100, profitScore) },
       { label: "Гүйлгээний тоо", value: 85 },
       { label: "Мөнгөн урсгал", value: financeSummary.operatingProfit > 0 ? 70 : 40 },
-      { label: "Санхүүгийн тогтвортой байдал", value: Math.min(100, (incomeScore + expenseRatio + profitScore) / 3) },
+      { label: "Санхүүгийн тогтвортой байдал", value: Math.min(100, Math.round((incomeScore + expenseRatio + profitScore) / 3)) },
     ];
   })();
 
@@ -806,7 +806,8 @@ export default function Home() {
                       <IntroduceRow
                         totalSales={financeSummary?.totalIncome ?? salesKpi?.current}
                         totalVisits={financeCounterparties?.length ?? usersKpi?.current}
-                        totalPayments={financeExpenseCategories?.reduce((s, c) => s + Math.round(c.share * 1000), 0) || undefined}
+                        transactionCount={financeSummary?.totalTransactions}
+                        operatingProfit={financeSummary?.operatingProfit}
                         visitData={financeMonthlyIncome ?? undefined}
                         campaignEffect={financeSummary?.totalIncome
                           ? Math.min(100, Math.max(0, Math.round((financeSummary.operatingProfit / financeSummary.totalIncome) * 100)))

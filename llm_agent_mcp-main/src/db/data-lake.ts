@@ -34,7 +34,7 @@ export function quoteIdent(name: string): string {
 
 const MONGOLIAN_COLUMN_MAP: Record<string, string> = {
     // Date/time
-    "огноо": "date", "он сар өдөр": "date", "хугацаа": "date",
+    "огноо": "date", "он сар өдөр": "date", "хугацаа": "date", "өдөр": "date", "гүйлгээний өдөр": "date",
     // Amount/revenue
     "дүн": "amount", "орлого дүн": "amount", "зарлага дүн": "amount",
     "нийт дүн": "amount", "үнэ": "price", "үнийн дүн": "amount",
