@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, LayoutDashboard, ThumbsUp, ThumbsDown } from "lucide-react";
+import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, LayoutDashboard, ThumbsUp, ThumbsDown, Sparkles } from "lucide-react";
 
 import { Header } from "../components/Header";
 import { LoginForm } from "../components/LoginForm";
@@ -148,6 +148,15 @@ export default function Home() {
 
   const financeData = useFinanceChartData(dashboard.financeCharts, dashboard.salesKpi);
 
+  // Dynamic suggestion cards — use DataPassport questions when available, fall back to hardcoded
+  const activeSuggestions = (dashboard.tablePassport?.available && dashboard.tablePassport.questions?.length)
+    ? dashboard.tablePassport.questions.map(q => ({
+        label: q.length > 16 ? q.slice(0, 15) + "…" : q,
+        query: q,
+        icon: <Sparkles className="w-3 h-3" />,
+      }))
+    : SUGGESTIONS_INITIAL;
+
   // ── Auth login wrapper ──
   const handleLogin = async (e?: React.FormEvent, customCreds?: { email: string; role: string }) => {
     if (e) e.preventDefault();
@@ -227,7 +236,7 @@ export default function Home() {
                         <p className="text-[10px] mt-1">Доорх саналуудаас сонгох эсвэл өөрөө асуултаа бичнэ үү.</p>
                       </div>
                       <div className="flex flex-wrap gap-2 justify-center max-w-lg">
-                        {SUGGESTIONS_INITIAL.map((s, i) => (
+                        {activeSuggestions.map((s, i) => (
                           <button key={i} onClick={() => chat.handleSendMessage(undefined, s.query)}
                             className="px-3 py-1.5 text-xs bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/70 transition-all cursor-pointer animate-fade-in-up inline-flex items-center gap-1.5"
                             style={{ animationDelay: `${i * 50}ms` }}>

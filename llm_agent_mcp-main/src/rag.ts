@@ -620,3 +620,30 @@ export async function addDocumentToCatalog(
     }
   }
 }
+
+/**
+ * Retrieves the data passport document for a given table from ChromaDB.
+ * Returns null if ChromaDB is unavailable or no passport exists.
+ */
+export async function getPassportByTableName(tableName: string): Promise<string | null> {
+  const col = await getChromaCollection();
+  if (!col) return null;
+  try {
+    const result = await col.get({ ids: [`passport_${tableName}`] });
+    return result.documents?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parses the topBusinessQuestions from a stored data passport markdown string.
+ */
+export function parsePassportQuestions(passportMarkdown: string): string[] {
+  const sectionMatch = passportMarkdown.match(/###\s*Тэргүүлэх 5 бизнесийн асуулт\n([\s\S]*?)(?:\n###|$)/);
+  if (!sectionMatch) return [];
+  return sectionMatch[1]
+    .split("\n")
+    .map(line => line.replace(/^\d+\.\s*/, "").trim())
+    .filter(Boolean);
+}

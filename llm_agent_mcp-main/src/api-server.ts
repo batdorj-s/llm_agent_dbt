@@ -25,7 +25,7 @@ import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent, mergeIntoCombined, buildNoiseSubcategoryFilter } from "./db/data-lake.js";
 import { findConceptColumn } from "./agents/columnSynonyms.js";
 import { buildMntAmountExpr } from "./utils/sqlHelpers.js";
-import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
+import { addDocumentToCatalog, removeDocumentsByPrefix, getPassportByTableName, parsePassportQuestions } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { computeMetrics } from "./agents/reportMetrics.js";
 import { generateReportPdf, generateReportXlsx } from "./agents/reportExport.js";
@@ -682,6 +682,37 @@ app.get("/api/finance-audit", async (req, res) => {
       totalRows:        Number(row.total_rows),
       incomeTotal:      Math.round(Number(row.income_total)),
       expenseTotal:     Math.round(Number(row.expense_total)),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Table Passport — data-driven suggestion questions from DataProfiler
+// ─────────────────────────────────────────────────────────────
+app.get("/api/table-passport", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
+
+  try {
+    const entry = await getActiveCatalogEntry(auth.payload.userId);
+    if (!entry) return res.json({ available: false });
+
+    const tableName = entry.table_name;
+    const markdown = await getPassportByTableName(tableName);
+    if (!markdown) return res.json({ available: false, tableName });
+
+    const questions = parsePassportQuestions(markdown);
+    const domainMatch = markdown.match(/\*\*Домэйн\*\*:\s*(.+)/);
+    const industryMatch = markdown.match(/\*\*Салбар\*\*:\s*(.+)/);
+
+    return res.json({
+      available: questions.length > 0,
+      tableName,
+      questions,
+      domain: domainMatch?.[1]?.trim() ?? "",
+      industry: industryMatch?.[1]?.trim() ?? "",
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

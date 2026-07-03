@@ -16,6 +16,14 @@ export interface FinanceAudit {
   expenseTotal?: number;
 }
 
+export interface TablePassport {
+  available: boolean;
+  tableName?: string;
+  questions?: string[];
+  domain?: string;
+  industry?: string;
+}
+
 export type Period = "7d" | "1m" | "3m" | "6m" | "12m" | "all";
 
 function periodToDateRange(p: Period): { startDate?: string; endDate?: string } {
@@ -123,6 +131,13 @@ export function useDashboard(
     staleTime: 60_000,
   });
 
+  const { data: tablePassport } = useQuery<TablePassport>({
+    queryKey: ["tablePassport"],
+    queryFn: () => fetchJson(`/api/table-passport`, token!, onUnauthorized),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+
   // isDashboardLoading: true while any primary KPI query is pending on first load
   const isDashboardLoading = enabled && (
     salesKpi === undefined || usersKpi === undefined || churnKpi === undefined
@@ -135,6 +150,7 @@ export function useDashboard(
     queryClient.invalidateQueries({ queryKey: ["computedMetrics"] });
     queryClient.invalidateQueries({ queryKey: ["financeCharts"] });
     queryClient.invalidateQueries({ queryKey: ["financeAudit"] });
+    queryClient.invalidateQueries({ queryKey: ["tablePassport"] });
   }, [queryClient]);
 
   const resetDashboard = useCallback(() => {
@@ -143,6 +159,7 @@ export function useDashboard(
     queryClient.removeQueries({ queryKey: ["computedMetrics"] });
     queryClient.removeQueries({ queryKey: ["financeCharts"] });
     queryClient.removeQueries({ queryKey: ["financeAudit"] });
+    queryClient.removeQueries({ queryKey: ["tablePassport"] });
   }, [queryClient]);
 
   return {
@@ -154,6 +171,7 @@ export function useDashboard(
     salesHistory,
     financeCharts: financeCharts ?? null,
     financeAudit: financeAudit ?? null,
+    tablePassport: tablePassport ?? null,
     isDashboardLoading,
     period,
     setPeriod,
