@@ -14,6 +14,7 @@ interface FinanceChart {
 interface FinanceChartsResponse {
   isFinance: boolean;
   tableName?: string;
+  period?: string;
   charts?: FinanceChart[];
   summary?: {
     totalIncome: number;
@@ -144,6 +145,11 @@ export function FinanceDashboard({ token }: Props) {
         {data.tableName && (
           <span className="text-[10px] text-foreground/30 font-mono bg-foreground/5 px-1.5 py-0.5 rounded">
             {data.tableName}
+          </span>
+        )}
+        {data.period && (
+          <span className="text-[10px] font-semibold text-foreground/40 ml-auto">
+            {data.period}
           </span>
         )}
       </div>

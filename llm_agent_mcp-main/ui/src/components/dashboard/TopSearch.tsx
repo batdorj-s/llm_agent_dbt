@@ -12,6 +12,7 @@ interface CounterpartyItem {
 interface TopSearchProps {
   loading?: boolean;
   counterparties?: CounterpartyItem[];
+  period?: string;
 }
 
 const defaultCounterparties: CounterpartyItem[] = [
@@ -28,6 +29,7 @@ const formatCurrencyM = (v: number) => `₮${(v / 1_000_000).toFixed(1)}M`;
 export const TopSearch: React.FC<TopSearchProps> = ({
   loading = false,
   counterparties = defaultCounterparties,
+  period,
 }) => {
   const totalIncome = counterparties.reduce((sum, c) => sum + c.amount, 0);
 
@@ -58,7 +60,7 @@ export const TopSearch: React.FC<TopSearchProps> = ({
           <div className="text-base font-extrabold text-emerald-500">
             {formatCurrencyM(totalIncome)}
           </div>
-          <div className="text-[10px] text-foreground/40 mt-0.5">2026 оны I улирал</div>
+          <div className="text-[10px] text-foreground/40 mt-0.5">{period ?? `${new Date().getFullYear()} оны I улирал`}</div>
         </div>
         <div className="bg-foreground/[0.03] border border-border/40 rounded-lg p-3">
           <div className="text-[10px] text-foreground/40 mb-1 uppercase font-semibold tracking-wider">

@@ -514,6 +514,7 @@ export default function Home() {
 
   // ── Finance data helpers for dashboard sub-components ──
   const financeSummary = financeCharts?.summary ?? null;
+  const financePeriod = financeCharts?.period;
   const financeMonthlyIncome = (() => {
     const cf = financeCharts?.charts?.find((c: any) => c.id === "monthly_cashflow");
     if (!cf?.data) return null;
@@ -561,7 +562,7 @@ export default function Home() {
   })();
   const financeRadarData = (() => {
     if (!financeSummary) return null;
-    const incomeScore = financeSummary.totalIncome > 0 ? Math.min(100, Math.round((financeSummary.totalIncome / 200000000) * 100)) : 50;
+    const incomeScore = financeSummary.totalIncome > 0 ? Math.min(100, Math.round((financeSummary.totalIncome / (salesKpi?.target ?? 200_000_000)) * 100)) : 50;
     const expenseRatio = financeSummary.totalIncome > 0 ? Math.round((1 - financeSummary.totalExpense / financeSummary.totalIncome) * 100) : 50;
     const profitScore = financeSummary.totalIncome > 0 ? Math.min(100, Math.round((financeSummary.operatingProfit / financeSummary.totalIncome) * 100 * 5)) : 50;
     return [
@@ -827,14 +828,14 @@ export default function Home() {
                     {/* INSIGHTS ROW — real finance breakdown */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in-up" style={{ animationDelay: "200ms" }}>
                       <ProportionSales salesPieData={financeExpensePieData ?? undefined} />
-                      <TopSearch counterparties={financeCounterparties ?? undefined} />
+                      <TopSearch counterparties={financeCounterparties ?? undefined} period={financePeriod} />
                     </div>
 
                     {/* МӨНГӨН ҮЛДЭГДЭЛ — тусад нь бүтэн өргөний card */}
                     <div className="border border-border/60 rounded-xl p-5 bg-card shadow-sm animate-fade-in-up" style={{ animationDelay: "250ms" }}>
                       <div className="flex items-center gap-2 mb-4">
                         <span className="block w-0.5 h-4 rounded-full bg-blue-500" />
-                        <p className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider">Мөнгөний үлдэгдлийн хөдөлгөөн — Q1 2026</p>
+                        <p className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider">Мөнгөний үлдэгдлийн хөдөлгөөн — {financePeriod ?? `Q1 ${new Date().getFullYear()}`}</p>
                       </div>
                       <ActiveChart cashData={financeCashData ?? undefined} />
                     </div>
@@ -865,7 +866,7 @@ export default function Home() {
                           <Gauge
                             percent={
                               financeSummary
-                                ? Math.min(100, Math.round((financeSummary.totalIncome / 200_000_000) * 100))
+                                ? Math.min(100, Math.round((financeSummary.totalIncome / (salesKpi?.target ?? 200_000_000)) * 100))
                                 : salesKpi
                                   ? Math.min(100, Math.round((salesKpi.current / salesKpi.target) * 100))
                                   : 89
@@ -880,7 +881,7 @@ export default function Home() {
                           <Liquid
                             percent={
                               financeSummary
-                                ? Math.min(1, financeSummary.totalIncome / 200_000_000)
+                                ? Math.min(1, financeSummary.totalIncome / (salesKpi?.target ?? 200_000_000))
                                 : salesKpi
                                   ? Math.min(1, salesKpi.current / (salesKpi.target * 1.15))
                                   : 0.50

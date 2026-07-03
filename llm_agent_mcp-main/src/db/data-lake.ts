@@ -1110,6 +1110,11 @@ function isFinanceTableSchema(columns: string[]): boolean {
         && [...FINANCE_SCHEMA_COLUMNS].every(c => lower.has(c));
 }
 
+function resolveFinanceYear(tableName: string): number {
+    const m = tableName.match(/_(\d{4})(?:_|$)/);
+    return m ? parseInt(m[1], 10) : new Date().getFullYear();
+}
+
 export async function mergeIntoCombined(
     uploadedTableName: string,
     ownerId: string,
@@ -1131,10 +1136,11 @@ export async function mergeIntoCombined(
     const cTbl = quoteIdent(combined);
 
     // Build column list with date conversion for 'date' column (text → proper DATE)
+    const year = resolveFinanceYear(uploadedTableName);
     const selectCols = columns.map(c => {
         const qc = `"${c.replace(/"/g, '""')}"`;
         if (c.toLowerCase() === "date") {
-            return `TO_DATE(NULLIF(${uTbl}.${qc}, '') || '-2026', 'DD-Mon-YYYY') AS ${qc}`;
+            return `TO_DATE(NULLIF(${uTbl}.${qc}, '') || '-${year}', 'DD-Mon-YYYY') AS ${qc}`;
         }
         return `${uTbl}.${qc}`;
     });
@@ -1157,7 +1163,7 @@ export async function mergeIntoCombined(
         const matchCols = columns.map(c => {
             const qc = `"${c.replace(/"/g, '""')}"`;
             if (c.toLowerCase() === "date") {
-                return `TO_DATE(NULLIF(${uTbl}.${qc}, '') || '-2026', 'DD-Mon-YYYY') IS NOT DISTINCT FROM ${cTbl}.${qc}`;
+                return `TO_DATE(NULLIF(${uTbl}.${qc}, '') || '-${year}', 'DD-Mon-YYYY') IS NOT DISTINCT FROM ${cTbl}.${qc}`;
             }
             return `${uTbl}.${qc} IS NOT DISTINCT FROM ${cTbl}.${qc}`;
         }).join(" AND ");

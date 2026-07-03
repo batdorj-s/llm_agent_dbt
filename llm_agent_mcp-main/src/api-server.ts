@@ -595,10 +595,43 @@ app.get("/api/finance-charts", async (req, res) => {
     const totalTransactions = Number(summaryRes.rows[0]?.total_transactions || 0);
     const operatingProfit   = totalIncome - totalExpense;
 
+    let period = "";
+    if (dateCol) {
+      try {
+        const qDate = quoteIdent(dateCol);
+        const pr = await pool.query(`
+          SELECT
+            EXTRACT(YEAR  FROM MIN(${qDate}::DATE)) AS min_year,
+            EXTRACT(YEAR  FROM MAX(${qDate}::DATE)) AS max_year,
+            EXTRACT(QUARTER FROM MIN(${qDate}::DATE)) AS min_q,
+            EXTRACT(QUARTER FROM MAX(${qDate}::DATE)) AS max_q
+          FROM ${qTbl}
+          WHERE ${qDate} IS NOT NULL AND ${qDate} != ''
+        `);
+        const row = pr.rows[0];
+        const minY = row?.min_year;
+        const maxY = row?.max_year;
+        const minQ = row?.min_q;
+        const maxQ = row?.max_q;
+        if (minY != null && maxY != null) {
+          if (minY === maxY) {
+            if (minQ != null && minQ === maxQ) {
+              period = `Q${minQ} ${minY}`;
+            } else {
+              period = `${minY} (Q${minQ}–Q${maxQ})`;
+            }
+          } else {
+            period = `${minY}–${maxY}`;
+          }
+        }
+      } catch {}
+    }
+
     return res.json({
       isFinance: charts.length > 0,
       tableName: table,
       charts,
+      period,
       summary: { totalIncome, totalExpense, operatingProfit, totalTransactions },
     });
   } catch (err: any) {
