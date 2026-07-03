@@ -15,6 +15,8 @@ export interface ComputedMetrics {
   isFinance: boolean;
   totalExpense: number;
   operatingProfit: number;
+  totalTransactions: number;
+  expenseTransactions: number;
 }
 
 async function getActiveTableInfo(userId: string): Promise<{
@@ -250,6 +252,28 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
   const totalIncomeForCalc = isFinanceTable ? Math.round(aov * 100) / 100 : 0;
   const operatingProfit = isFinanceTable ? Math.round((aov - totalExpense) * 100) / 100 : 0;
 
+  // Transaction counts (noise-filtered)
+  let totalTransactions = 0;
+  let expenseTransactions = 0;
+  if (rawMainCatCol) {
+    try {
+      const noiseFilter = `${quoteIdent(rawMainCatCol)} NOT ILIKE '%шилжүүлэг%' AND ${quoteIdent(rawMainCatCol)} NOT ILIKE '%эздийн зээл%' AND ${quoteIdent(rawMainCatCol)} NOT ILIKE '%дотоод%'`;
+      const txnResult = await getPool().query(
+        `SELECT
+           COUNT(*) FILTER (WHERE ${noiseFilter}) AS total_txns,
+           COUNT(*) FILTER (WHERE ${noiseFilter} AND ${quoteIdent(rawMainCatCol)} ILIKE '%зарлага%') AS expense_txns
+         FROM ${quoteIdent(tableName)}`,
+        []
+      );
+      if (txnResult.rows.length > 0) {
+        totalTransactions = Number(txnResult.rows[0]?.total_txns || 0);
+        expenseTransactions = Number(txnResult.rows[0]?.expense_txns || 0);
+      }
+    } catch (err) {
+      console.error("[Metrics] Transaction count query failed:", err);
+    }
+  }
+
   return {
     aov: isFinanceTable ? operatingProfit : Math.round(aov * 100) / 100,
     aovUnit: "₮",
@@ -261,5 +285,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
     isFinance: isFinanceTable,
     totalExpense: Math.round(totalExpense * 100) / 100,
     operatingProfit,
+    totalTransactions,
+    expenseTransactions,
   };
 }

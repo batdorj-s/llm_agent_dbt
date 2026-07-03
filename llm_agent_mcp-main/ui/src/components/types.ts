@@ -38,6 +38,8 @@ export interface ComputedMetrics {
   isFinance?: boolean;
   totalExpense?: number;
   operatingProfit?: number;
+  totalTransactions?: number;
+  expenseTransactions?: number;
 }
 
 export interface ServerStatus {

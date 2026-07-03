@@ -108,6 +108,9 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
   const isFinance = computedMetrics?.isFinance ?? false;
   const totalExpense = computedMetrics?.totalExpense ?? 0;
   const operatingProfit = computedMetrics?.operatingProfit ?? 0;
+  const totalTransactions = computedMetrics?.totalTransactions ?? 0;
+  const expenseTransactions = computedMetrics?.expenseTransactions ?? 0;
+  const expenseTxnRatio = totalTransactions > 0 ? (expenseTransactions / totalTransactions) * 100 : 0;
   const expenseRatio = salesKpi && salesKpi.current > 0 ? (totalExpense / salesKpi.current * 100) : 0;
   const topCategoryShare = isFinance && totalExpense > 0 ? (topCategoryValue / totalExpense) * 100 : 0;
 
@@ -156,11 +159,11 @@ export const KpiGrid = ({ salesKpi, usersKpi, churnKpi, computedMetrics, salesHi
         ),
         isFinance ? (
           <KpiCard key="churn"
-            label="Зардлын харьцаа"
-            value={expenseRatio > 0 ? `${expenseRatio.toFixed(1)}%` : "—"}
-            subLabel="Нийт орлого"
-            subValue={salesKpi ? `₮${salesKpi.current.toLocaleString()}` : "—"}
-            color={expenseRatio > 100 ? "#ef4444" : "#f59e0b"}
+            label="Зарлагын гүйлгээ"
+            value={expenseTransactions > 0 ? expenseTransactions.toLocaleString() : "—"}
+            subLabel={totalTransactions > 0 ? `Нийт ${totalTransactions.toLocaleString()}` : "Нийт гүйлгээ"}
+            subValue={expenseTxnRatio > 0 ? `${expenseTxnRatio.toFixed(1)}%` : "—"}
+            color="#f59e0b"
           />
         ) : (
           <KpiCard key="churn"
