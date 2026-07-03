@@ -1100,6 +1100,116 @@ export async function createUser(email: string, password: string, name: string, 
   }
 }
 
+export const FINANCE_COMBINED_TABLE = "finance_combined";
+
+const FINANCE_SCHEMA_COLUMNS = new Set(["date", "customer", "amount", "category", "subcategory", "description"]);
+
+function isFinanceTableSchema(columns: string[]): boolean {
+    const lower = new Set(columns.map(c => c.toLowerCase()));
+    return FINANCE_SCHEMA_COLUMNS.size === lower.size
+        && [...FINANCE_SCHEMA_COLUMNS].every(c => lower.has(c));
+}
+
+export async function mergeIntoCombined(
+    uploadedTableName: string,
+    ownerId: string,
+    description: string,
+): Promise<void> {
+    if (!_pgAvailable || !pool) return;
+    const p = pool;
+
+    const catalogResult = await p.query(
+        `SELECT columns_info FROM data_lake_catalog WHERE table_name = $1`,
+        [uploadedTableName]
+    );
+    if (catalogResult.rows.length === 0) return;
+    const columns: string[] = JSON.parse(catalogResult.rows[0].columns_info as string);
+    if (!isFinanceTableSchema(columns)) return;
+
+    const combined = FINANCE_COMBINED_TABLE;
+    const uTbl = quoteIdent(uploadedTableName);
+    const cTbl = quoteIdent(combined);
+
+    // Build column list with date conversion for 'date' column (text → proper DATE)
+    const selectCols = columns.map(c => {
+        const qc = `"${c.replace(/"/g, '""')}"`;
+        if (c.toLowerCase() === "date") {
+            return `TO_DATE(NULLIF(${uTbl}.${qc}, '') || '-2026', 'DD-Mon-YYYY') AS ${qc}`;
+        }
+        return `${uTbl}.${qc}`;
+    });
+    const insertCols = columns.map(c => `"${c.replace(/"/g, '""')}"`).join(", ");
+
+    const existsResult = await p.query(
+        `SELECT table_name FROM information_schema.tables WHERE table_name = $1`,
+        [combined]
+    );
+
+    if (existsResult.rows.length === 0) {
+        await p.query(`
+            CREATE TABLE ${cTbl} AS
+            SELECT ${selectCols.join(", ")} FROM ${uTbl}
+        `);
+        // Change date column type from DATE back to DATE (it was set by TO_DATE)
+        console.log(`[Data Lake] Created combined table '${combined}'`);
+    } else {
+        // Merge with anti-duplicate: skip rows that already exist in combined
+        const matchCols = columns.map(c => {
+            const qc = `"${c.replace(/"/g, '""')}"`;
+            if (c.toLowerCase() === "date") {
+                return `TO_DATE(NULLIF(${uTbl}.${qc}, '') || '-2026', 'DD-Mon-YYYY') IS NOT DISTINCT FROM ${cTbl}.${qc}`;
+            }
+            return `${uTbl}.${qc} IS NOT DISTINCT FROM ${cTbl}.${qc}`;
+        }).join(" AND ");
+
+        await p.query(`
+            INSERT INTO ${cTbl} (${insertCols})
+            SELECT ${selectCols.join(", ")} FROM ${uTbl}
+            WHERE NOT EXISTS (
+                SELECT 1 FROM ${cTbl}
+                WHERE ${matchCols}
+            )
+        `);
+        console.log(`[Data Lake] Merged '${uploadedTableName}' into '${combined}'`);
+    }
+
+    // Drop the individual table
+    await p.query(`DROP TABLE IF EXISTS ${quoteIdent(uploadedTableName)} CASCADE`);
+
+    // Point data_lake_catalog to the combined table
+    const existingCombined = await p.query(
+        `SELECT table_name FROM data_lake_catalog WHERE table_name = $1`,
+        [combined]
+    );
+
+    if (existingCombined.rows.length === 0) {
+        await p.query(`
+            INSERT INTO data_lake_catalog (table_name, created_by, owner_id, visibility, columns_info, description)
+            VALUES ($1, $2, $3, 'private', $4, $5)
+        `, [combined, ownerId, ownerId, JSON.stringify(columns), description]);
+    } else {
+        await p.query(`
+            UPDATE data_lake_catalog SET description = $1, created_at = NOW()
+            WHERE table_name = $2
+        `, [description, combined]);
+    }
+
+    // Update uploaded_files to point to the combined table
+    await p.query(`
+        INSERT INTO uploaded_files (id, filename, type, description, generated_at, owner_id, visibility)
+        VALUES ($1, $2, 'dataset', $3, NOW(), $4, 'private')
+        ON CONFLICT (id) DO UPDATE SET
+            filename = EXCLUDED.filename,
+            description = EXCLUDED.description,
+            generated_at = NOW()
+    `, [combined, `${combined} (auto-merged)`, description, ownerId]);
+
+    // Remove the individual entry from uploaded_files
+    await p.query(`DELETE FROM uploaded_files WHERE id = $1`, [uploadedTableName]);
+
+    console.log(`[Data Lake] Catalog updated: '${combined}' is now the active table`);
+}
+
 export async function executeSql(query: string, readOnly: boolean, userId: string): Promise<any> {
     return traceToolCall("executeSql", async () => {
         await initDataLake();

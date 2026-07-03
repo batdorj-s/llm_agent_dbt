@@ -14,7 +14,7 @@ import { ensureProjectReady, runDbtForTable, runDbtTest, runDbtFinanceModels } f
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent, mergeIntoCombined } from "./db/data-lake.js";
 import { findConceptColumn } from "./agents/columnSynonyms.js";
 import { buildMntAmountExpr } from "./utils/sqlHelpers.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
@@ -967,6 +967,8 @@ app.post("/api/admin/upload-csv", async (req, res) => {
         sanitizedTableName, description, userId, sanitizedTableName
     );
 
+    await mergeIntoCombined(sanitizedTableName, userId, description);
+
     res.json({
       success: true,
       message: `Table '${sanitizedTableName}' successfully imported.${dbtStatus !== "skipped" ? ` dbt: ${dbtStatus}` : ""}`,
@@ -1060,6 +1062,8 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
     const { preview, columns: resultCols, dbtStatus: xlDbtStatus } = await processUploadedTable(
         sanitizedTableName, description, userId, originalName
     );
+
+    await mergeIntoCombined(sanitizedTableName, userId, description);
 
     res.json({
       success: true,
