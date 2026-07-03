@@ -83,6 +83,76 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
   const lower = query.toLowerCase();
   const sections: string[] = [];
 
+  const isFinanceQuery = /sales|revenue|борлуулалт|орлого|зарлага|ашиг|expense|income|profit|санхүү|төсөв|тайлан|касс|банк|гүйлгээ|transaction|cash|flow|мөнгөн.урсгал|категори|ангилал|дэд.ангилал|цалин|түрээс|маркетинг|нийтийн|үйлчилгээ|хэрэглэгч|user|customer|харилцагч|үзүүлэлт|indicator|kpi/i.test(lower);
+
+  if (isFinanceQuery) {
+    try {
+      const summaryResult = await executeSql(`
+        SELECT
+          COALESCE(SUM(CASE WHEN "Ангилал" = 'орлого' THEN "Дүн" ELSE 0 END), 0) AS нийт_орлого,
+          COALESCE(SUM(CASE WHEN "Ангилал" = 'зарлага' THEN "Дүн" ELSE 0 END), 0) AS нийт_зарлага,
+          COUNT(*) AS нийт_гүйлгээ,
+          MIN(TO_DATE("Өдөр", 'DD-Mon')) AS эхлэх_огноо,
+          MAX(TO_DATE("Өдөр", 'DD-Mon')) AS дуусах_огноо
+        FROM finance_combined
+        WHERE "Ангилал" IN ('орлого', 'зарлага')
+      `, true, "system");
+      if (summaryResult && summaryResult.length > 0) {
+        const s = summaryResult[0] as any;
+        const totalIncome = Number(s.нийт_орлого || 0);
+        const totalExpense = Number(s.нийт_зарлага || 0);
+        const profit = totalIncome - totalExpense;
+        sections.push(
+          `Санхүүгийн хураангуй (finance_combined хүснэгтээс):\n` +
+          `  Нийт орлого: ${totalIncome.toLocaleString()} ₮\n` +
+          `  Нийт зарлага: ${totalExpense.toLocaleString()} ₮\n` +
+          `  Үйл ажиллагааны ашиг: ${profit.toLocaleString()} ₮\n` +
+          `  Нийт гүйлгээ: ${Number(s.нийт_гүйлгээ || 0).toLocaleString()}\n` +
+          `  Хугацаа: ${s.эхлэх_огноо || "N/A"} → ${s.дуусах_огноо || "N/A"}`
+        );
+      }
+    } catch (e) {
+      console.warn("[buildFinanceKpiContext] Summary query failed:", (e as Error).message);
+    }
+
+    try {
+      const expenseByCategory = await executeSql(`
+        SELECT "Дэд ангилал", SUM("Дүн") AS нийт,
+          ROUND(SUM("Дүн") * 100.0 / NULLIF((SELECT SUM("Дүн") FROM finance_combined WHERE "Ангилал" = 'зарлага'), 0), 1) AS хувь
+        FROM finance_combined
+        WHERE "Ангилал" = 'зарлага'
+        GROUP BY "Дэд ангилал"
+        ORDER BY нийт DESC
+      `, true, "system");
+      if (expenseByCategory && expenseByCategory.length > 0) {
+        const lines = (expenseByCategory as any[]).map((r: any) =>
+          `  ${r["Дэд ангилал"] || "(тодорхойгүй)"}: ${Number(r.нийт || 0).toLocaleString()} ₮ (${r.хувь || 0}%)`
+        );
+        sections.push(`Зардлын задаргаа (дэд ангилалаар):\n${lines.join("\n")}`);
+      }
+    } catch (e) {
+      console.warn("[buildFinanceKpiContext] Expense breakdown query failed:", (e as Error).message);
+    }
+
+    try {
+      const incomeByCategory = await executeSql(`
+        SELECT "Дэд ангилал", SUM("Дүн") AS нийт
+        FROM finance_combined
+        WHERE "Ангилал" = 'орлого'
+        GROUP BY "Дэд ангилал"
+        ORDER BY нийт DESC
+      `, true, "system");
+      if (incomeByCategory && incomeByCategory.length > 0) {
+        const lines = (incomeByCategory as any[]).map((r: any) =>
+          `  ${r["Дэд ангилал"] || "(тодорхойгүй)"}: ${Number(r.нийт || 0).toLocaleString()} ₮`
+        );
+        sections.push(`Орлогын задаргаа (дэд ангилалаар):\n${lines.join("\n")}`);
+      }
+    } catch (e) {
+      console.warn("[buildFinanceKpiContext] Income breakdown query failed:", (e as Error).message);
+    }
+  }
+
   if (/sales|revenue|борлуулалт|орлого/i.test(lower)) {
     const result = await handleGetKpi({ metric: "sales" });
     if (result.ok) sections.push(result.text);

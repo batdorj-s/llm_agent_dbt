@@ -189,10 +189,15 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
         ].join("\n");
       }
 
+      // Use TO_DATE for 'DD-Mon' formatted dates (Mongolian finance tables), ::DATE for others
+      const dateExpr = dateCol2 === "Өдөр"
+        ? `TO_DATE("${dateCol2}", 'DD-Mon')`
+        : `("${dateCol2}")::DATE`;
+
       if (/сараар|by.month|monthly|сар.тус.бүрээр/i.test(lowerQuery) && dateCol2) {
         return [
           `SELECT`,
-          `  TO_CHAR(("${dateCol2}")::DATE, 'YYYY-MM') AS сар,`,
+          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS сар,`,
           `  SUM("${amountCol}") AS нийт_дүн,`,
           `  COUNT(*) AS гүйлгээний_тоо`,
           `FROM "${tableName}"`,
@@ -209,12 +214,12 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
           : `CASE WHEN ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%') THEN "${amountCol}" ELSE 0 END`;
         return [
           `SELECT`,
-          `  TO_CHAR(("${dateCol2}")::DATE, 'MM/DD') AS label,`,
+          `  TO_CHAR(${dateExpr}, 'MM/DD') AS label,`,
           `  SUM(${isOpIncomeExpr}) - SUM(${isOpExpenseExpr}) AS value`,
           `FROM "${tableName}"`,
           `WHERE "${dateCol2}" IS NOT NULL AND "${categoryCol}" NOT ILIKE '%шилжүүлэг%' AND "${categoryCol}" NOT ILIKE '%эздийн зээл%'`,
-          `GROUP BY ("${dateCol2}")::DATE`,
-          `ORDER BY ("${dateCol2}")::DATE;`,
+          `GROUP BY ${dateExpr}`,
+          `ORDER BY ${dateExpr};`,
         ].join("\n");
       }
 
@@ -226,7 +231,7 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
           : `CASE WHEN ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%') THEN "${amountCol}" ELSE 0 END`;
         return [
           `SELECT`,
-          `  TO_CHAR(("${dateCol2}")::DATE, 'YYYY-MM') AS сар,`,
+          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS сар,`,
           `  SUM(${isOpIncomeExpr}) AS орлого,`,
           `  SUM(${isOpExpenseExpr}) AS зарлага,`,
           `  SUM(${isOpIncomeExpr}) - SUM(${isOpExpenseExpr}) AS ашиг`,

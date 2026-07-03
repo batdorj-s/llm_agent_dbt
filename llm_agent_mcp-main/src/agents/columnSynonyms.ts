@@ -103,6 +103,14 @@ const TABLE_SPECIFIC_COLUMNS: Record<string, Record<string, string[]>> = {
         "finance_party":       ["харилцагч"],
         "finance_note":        ["тайлбар"],
     },
+    "finance_combined": {
+        "finance_amount":      ["Дүн"],
+        "finance_date":        ["Өдөр"],
+        "finance_category":    ["Ангилал"],
+        "finance_subcategory": ["Дэд ангилал"],
+        "finance_party":       ["Харилцагч"],
+        "finance_note":        ["Тайлбар"],
+    },
 };
 
 const TABLE_PREFIX_MAPPINGS: Record<string, Record<string, string[]>> = {
