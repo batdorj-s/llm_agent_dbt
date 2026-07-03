@@ -63,7 +63,7 @@ export const GLOBAL_CONCEPTS: ColumnConcept[] = [
     },
     {
         concept: "finance_date",
-        patterns: [/^өдөр$/i, /^огноо$/i, /^гүйлгээний.өдөр$/i],
+        patterns: [/^өдөр$/i, /^огноо$/i, /^гүйлгээний.өдөр$/i, /^date$/i],
         description: "Transaction date / Гүйлгээний огноо",
     },
     {
