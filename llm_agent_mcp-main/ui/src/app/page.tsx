@@ -924,7 +924,7 @@ export default function Home() {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 flex flex-col overflow-hidden min-h-0">
                 {reportMode === "finance" ? <FinanceReportView token={token!} /> : <ReportView token={token!} />}
               </div>
             </main>

@@ -151,6 +151,108 @@ const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"
 const formatCurrency = (value: number) =>
   `₮${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+function deriveReportsFromCharts(data: FinanceChartsResponse): FinanceReportsResponse | null {
+  if (!data?.charts || data.charts.length === 0) return null;
+  const summary = data.summary;
+  const findChart = (id: string) => data.charts?.find(c => c.id === id);
+
+  const incStatementChart = findChart("income_statement");
+  const expMonthlyChart = findChart("expense_breakdown_monthly");
+  const cashflowChart = findChart("cashflow_summary");
+
+  let incomeStatement: IncomeStatementReport | null = null;
+  let expenseBreakdown: ExpenseBreakdownReport | null = null;
+  let cashFlow: CashFlowReport | null = null;
+
+  // 1. Income Statement from income_statement chart data
+  if (incStatementChart?.data && incStatementChart.data.length > 0) {
+    const incomeRows: IncomeStatementRow[] = [];
+    const expenseRows: IncomeStatementRow[] = [];
+    for (const row of incStatementChart.data) {
+      const inc = Number(row["Орлого"] ?? 0);
+      const exp = Number(row["Зарлага"] ?? 0);
+      if (inc > 0) incomeRows.push({ subcategory: row.label, amount: inc });
+      if (exp > 0) expenseRows.push({ subcategory: row.label, amount: exp });
+    }
+    if (incomeRows.length > 0 || expenseRows.length > 0) {
+      incomeStatement = {
+        incomeRows,
+        expenseRows,
+        totalIncome: summary?.totalIncome ?? incomeRows.reduce((s, r) => s + r.amount, 0),
+        totalExpense: summary?.totalExpense ?? expenseRows.reduce((s, r) => s + r.amount, 0),
+        operatingProfit: summary?.operatingProfit ?? 0,
+      };
+    }
+  }
+
+  // 2. Expense Breakdown from expense_breakdown_monthly chart data
+  if (expMonthlyChart?.data && (expMonthlyChart as any).config?.series) {
+    const series = (expMonthlyChart as any).config.series as string[];
+    const months = expMonthlyChart.data.map((d: any) => d.label);
+    const rows: ExpenseBreakdownRow[] = series.map((cat, i) => {
+      const monthly = months.map((m: string) => {
+        const row = expMonthlyChart.data.find((d: any) => d.label === m);
+        return Math.round(Number(row?.[cat] ?? 0));
+      });
+      const total = monthly.reduce((s, v) => s + v, 0);
+      return { category: cat, monthly, total, pct: 0 };
+    });
+    const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+    if (grandTotal > 0) {
+      for (const row of rows) row.pct = Math.round((row.total / grandTotal) * 1000) / 10;
+      expenseBreakdown = { categories: series, months, rows, grandTotal };
+    }
+  }
+
+  // 3. Cash Flow from cashflow_summary chart data (split into in/out by sign)
+  if (cashflowChart?.data && (cashflowChart as any).config?.series) {
+    const series = (cashflowChart as any).config.series as string[];
+    const monthEntries = cashflowChart.data as any[];
+    // Aggregate totals per subcategory across all months
+    const subcatTotals: Record<string, number> = {};
+    for (const entry of monthEntries) {
+      for (const s of series) {
+        subcatTotals[s] = (subcatTotals[s] || 0) + Math.round(Number(entry[s] ?? 0));
+      }
+    }
+    // Match subcats from expense_breakdown_monthly to determine in/out
+    const expenseSubcats = new Set(expenseBreakdown?.rows.map(r => r.category) ?? []);
+    const inflowItems: CashFlowItem[] = [];
+    const outflowItems: CashFlowItem[] = [];
+    for (const [name, total] of Object.entries(subcatTotals)) {
+      if (expenseSubcats.has(name)) {
+        outflowItems.push({ name, amount: total });
+      } else {
+        inflowItems.push({ name, amount: total });
+      }
+    }
+    const sections: CashFlowSection[] = [];
+    if (inflowItems.length > 0) {
+      sections.push({
+        name: "Үйл ажиллагааны орлого",
+        items: inflowItems,
+        subtotal: inflowItems.reduce((s, r) => s + r.amount, 0),
+      });
+    }
+    if (outflowItems.length > 0) {
+      const outTotal = outflowItems.reduce((s, r) => s + r.amount, 0);
+      sections.push({
+        name: "Үйл ажиллагааны зарлага",
+        items: outflowItems,
+        subtotal: -outTotal,
+      });
+    }
+    if (sections.length > 0) {
+      const inflowTotal = sections.filter(s => s.subtotal >= 0).reduce((s, sec) => s + sec.subtotal, 0);
+      const outflowTotal = sections.filter(s => s.subtotal < 0).reduce((s, sec) => s + Math.abs(sec.subtotal), 0);
+      cashFlow = { sections, netCashFlow: inflowTotal - outflowTotal };
+    }
+  }
+
+  if (!incomeStatement && !expenseBreakdown && !cashFlow) return null;
+  return { isFinance: true, incomeStatement, expenseBreakdown, cashFlow };
+}
+
 export const FinanceReportView = ({ token }: { token: string }) => {
   const [data, setData] = useState<FinanceChartsResponse | null>(null);
   const [metrics, setMetrics] = useState<ComputedMetrics | null>(null);
@@ -179,7 +281,7 @@ export const FinanceReportView = ({ token }: { token: string }) => {
       if (!cancelled) {
         setData(chartsData);
         setMetrics(metricsData);
-        setReports(reportsData);
+        setReports(reportsData ?? (chartsData ? deriveReportsFromCharts(chartsData) : null));
         setIsLoading(false);
       }
     }).catch(() => {
