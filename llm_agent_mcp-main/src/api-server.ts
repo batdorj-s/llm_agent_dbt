@@ -582,6 +582,127 @@ app.get("/api/finance-charts", async (req, res) => {
       } catch {}
     }
 
+    // ── 7. Cashflow summary: operating items per month ──
+    if (dateCol && subCatCol) {
+      try {
+        const qDate = quoteIdent(dateCol);
+        const r = await pool.query(`
+          SELECT
+            TO_CHAR(${qDate}::DATE, 'YYYY-MM') AS month,
+            ${qCat} AS category,
+            ${qSubCat} AS subcat,
+            SUM(${qAmt}) AS total
+          FROM ${qTbl}
+          WHERE ${notNoise}
+            AND (${isOpIncome} OR ${isOpExpense})
+            AND ${qDate} IS NOT NULL
+          GROUP BY 1, 2, 3
+          ORDER BY 1, 3
+        `);
+        if (r.rows.length > 0) {
+          const monthBuckets: Record<string, Record<string, number>> = {};
+          for (const row of r.rows as any[]) {
+            const m = String(row.month ?? "");
+            const sub = String(row.subcat ?? "");
+            if (!monthBuckets[m]) monthBuckets[m] = {};
+            monthBuckets[m][sub] = (monthBuckets[m][sub] || 0) + Number(row.total ?? 0);
+          }
+          // Gather all unique subcategories
+          const allSubcats = [...new Set(r.rows.map((row: any) => String(row.subcat ?? "")))];
+          const pivotData = Object.entries(monthBuckets)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([month, vals]) => {
+              const entry: Record<string, string | number> = { label: formatMonthLabel(month) };
+              for (const s of allSubcats) entry[s] = vals[s] || 0;
+              return entry;
+            });
+          if (pivotData.length > 0) {
+            charts.push({
+              id: "cashflow_summary",
+              title: "Мөнгөн урсгалын дэлгэрэнгүй — сараар",
+              type: "stacked_bar",
+              data: pivotData as any,
+              config: { xAxis: "label", yAxis: "value", series: allSubcats, stacked: true },
+            });
+          }
+        }
+      } catch {}
+    }
+
+    // ── 8. Income statement: income vs expense totals by subcategory ──
+    if (subCatCol) {
+      try {
+        const r = await pool.query(`
+          SELECT
+            CASE WHEN ${isOpIncome} THEN 'Орлого' ELSE 'Зарлага' END AS section,
+            ${qSubCat} AS subcat,
+            SUM(${qAmt}) AS total
+          FROM ${qTbl}
+          WHERE ${notNoise} AND (${isOpIncome} OR ${isOpExpense})
+            AND ${qSubCat} IS NOT NULL
+          GROUP BY 1, 2
+          ORDER BY 1, 3 DESC
+        `);
+      if (r.rows.length > 0) {
+        const incomeRows = r.rows.filter((row: any) => row.section === "Орлого");
+        const expenseRows = r.rows.filter((row: any) => row.section === "Зарлага");
+        const topIncome = incomeRows.slice(0, 5);
+        const topExpense = expenseRows.slice(0, 5);
+        const labels = [...new Set([...topIncome.map((r: any) => String(r.subcat)), ...topExpense.map((r: any) => String(r.subcat))])];
+        const incomeMap: Record<string, number> = {};
+        const expenseMap: Record<string, number> = {};
+        for (const r of topIncome) incomeMap[String(r.subcat)] = Number(r.total);
+        for (const r of topExpense) expenseMap[String(r.subcat)] = Number(r.total);
+        const barData = labels.map(l => ({
+          label: l,
+          Орлого: incomeMap[l] || 0,
+          Зарлага: expenseMap[l] || 0,
+        }));
+        charts.push({
+          id: "income_statement",
+          title: "Орлого / Зарлагын төрлөөр",
+          type: "bar",
+          data: barData,
+          config: { xAxis: "label", yAxis: "value", series: ["Орлого", "Зарлага"], stacked: false },
+        });
+      }
+    } catch {}
+    }
+
+    // ── 9. Expense category stats with percentages ──
+    if (subCatCol) {
+      try {
+        const r = await pool.query(`
+          SELECT
+            ${qSubCat} AS subcat,
+            SUM(${qAmt}) AS total
+          FROM ${qTbl}
+          WHERE ${isOpExpense} AND ${qSubCat} IS NOT NULL
+          GROUP BY 1
+          ORDER BY 2 DESC
+        `);
+        if (r.rows.length > 0) {
+          const totalExp = r.rows.reduce((s: number, row: any) => s + Number(row.total ?? 0), 0);
+          const data = r.rows.map((row: any) => ({
+            label: String(row.subcat ?? ""),
+            value: Number(row.total ?? 0),
+            pct: totalExp > 0 ? Math.round((Number(row.total ?? 0) / totalExp) * 1000) / 10 : 0,
+          }));
+          charts.push({
+            id: "expense_category_stats",
+            title: "Зарлагын ангилал — дүн ба хувь",
+            type: "horizontal_bar",
+            data,
+            config: {
+              xAxis: "label",
+              yAxis: "value",
+              description: "Үйл ажиллагааны зарлагыг дэд ангилалаар хувийн жинтэй нь харуулна",
+            },
+          });
+        }
+      } catch {}
+    }
+
     // Compute P&L summary
     const summaryRes = await pool.query(`
       SELECT
