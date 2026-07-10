@@ -4,6 +4,14 @@ import fs from "fs";
 import path from "path";
 import yaml from "yaml";
 import { syncDbtModelsToRag, syncDbtTestResultsToRag, syncDbtMetricsToRag } from "./dbt-sync.js";
+import {
+  buildBM25Index,
+  hybridSearch,
+  bm25Search,
+  embedDocuments,
+  removeDocumentEmbedding,
+  type BM25Index,
+} from "./rag/semantic-search.js";
 
 // Self-query cache: avoid redundant LLM calls across agents
 const selfQueryCache = new Map<string, { result: SelfQueryFilter; expiresAt: number }>();
@@ -34,6 +42,7 @@ export interface SelfQueryFilter {
 }
 
 export let knowledgeDocuments: RagDocument[] = [];
+let bm25Index: BM25Index | null = null;
 
 export const mockDocuments = knowledgeDocuments;
 
@@ -66,6 +75,31 @@ const ROLE_CATEGORY_MAP: Record<string, string[]> = {
 };
 
 function inMemorySearch(query: string, limit: number, categories?: string[], userId?: string) {
+  // Use hybrid search if BM25 index is ready
+  if (bm25Index && bm25Index.docCount > 0) {
+    return hybridSearchSync(query, knowledgeDocuments, bm25Index, limit, categories, userId);
+  }
+  // Fallback: basic keyword matching (original behavior)
+  return legacyKeywordSearch(query, limit, categories, userId);
+}
+
+/**
+ * Synchronous wrapper around hybrid search for backward compatibility.
+ * Uses BM25 only (no async Gemini embeddings) for the in-memory path.
+ */
+function hybridSearchSync(
+  query: string,
+  documents: RagDocument[],
+  index: BM25Index,
+  limit: number,
+  categories?: string[],
+  userId?: string
+): RagDocument[] {
+  const results = bm25Search(query, documents, index, limit, categories, userId);
+  return results.map(r => r.doc);
+}
+
+function legacyKeywordSearch(query: string, limit: number, categories?: string[], userId?: string) {
   const queryWords = query.toLowerCase().split(/\W+/).filter(Boolean);
 
   let docs = knowledgeDocuments;
@@ -324,6 +358,17 @@ export async function setupKnowledgeBase() {
     console.log(`[VectorDB] In-Memory DB ready. ${knowledgeDocuments.length} documents loaded.`);
   }
 
+  // Build BM25 index for hybrid search
+  if (knowledgeDocuments.length > 0) {
+    bm25Index = buildBM25Index(knowledgeDocuments);
+    console.log(`[SemanticSearch] BM25 index built: ${bm25Index.docCount} documents, avg length ${Math.round(bm25Index.avgDocLength)} tokens`);
+  }
+
+  // Embed documents with Gemini for semantic search (async, non-blocking)
+  embedDocuments(knowledgeDocuments).catch(err => {
+    console.warn("[SemanticSearch] Document embedding failed (search will use BM25 only):", (err as Error).message);
+  });
+
   return true;
 }
 
@@ -456,6 +501,25 @@ export async function searchKnowledgeBaseWithFilter(
     results = recursiveSearch(query, limit, categories, userId);
   }
 
+  // Attempt async hybrid search with Gemini embeddings for better results
+  if (bm25Index && bm25Index.docCount > 0) {
+    try {
+      const hybridResults = await hybridSearch(
+        query, knowledgeDocuments, bm25Index, limit, categories, userId
+      );
+      if (hybridResults.length > 0) {
+        const hybridDocs = hybridResults.map(r => r.doc);
+        console.log(`[RAG] Hybrid search returned ${hybridDocs.length} results (semantic+BM25) for ${agentRole}`);
+        return {
+          documents: [hybridDocs.map(r => r.text)],
+          metadatas: [hybridDocs.map(r => r.metadata)],
+        };
+      }
+    } catch (err) {
+      console.warn("[RAG] Hybrid search failed, falling back to keyword:", (err as Error).message);
+    }
+  }
+
   const docs = formatWithSource(results);
   console.log(`[RAG] In-memory returned ${results.length} results for ${agentRole}`);
 
@@ -553,6 +617,15 @@ export async function removeDocumentsByPrefix(idPrefix: string): Promise<number>
     }
   }
 
+  // Remove from embedding store and rebuild BM25 index
+  for (const id of removedIds) {
+    removeDocumentEmbedding(id);
+  }
+  if (removed > 0 && knowledgeDocuments.length > 0) {
+    bm25Index = buildBM25Index(knowledgeDocuments);
+    console.log(`[SemanticSearch] BM25 index rebuilt after removal: ${bm25Index.docCount} documents`);
+  }
+
   if (removed > 0) {
     console.log(`[RAG] Removed ${removed} documents with id prefix "${idPrefix}"`);
   }
@@ -619,6 +692,17 @@ export async function addDocumentToCatalog(
       console.error(`[RAG] Failed to add ${id} to ChromaDB:`, err.message);
     }
   }
+
+  // Rebuild BM25 index with new documents
+  if (knowledgeDocuments.length > 0) {
+    bm25Index = buildBM25Index(knowledgeDocuments);
+    console.log(`[SemanticSearch] BM25 index rebuilt: ${bm25Index.docCount} documents`);
+  }
+
+  // Embed new documents with Gemini
+  embedDocuments(docs).catch(err => {
+    console.warn("[SemanticSearch] New document embedding failed:", (err as Error).message);
+  });
 }
 
 /**
