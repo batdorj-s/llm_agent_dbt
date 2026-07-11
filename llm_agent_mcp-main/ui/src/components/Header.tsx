@@ -33,11 +33,14 @@ export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, o
       </div>
 
       {isLoggedIn && (
-        <div className="flex items-center gap-1">
+        <nav className="flex items-center gap-1" role="tablist" aria-label="Үндсэн цэс">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => onTabChange(t.id)}
+              role="tab"
+              aria-selected={activeTab === t.id}
+              aria-controls={`panel-${t.id}`}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${
                 activeTab === t.id
                   ? "text-foreground bg-foreground/10"
@@ -48,7 +51,7 @@ export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, o
               {t.label}
             </button>
           ))}
-        </div>
+        </nav>
       )}
 
       <div className="flex items-center gap-4">
@@ -76,6 +79,7 @@ export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, o
           onClick={onToggleTheme}
           className="p-1 text-foreground/50 hover:text-foreground transition-colors cursor-pointer flex items-center justify-center active:scale-95 duration-100"
           title={theme === "light" ? "Харанхуй горим" : "Гэрэлт горим"}
+          aria-label={theme === "light" ? "Харанхуй горим руу шилжүүлэх" : "Гэрэлт горим руу шилжүүлэх"}
         >
           {theme === "light" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
         </button>

@@ -124,6 +124,7 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
     if (itemColumn && salesColumn) {
         const limit = inferTopLimit(lowerQuery) ?? (isSingleBestQuery(lowerQuery) ? 1 : null);
         if (limit !== null) {
+            const safeLimit = Math.min(Math.max(1, Math.floor(limit)), 1000);
             return `
             WITH item_revenue AS (
                 SELECT
@@ -135,7 +136,7 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
             SELECT item_name, total_revenue
             FROM item_revenue
             ORDER BY total_revenue DESC
-            LIMIT ${limit};
+            LIMIT ${safeLimit};
             `.trim();
         }
     }

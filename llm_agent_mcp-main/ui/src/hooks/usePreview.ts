@@ -17,7 +17,7 @@ const EMPTY: PreviewState = {
   data: null, columns: [], tableName: "", description: null, content: null, hasDownload: false, fileId: null,
 };
 
-export function usePreview(_token: string | null) {
+export function usePreview() {
   const [preview, setPreview] = useState<PreviewState>(EMPTY);
 
   const open = async (file: UploadedFile) => {

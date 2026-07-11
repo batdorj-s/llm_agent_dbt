@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import type { Message } from "../components/types";
 
-export function useChat(_token: string | null, threadId: string, isGraphicModeEnabled: boolean, onDone: () => void) {
+export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone: () => void) {
   const [messages, setMessages]         = useState<Message[]>([]);
   const [input, setInput]               = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);

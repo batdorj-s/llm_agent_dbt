@@ -130,7 +130,12 @@ with open("${outputFile.replace(/\\/g, "\\\\")}", "w") as _f:
             const proc = execFile("python3", [tmpFile], {
                 timeout: timeoutMs,
                 maxBuffer: SANDBOX_MAX_OUTPUT_CHARS * 2,
-                env: { ...process.env, PYTHONUNBUFFERED: "1" },
+                env: {
+                  PATH: process.env.PATH || "/usr/bin:/bin",
+                  HOME: process.env.HOME || "/tmp",
+                  PYTHONUNBUFFERED: "1",
+                  PYTHONIOENCODING: "utf-8",
+                },
             }, (err, stdout, stderr) => {
                 if (err && !fs.existsSync(outputFile)) {
                     reject(new Error(stderr.slice(0, SANDBOX_MAX_OUTPUT_CHARS) || err.message));

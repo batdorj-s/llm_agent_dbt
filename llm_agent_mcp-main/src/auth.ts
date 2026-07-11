@@ -42,6 +42,13 @@ export function sign(data: string, secret: string): string {
 
 const DEV_JWT_SECRET_FALLBACK = "dev-secret-change-in-production-min-32-chars!!";
 const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET_FALLBACK;
+if (!process.env.JWT_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    console.error("[FATAL] JWT_SECRET is required in production. Exiting.");
+    process.exit(1);
+  }
+  console.warn("[WARN] JWT_SECRET not set — using insecure dev fallback. Set JWT_SECRET in .env for production.");
+}
 
 export function createToken(userId: string, role: UserRole): string {
   const header  = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));

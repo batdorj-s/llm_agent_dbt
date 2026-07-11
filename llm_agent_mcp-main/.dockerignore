@@ -1,0 +1,43 @@
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+
+# Frontend build artifacts (built inside Docker)
+ui/node_modules
+ui/.next
+
+# Tests
+src/tests
+ui/src/**/*.test.*
+ui/src/**/*.spec.*
+playwright-report
+test-results
+coverage
+
+# IDE / OS
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+LICENSE
+
+# Docker (avoid recursive copy)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Misc
+.ecc-design
+dist
+*.log

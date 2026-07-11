@@ -18,8 +18,9 @@ chatRouter.post("/", async (req, res) => {
     const threadIdFinal = threadId ?? `thread_${Date.now()}`;
     const response = await runMultiAgent(message, role, threadIdFinal, visualRequest, userId);
     res.json({ response, threadId: threadIdFinal, role, remaining: limit.remaining });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -46,8 +47,9 @@ chatRouter.post("/stream", async (req, res) => {
       res.write(`data: ${JSON.stringify({ chunk, type: "delta" })}\n\n`);
     }, visualRequest, userId);
     res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);
-  } catch (err: any) {
-    res.write(`data: ${JSON.stringify({ type: "error", error: err.message })}\n\n`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown streaming error";
+    res.write(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`);
   } finally {
     res.end();
   }

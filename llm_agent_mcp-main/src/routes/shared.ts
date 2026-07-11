@@ -18,7 +18,7 @@ export function log(
     t:     new Date().toISOString(),
     lvl:   level,
     msg,
-    reqId: (req as any)?.reqId || "-",
+    reqId: req?.reqId || "-",
   };
   if (meta) Object.assign(entry, meta);
   const fn = level === "error" ? console.error : level === "warn" ? console.warn : console.log;

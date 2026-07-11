@@ -8,11 +8,19 @@ FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src/ ./src/
 COPY config/ ./config/
 COPY dbt/ ./dbt/
 
+RUN chown -R appuser:appgroup /app
+
+USER appuser
+
 EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3001/api/health || exit 1
 CMD ["node_modules/.bin/tsx", "src/api-server.ts"]

@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import type { UploadedFile } from "../components/types";
 import type { PreviewState } from "./usePreview";
 
-export function useAdmin(_token: string | null, onRefresh: () => void, onPreviewOpen: (p: Partial<PreviewState>) => void) {
+export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<PreviewState>) => void) {
   // KPI target
   const [adjustMetric, setAdjustMetric]         = useState<"sales" | "users" | "churn_rate">("sales");
   const [newTargetValue, setNewTargetValue]       = useState<number>(200_000_000);

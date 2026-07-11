@@ -68,9 +68,6 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 export function useDashboard(
-  _token: string | null,
-  _isLoggedIn: boolean,
-  _onUnauthorized: () => void,
   period: Period,
   setPeriod: (p: Period) => void,
 ) {

@@ -9,6 +9,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+
 import { chatRouter } from "./routes/chat.router.js";
 import { requestContext } from "./context.js";
 import { agentLimiter } from "./rate-limiter.js";
@@ -19,7 +20,7 @@ import { setupKnowledgeBase } from "./rag.js";
 import { ensureProjectReady, runDbtForTable, runDbtTest, runDbtFinanceModels } from "./setup/init.js";
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
-import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent, mergeIntoCombined, buildNoiseSubcategoryFilter } from "./db/data-lake.js";
+import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, quoteIdent, mergeIntoCombined, buildNoiseSubcategoryFilter } from "./db/data-lake.js";
 import { findConceptColumn } from "./agents/columnSynonyms.js";
 import { buildMntAmountExpr } from "./utils/sqlHelpers.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix, getPassportByTableName, parsePassportQuestions } from "./rag.js";
@@ -35,6 +36,15 @@ import mammoth from "mammoth";
 
 dotenv.config();
 
+interface DbFileRow {
+  id: string;
+  type: string;
+  filename: string;
+  description?: string;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
 const DEFAULT_USER = { userId: "user-admin-001", role: "admin" as const };
 
 const app = express();
@@ -45,11 +55,11 @@ app.use(express.json({ limit: "5mb" }));
 // Request ID middleware — propagates requestId through the entire async call chain
 app.use((req, _res, next) => {
     const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    (req as any).reqId = reqId;
+    req.reqId = reqId;
     requestContext.run({ requestId: reqId, ipAddress: req.ip }, next);
 });
 
-function log(level: "info" | "warn" | "error", msg: string, req?: any, meta?: Record<string, unknown>) {
+function log(level: "info" | "warn" | "error", msg: string, req?: express.Request, meta?: Record<string, unknown>) {
     const entry: Record<string, unknown> = {
         t: new Date().toISOString(),
         lvl: level,
@@ -93,6 +103,14 @@ app.use("/api/chat", chatRouter);
 // ─────────────────────────────────────────────────────────────
 // Health / Status
 // ─────────────────────────────────────────────────────────────
+app.get("/api/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
 app.get("/api/status", (req, res) => {
   const provider = detectProvider();
   res.json({
@@ -108,7 +126,7 @@ app.get("/api/status", (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-function extractDateFilter(req: any): { startDate?: string; endDate?: string } {
+function extractDateFilter(req: express.Request): { startDate?: string; endDate?: string } {
   return {
     startDate: req.query.startDate as string | undefined,
     endDate: req.query.endDate as string | undefined,
@@ -150,7 +168,7 @@ app.get("/api/kpi/:metric", async (req, res) => {
           const targetResult = await getPool().query(
             `SELECT target_value, unit FROM kpi_targets WHERE metric_name = $1`, ["sales"]
           );
-          const targetRow = targetResult.rows[0] as any;
+          const targetRow = targetResult.rows[0] as Record<string, unknown>;
           return res.json({
             name: "sales", current,
             target: targetRow?.target_value ?? 200000000,
@@ -165,11 +183,11 @@ app.get("/api/kpi/:metric", async (req, res) => {
   }
 
   try {
-    const data = await repo.getKpi(metric as any, dateFilter, userId);
+    const data = await repo.getKpi(metric as "sales" | "users" | "churn_rate", dateFilter, userId);
     if (!data) return res.status(404).json({ error: `Metric '${metric}' not found` });
     res.json(data);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -191,8 +209,8 @@ app.get("/api/dashboard/computed-metrics", async (req, res) => {
     const metrics = await computeMetrics(DEFAULT_USER.userId, startDate, endDate);
     if (!metrics) return res.status(404).json({ error: "No active dataset found" });
     res.json(metrics);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -235,7 +253,7 @@ app.get("/api/finance-charts", async (req, res) => {
     // Noise filter: exclude internal transfers and owner loans (Дотоод шилжүүлэг, Эздийн зээл)
     const notNoise = `${qCat} NOT ILIKE '%шилжүүлэг%' AND ${qCat} NOT ILIKE '%эздийн зээл%'`;
 
-    const charts: any[] = [];
+    const charts: Array<{ id: string; title: string; type?: string; data: Array<Record<string, unknown>>; config?: Record<string, unknown> }> = [];
 
     // 1. Category breakdown — operating expense by subcategory (excl. loan repayments)
     try {
@@ -251,11 +269,11 @@ app.get("/api/finance-charts", async (req, res) => {
           id: "category_breakdown",
           title: "Зарлагын бүтэц (үйл ажиллагааны)",
           type: "donut",
-          data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
+          data: r.rows.map((row: Record<string, unknown>) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
           config: { xAxis: "label", yAxis: "value" },
         });
       }
-    } catch {}
+    } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
 
     // Helper: format "YYYY-MM" → "N-р сар"
     function formatMonthLabel(yyyyMM: string): string {
@@ -281,7 +299,7 @@ app.get("/api/finance-charts", async (req, res) => {
             id: "monthly_cashflow",
             title: "Сарын орлого / зарлага",
             type: "bar",
-            data: r.rows.map((row: any) => ({
+            data: r.rows.map((row: Record<string, unknown>) => ({
               label: formatMonthLabel(String(row.label ?? "")),
               "Орлого": Number(row["Орлого"] ?? 0),
               "Зарлага": Number(row["Зарлага"] ?? 0),
@@ -289,7 +307,7 @@ app.get("/api/finance-charts", async (req, res) => {
             config: { xAxis: "label", yAxis: "value", series: ["Орлого", "Зарлага"], stacked: false },
           });
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // 3. Income sources by counterparty (horizontal_bar)
@@ -307,11 +325,11 @@ app.get("/api/finance-charts", async (req, res) => {
             id: "top_parties",
             title: "Орлогын эх үүсвэр (харилцагчаар)",
             type: "horizontal_bar",
-            data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
+            data: r.rows.map((row: Record<string, unknown>) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
             config: { xAxis: "label", yAxis: "value" },
           });
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // 4. Daily net cashflow (line) — income minus operating expense per day
@@ -332,11 +350,11 @@ app.get("/api/finance-charts", async (req, res) => {
             id: "daily_trend",
             title: "Өдрийн цэвэр орлого",
             type: "line",
-            data: r.rows.map((row: any) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
+            data: r.rows.map((row: Record<string, unknown>) => ({ label: String(row.label ?? ""), value: Number(row.value ?? 0) })),
             config: { xAxis: "label", yAxis: "value" },
           });
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // 5. Monthly operating profit/loss
@@ -357,14 +375,14 @@ app.get("/api/finance-charts", async (req, res) => {
             id: "monthly_profit",
             title: "Сарын үйл ажиллагааны ашиг/алдагдал",
             type: "bar",
-            data: r.rows.map((row: any) => ({
+            data: r.rows.map((row: Record<string, unknown>) => ({
               label: formatMonthLabel(String(row.label ?? "")),
               value: Number(row.value ?? 0),
             })),
             config: { xAxis: "label", yAxis: "value" },
           });
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // 6. Monthly expense breakdown by subcategory (stacked bar)
@@ -385,7 +403,7 @@ app.get("/api/finance-charts", async (req, res) => {
         if (r.rows.length > 0) {
           // Find top 5 subcats by total amount
           const subcatTotals: Record<string, number> = {};
-          for (const row of r.rows as any[]) {
+          for (const row of r.rows as Record<string, unknown>[]) {
             const s = String(row.subcat ?? "");
             subcatTotals[s] = (subcatTotals[s] || 0) + Number(row.total ?? 0);
           }
@@ -396,7 +414,7 @@ app.get("/api/finance-charts", async (req, res) => {
 
           // Pivot: month → { label, subcat1: total, subcat2: total, ... }
           const monthMap: Record<string, Record<string, number>> = {};
-          for (const row of r.rows as any[]) {
+          for (const row of r.rows as Record<string, unknown>[]) {
             const m = String(row.month ?? "");
             const s = String(row.subcat ?? "");
             if (!topSubcats.includes(s)) continue;
@@ -418,11 +436,11 @@ app.get("/api/finance-charts", async (req, res) => {
             id: "expense_breakdown_monthly",
             title: "Зарлагын бүтэц сараар",
             type: "stacked_bar",
-            data: pivotData as any,
+            data: pivotData,
             config: { xAxis: "label", yAxis: "value", series: topSubcats, stacked: true },
           });
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // ── 7. Cashflow summary: operating items per month ──
@@ -444,14 +462,14 @@ app.get("/api/finance-charts", async (req, res) => {
         `);
         if (r.rows.length > 0) {
           const monthBuckets: Record<string, Record<string, number>> = {};
-          for (const row of r.rows as any[]) {
+          for (const row of r.rows as Record<string, unknown>[]) {
             const m = String(row.month ?? "");
             const sub = String(row.subcat ?? "");
             if (!monthBuckets[m]) monthBuckets[m] = {};
             monthBuckets[m][sub] = (monthBuckets[m][sub] || 0) + Number(row.total ?? 0);
           }
           // Gather all unique subcategories
-          const allSubcats = [...new Set(r.rows.map((row: any) => String(row.subcat ?? "")))];
+          const allSubcats = [...new Set(r.rows.map((row: Record<string, unknown>) => String(row.subcat ?? "")))];
           const pivotData = Object.entries(monthBuckets)
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([month, vals]) => {
@@ -464,12 +482,12 @@ app.get("/api/finance-charts", async (req, res) => {
               id: "cashflow_summary",
               title: "Мөнгөн урсгалын дэлгэрэнгүй — сараар",
               type: "stacked_bar",
-              data: pivotData as any,
+              data: pivotData,
               config: { xAxis: "label", yAxis: "value", series: allSubcats, stacked: true },
             });
           }
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // ── 8. Income statement: income vs expense totals by subcategory ──
@@ -487,11 +505,11 @@ app.get("/api/finance-charts", async (req, res) => {
           ORDER BY 1, 3 DESC
         `);
       if (r.rows.length > 0) {
-        const incomeRows = r.rows.filter((row: any) => row.section === "Орлого");
-        const expenseRows = r.rows.filter((row: any) => row.section === "Зарлага");
+        const incomeRows = r.rows.filter((row: Record<string, unknown>) => row.section === "Орлого");
+        const expenseRows = r.rows.filter((row: Record<string, unknown>) => row.section === "Зарлага");
         const topIncome = incomeRows.slice(0, 5);
         const topExpense = expenseRows.slice(0, 5);
-        const labels = [...new Set([...topIncome.map((r: any) => String(r.subcat)), ...topExpense.map((r: any) => String(r.subcat))])];
+        const labels = [...new Set([...topIncome.map((r: Record<string, unknown>) => String(r.subcat)), ...topExpense.map((r: Record<string, unknown>) => String(r.subcat))])];
         const incomeMap: Record<string, number> = {};
         const expenseMap: Record<string, number> = {};
         for (const r of topIncome) incomeMap[String(r.subcat)] = Number(r.total);
@@ -509,7 +527,7 @@ app.get("/api/finance-charts", async (req, res) => {
           config: { xAxis: "label", yAxis: "value", series: ["Орлого", "Зарлага"], stacked: false },
         });
       }
-    } catch {}
+    } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // ── 9. Expense category stats with percentages ──
@@ -526,7 +544,7 @@ app.get("/api/finance-charts", async (req, res) => {
         `);
         if (r.rows.length > 0) {
           const totalExp = r.rows.reduce((s: number, row: any) => s + Number(row.total ?? 0), 0);
-          const data = r.rows.map((row: any) => ({
+          const data = r.rows.map((row: Record<string, unknown>) => ({
             label: String(row.subcat ?? ""),
             value: Number(row.total ?? 0),
             pct: totalExp > 0 ? Math.round((Number(row.total ?? 0) / totalExp) * 1000) / 10 : 0,
@@ -543,7 +561,7 @@ app.get("/api/finance-charts", async (req, res) => {
             },
           });
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // Compute P&L summary
@@ -588,7 +606,7 @@ app.get("/api/finance-charts", async (req, res) => {
             period = `${minY}–${maxY}`;
           }
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     return res.json({
@@ -598,8 +616,8 @@ app.get("/api/finance-charts", async (req, res) => {
       period,
       summary: { totalIncome, totalExpense, operatingProfit, totalTransactions },
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -660,8 +678,8 @@ app.get("/api/finance-audit", async (req, res) => {
       incomeTotal:      Math.round(Number(row.income_total)),
       expenseTotal:     Math.round(Number(row.expense_total)),
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -688,8 +706,8 @@ app.get("/api/table-passport", async (req, res) => {
       domain: domainMatch?.[1]?.trim() ?? "",
       industry: industryMatch?.[1]?.trim() ?? "",
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -743,11 +761,11 @@ app.get("/api/finance-reports", async (req, res) => {
         `);
         if (r.rows.length > 0) {
           const incomeRows = r.rows
-            .filter((row: any) => row.section === "Орлого")
-            .map((row: any) => ({ subcategory: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+            .filter((row: Record<string, unknown>) => row.section === "Орлого")
+            .map((row: Record<string, unknown>) => ({ subcategory: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
           const expenseRows = r.rows
-            .filter((row: any) => row.section === "Зарлага")
-            .map((row: any) => ({ subcategory: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+            .filter((row: Record<string, unknown>) => row.section === "Зарлага")
+            .map((row: Record<string, unknown>) => ({ subcategory: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
           const totalIncomeVal = incomeRows.reduce((s: number, r: any) => s + r.amount, 0);
           const totalExpenseVal = expenseRows.reduce((s: number, r: any) => s + r.amount, 0);
           incomeStatement = {
@@ -758,7 +776,7 @@ app.get("/api/finance-reports", async (req, res) => {
             operatingProfit: totalIncomeVal - totalExpenseVal,
           };
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // ── 2. Expense Breakdown with Monthly Pivot (Зардлын задаргаа) ──
@@ -781,7 +799,7 @@ app.get("/api/finance-reports", async (req, res) => {
           const subcatTotals: Record<string, number> = {};
           const monthMap: Record<string, Record<string, number>> = {};
           const monthSet = new Set<string>();
-          for (const row of r.rows as any[]) {
+          for (const row of r.rows as Record<string, unknown>[]) {
             const s = String(row.subcat ?? "");
             const m = String(row.month ?? "");
             const v = Math.round(Number(row.total ?? 0));
@@ -815,7 +833,7 @@ app.get("/api/finance-reports", async (req, res) => {
 
           expenseBreakdown = { categories: sortedSubcats, months: monthLabels, rows, grandTotal };
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     // ── 3. Cash Flow (Мөнгөн урсгал) ──
@@ -841,17 +859,17 @@ app.get("/api/finance-reports", async (req, res) => {
         `);
         if (r.rows.length > 0) {
           const inflowRows = r.rows
-            .filter((row: any) => row.flow_type === "inflow")
-            .map((row: any) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+            .filter((row: Record<string, unknown>) => row.flow_type === "inflow")
+            .map((row: Record<string, unknown>) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
           const financingRows = r.rows
-            .filter((row: any) => row.flow_type === "financing")
-            .map((row: any) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+            .filter((row: Record<string, unknown>) => row.flow_type === "financing")
+            .map((row: Record<string, unknown>) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
           const outflowRows = r.rows
-            .filter((row: any) => row.flow_type === "outflow")
-            .map((row: any) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+            .filter((row: Record<string, unknown>) => row.flow_type === "outflow")
+            .map((row: Record<string, unknown>) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
           const otherRows = r.rows
-            .filter((row: any) => row.flow_type === "other")
-            .map((row: any) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
+            .filter((row: Record<string, unknown>) => row.flow_type === "other")
+            .map((row: Record<string, unknown>) => ({ name: String(row.subcat ?? ""), amount: Math.round(Number(row.total ?? 0)) }));
 
           const sections: Array<{ name: string; items: Array<{ name: string; amount: number }>; subtotal: number }> = [];
           if (inflowRows.length > 0) {
@@ -890,7 +908,7 @@ app.get("/api/finance-reports", async (req, res) => {
 
           cashFlow = { sections, netCashFlow };
         }
-      } catch {}
+      } catch (e) { console.warn("[chart-skip]", e instanceof Error ? e.message : e); }
     }
 
     return res.json({
@@ -899,8 +917,8 @@ app.get("/api/finance-reports", async (req, res) => {
       expenseBreakdown,
       cashFlow,
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -915,8 +933,8 @@ app.post("/api/report/export-pdf", async (req, res) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.pdf"`);
     res.send(pdfBuffer);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -928,8 +946,8 @@ app.post("/api/report/export-xlsx", async (req, res) => {
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.xlsx"`);
     res.send(xlsxBuffer);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -947,7 +965,7 @@ app.delete("/api/admin/files/:id", async (req, res) => {
   await initDataLake();
 
   const fileResult = await getPool().query(`SELECT * FROM uploaded_files WHERE id = $1`, [id]);
-  const file = fileResult.rows[0] as any;
+  const file = fileResult.rows[0] as DbFileRow | undefined;
   if (!file) return res.status(404).json({ error: "File not found" });
 
   try {
@@ -961,15 +979,15 @@ app.delete("/api/admin/files/:id", async (req, res) => {
     }
     if (file.type === "document") {
       const safeFilename = `${id}_${(file.filename as string).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      try { fs.unlinkSync(path.join(DOCUMENTS_DIR, safeFilename)); } catch {}
-      try { fs.unlinkSync(path.join(DOCUMENTS_DIR, `${id}.txt`)); } catch {}
+      try { fs.unlinkSync(path.join(DOCUMENTS_DIR, safeFilename)); } catch (e) { console.warn("[file-cleanup]", e instanceof Error ? e.message : e); }
+      try { fs.unlinkSync(path.join(DOCUMENTS_DIR, `${id}.txt`)); } catch (e) { console.warn("[file-cleanup]", e instanceof Error ? e.message : e); }
       await removeDocumentsByPrefix(`${id}_`);
       await clearConversationMemory();
     }
     await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [id]);
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -979,7 +997,7 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
 
   try {
     const fileResult = await getPool().query(`SELECT * FROM uploaded_files WHERE id = $1`, [id]);
-    const file = fileResult.rows[0] as any;
+    const file = fileResult.rows[0] as DbFileRow | undefined;
     if (!file) return res.status(404).json({ error: "File not found" });
 
     if (file.type === "dataset") {
@@ -1030,7 +1048,7 @@ app.get("/api/admin/files/:id/download", async (req, res) => {
 
   try {
     const fileResult = await getPool().query(`SELECT * FROM uploaded_files WHERE id = $1`, [id]);
-    const file = fileResult.rows[0] as any;
+    const file = fileResult.rows[0] as DbFileRow | undefined;
     if (!file) return res.status(404).json({ error: "File not found" });
     if (file.type !== "document") return res.status(400).json({ error: "Only documents can be downloaded" });
 
@@ -1073,7 +1091,7 @@ async function processUploadedTable(
     dbtStatus: string;
 }> {
     const catalog = await getCatalog(userId);
-    const tableInfo = catalog.find((row: any) => row.table_name === sanitizedTableName) as any;
+    const tableInfo = catalog.find((row: Record<string, unknown>) => row.table_name === sanitizedTableName) as { table_name: string; columns_info: string; [key: string]: unknown } | undefined;
 
     let cols: string[] = [];
     if (tableInfo) {
@@ -1460,8 +1478,8 @@ app.post("/api/feedback", async (req, res) => {
         ? "Таны санал бүртгэгдлээ. Дараах зүйлсийг санал болгож байна:\n- **Файл оруулах**: Хэрэв өгөгдөл дутуу байвал CSV файлаа upload хийгээрэй\n- **Тодорхой асуулт**: Баганын нэр, огноогоо дурдаж асууна уу\n- **Агент солих**: 'SQL query бич' эсвэл 'борлуулалтын тайлан' гэх мэт чиглэл өгнө үү"
         : "Санал өгсөнд баярлалаа!";
     res.json({ success: true, message: suggestions });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -1471,8 +1489,8 @@ app.get("/api/admin/feedback/pending", async (req, res) => {
     const all = await readFailedQueries();
     const pending = all.filter((f: any) => f.status === "pending");
     res.json(pending);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -1505,8 +1523,8 @@ app.post("/api/admin/feedback/:id/approve", async (req, res) => {
     }
 
     res.json({ success: true, message: "Feedback approved and added to RAG" });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -1523,8 +1541,8 @@ app.post("/api/admin/feedback/:id/reject", async (req, res) => {
     await fs.promises.writeFile(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
 
     res.json({ success: true, message: "Feedback rejected" });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
@@ -1542,25 +1560,28 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
   
   try {
     const repo = await getRepository();
-    await repo.updateKpiTarget(metric as any, Number(target));
+    await repo.updateKpiTarget(metric as "sales" | "users" | "churn_rate", Number(target));
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
 // ─────────────────────────────────────────────────────────────
 // Centralized error handler middleware
 // ─────────────────────────────────────────────────────────────
-app.use((err: any, _req: any, res: any, _next: any) => {
+app.use((err: Error & { code?: string; statusCode?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(413).json({ error: "File too large. Maximum size is 10MB." });
+      res.status(413).json({ error: "File too large. Maximum size is 10MB." });
+      return;
     }
-    return res.status(400).json({ error: `Upload error: ${err.message}` });
+    res.status(400).json({ error: `Upload error: ${err.message}` });
+    return;
   }
   if (err.message?.startsWith("Unsupported file type")) {
-    return res.status(415).json({ error: err.message });
+    res.status(415).json({ error: err.message });
+    return;
   }
   console.error("[API] Unhandled error:", err);
   res.status(500).json({ error: "Internal server error" });
