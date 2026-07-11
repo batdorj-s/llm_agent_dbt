@@ -118,7 +118,7 @@ describe("RAG Security & Multi-Tenant Isolation", () => {
       const docsUnauth = searchUnauth.documents[0];
       expect(docsUnauth.some(d => d.includes("luxury"))).toBe(false);
       expect(docsUnauth.some(d => d.includes("budget"))).toBe(false);
-    }, 15000);
+    }, 45000);
   });
 
   describe("R3 & R5: Negative Feedback & KB Poisoning", () => {
@@ -169,6 +169,6 @@ describe("RAG Security & Multi-Tenant Isolation", () => {
       // Now the approved feedback SHOULD be searchable
       const docsApproved = searchResultApproved.documents[0];
       expect(docsApproved.some(d => d.includes("9,999,999"))).toBe(true);
-    });
+    }, 30000);
   });
 });

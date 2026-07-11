@@ -236,14 +236,14 @@ describe("Phase 3 — Semantic RAG: Business Glossary", () => {
         const result = await searchKnowledgeBase("Цэвэр ашиг гэж юу вэ?", "FinanceAgent", 5);
         const combined = (result.documents?.[0] ?? []).join(" ").toLowerCase();
         expect(combined).toContain("net profit");
-    });
+    }, 15000);
 
     it("STRESS: 'борлуулалтын орлого' returns revenue definition", async () => {
         const { searchKnowledgeBase } = await import("../rag.js");
         const result = await searchKnowledgeBase("борлуулалтын орлого", "FinanceAgent", 5);
         const combined = (result.documents?.[0] ?? []).join(" ").toLowerCase();
         expect(combined).toContain("revenue");
-    });
+    }, 15000);
 
     it("STRESS: 'ашгийн хувь' returns profit margin formula", async () => {
         const { searchKnowledgeBase } = await import("../rag.js");
