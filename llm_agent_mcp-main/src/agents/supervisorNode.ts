@@ -168,8 +168,22 @@ export async function supervisorNode(state: AgentState, config?: AgentConfig): P
                         sanitizedQuery: lastMessage,
                     };
                 } catch (streamErr) {
-                    const fallback = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Одоогоор хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.";
-                    log.warn("End response failed:", { error: (streamErr as Error).message });
+                    const errorType = (streamErr as Error).name || "UnknownError";
+                    const errorMsg = (streamErr as Error).message || "";
+                    
+                    // Provide specific error messages based on error type
+                    let fallback: string;
+                    if (errorType === "TimeoutError" || errorMsg.includes("timeout")) {
+                        fallback = "Хүсэлт хэт удаан болж байна. Дахин оролдоно уу эсвэл илүү богино асуулт асуугаарай.";
+                    } else if (errorMsg.includes("rate") || errorMsg.includes("429")) {
+                        fallback = "Олон хүсэлт илгээсэн тул түр хүлээнэ үү. Бага зэрэг хүлээгээд дахин оролдоно уу.";
+                    } else if (errorMsg.includes("api") || errorMsg.includes("key")) {
+                        fallback = "API холболтын асуудал гарлаа. Дахин оролдоно уу.";
+                    } else {
+                        fallback = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Одоогоор хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.";
+                    }
+                    
+                    log.warn("End response failed:", { errorType, errorMsg });
                     if (onChunk) onChunk(fallback);
                     return {
                         nextAgent: "END",

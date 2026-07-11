@@ -366,20 +366,20 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
   };
 
   return (
-    <div className="bg-card border border-border/60 rounded-xl p-4 mt-2 max-w-full sm:max-w-lg shadow-sm hover:shadow-md transition-all duration-200" ref={chartRef}>
+    <div className="bg-card border border-border/60 rounded-xl p-3 sm:p-4 mt-2 max-w-full sm:max-w-lg shadow-sm hover:shadow-md transition-all duration-200" ref={chartRef}>
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="block w-0.5 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: colors[0] }} />
           <h4 className="text-[11px] font-semibold text-foreground/80 truncate">{data.title || "Дүн шинжилгээ"}</h4>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
           {/* Info / тайлбар button */}
           {description && (
             <button
               onClick={() => setInfoOpen(v => !v)}
               title="Тайлбар харах"
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold border transition-all duration-150 ${
+              className={`flex items-center gap-1 px-2 py-1 sm:py-0.5 rounded-full text-[9px] font-semibold border transition-all duration-150 touch-manipulation ${
                 infoOpen
                   ? "bg-blue-500 border-blue-500 text-white"
                   : "bg-blue-500/10 border-blue-500/30 text-blue-500 hover:bg-blue-500/20"
@@ -388,16 +388,16 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 flex-shrink-0">
                 <path d="M8 15A7 7 0 118 1a7 7 0 010 14zm0-1A6 6 0 108 2a6 6 0 000 12zM7.002 11V7h1.996v4H7.002zm0-5.5V4h1.996v1.5H7.002z"/>
               </svg>
-              Тайлбар
+              <span className="hidden sm:inline">Тайлбар</span>
             </button>
           )}
           {/* Chart type switcher */}
-          <div className="flex bg-background border border-border rounded text-[9px]">
+          <div className="flex bg-background border border-border rounded text-[9px] overflow-x-auto scrollbar-none">
             {compatible.slice(0, 5).map((t) => (
               <button
                 key={t}
                 onClick={() => setUserType(t)}
-                className={`px-1.5 py-0.5 transition-colors ${effectiveType === t ? "bg-foreground/10 text-foreground font-semibold" : "text-foreground/50 hover:text-foreground/80"}`}
+                className={`px-1.5 py-1 sm:py-0.5 transition-colors touch-manipulation flex-shrink-0 ${effectiveType === t ? "bg-foreground/10 text-foreground font-semibold" : "text-foreground/50 hover:text-foreground/80"}`}
                 title={CHART_LABELS[t]}
               >
                 {({ bar: "▇", horizontal_bar: "≡", line: "╱", area: "◢", pie: "◉", donut: "◎", combo: "⊞", stacked_bar: "▤", heatmap: "▦", scatter: "⁘", waterfall: "▯" } as Record<ChartType, string>)[t]}
@@ -407,7 +407,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
               <select
                 value={effectiveType}
                 onChange={(e) => setUserType(e.target.value as ChartType)}
-                className="bg-transparent border-none text-[9px] text-foreground/70 outline-none cursor-pointer px-1"
+                className="bg-transparent border-none text-[9px] text-foreground/70 outline-none cursor-pointer px-1 flex-shrink-0"
               >
                 {compatible.map((t) => (
                   <option key={t} value={t}>{CHART_LABELS[t]}</option>
@@ -716,6 +716,10 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
         );
       default:
         return null;
+    }
+  };
+
+  return (
     <div className="bg-card border border-border/60 rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow duration-150" ref={chartRef}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
@@ -796,12 +800,67 @@ export const DashboardMessage = ({ dashboardJson }: { dashboardJson: string }) =
     return <div className="text-[9px] text-red-500">Invalid dashboard data</div>;
   }
 
+  const handleExportAll = () => {
+    const allData: Record<string, unknown>[] = [];
+    
+    // Collect all data from widgets
+    for (const widget of widgets) {
+      if (widget.data && Array.isArray(widget.data)) {
+        for (const row of widget.data) {
+          allData.push({
+            widget: widget.title,
+            ...row,
+          });
+        }
+      }
+    }
+
+    if (allData.length === 0) return;
+
+    // Convert to CSV
+    const headers = Array.from(new Set(allData.flatMap((row) => Object.keys(row))));
+    const csvRows = [
+      headers.join(","),
+      ...allData.map((row) =>
+        headers.map((h) => {
+          const val = row[h];
+          const str = String(val ?? "");
+          return str.includes(",") || str.includes('"') || str.includes("\n")
+            ? `"${str.replace(/"/g, '""')}"`
+            : str;
+        }).join(",")
+      ),
+    ];
+
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `dashboard-export-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="bg-card border border-border/60 rounded-xl p-4 mt-2 max-w-3xl shadow-sm transition-colors duration-200">
-      <div className="flex items-center gap-2 mb-4 pb-2 border-b border-border/40">
-        {/* Ant-design-pro style accent stripe */}
-        <div className="w-0.5 h-4 rounded-full bg-blue-500" />
-        <h4 className="text-[11px] font-bold text-foreground/60 uppercase tracking-widest">Dashboard</h4>
+      <div className="flex items-center justify-between mb-4 pb-2 border-b border-border/40">
+        <div className="flex items-center gap-2">
+          {/* Ant-design-pro style accent stripe */}
+          <div className="w-0.5 h-4 rounded-full bg-blue-500" />
+          <h4 className="text-[11px] font-bold text-foreground/60 uppercase tracking-widest">Dashboard</h4>
+        </div>
+        <button
+          onClick={handleExportAll}
+          className="flex items-center gap-1 px-2 py-1 rounded text-[9px] font-medium text-foreground/60 hover:text-foreground/80 hover:bg-foreground/5 transition-colors"
+          title="Бүх өгөгдөл CSV татах"
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+            <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
+            <path d="M7.646 11.854a.5.5 0 00.708 0l3-3a.5.5 0 00-.708-.708L8.5 10.293V1.5a.5.5 0 00-1 0v8.793L5.354 8.146a.5.5 0 10-.708.708l3 3z"/>
+          </svg>
+          CSV татах
+        </button>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-4">
         {widgets.filter((w: any) => w.type === "kpi").map((w: any, i: number) => (
