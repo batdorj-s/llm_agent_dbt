@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import type { Message } from "../components/types";
 
-export function useChat(token: string | null, threadId: string, isGraphicModeEnabled: boolean, onDone: () => void) {
+export function useChat(_token: string | null, threadId: string, isGraphicModeEnabled: boolean, onDone: () => void) {
   const [messages, setMessages]         = useState<Message[]>([]);
   const [input, setInput]               = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -27,7 +27,7 @@ export function useChat(token: string | null, threadId: string, isGraphicModeEna
   const handleSendMessage = async (e?: React.FormEvent, customInput?: string) => {
     if (e) e.preventDefault();
     const query = customInput || input;
-    if (!query.trim() || isChatLoading || !token) return;
+    if (!query.trim() || isChatLoading) return;
     if (!customInput) setInput("");
 
     const userMsg: Message = { id: `user_${Date.now()}`, sender: "user", text: query, timestamp: new Date() };
@@ -45,7 +45,7 @@ export function useChat(token: string | null, threadId: string, isGraphicModeEna
       if (streamEnabled) {
         const response = await fetch("/api/chat/stream", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: query, threadId, visualRequest: isGraphicModeEnabled }),
           signal: controller.signal,
         });
@@ -89,7 +89,7 @@ export function useChat(token: string | null, threadId: string, isGraphicModeEna
       } else {
         const res = await fetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: query, threadId, visualRequest: isGraphicModeEnabled }),
           signal: controller.signal,
         });
@@ -122,7 +122,7 @@ export function useChat(token: string | null, threadId: string, isGraphicModeEna
   const handleCancelMessage = () => { abortControllerRef.current?.abort(); };
 
   const handleFeedback = async (msgId: string, rating: "positive" | "negative") => {
-    if (!token || feedbackState[msgId]) return;
+    if (feedbackState[msgId]) return;
     setFeedbackState(p => ({ ...p, [msgId]: rating }));
     const msgIndex = messages.findIndex(m => m.id === msgId);
     const agentMsg = messages[msgIndex];
@@ -130,7 +130,7 @@ export function useChat(token: string | null, threadId: string, isGraphicModeEna
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMsg?.text || agentMsg?.text || "", response: agentMsg?.text || "", rating, threadId }),
       });
       if (!res.ok) { setFeedbackState(p => ({ ...p, [msgId]: null })); return; }

@@ -6,16 +6,11 @@ import type { Express } from "express";
 import fs from "fs";
 import path from "path";
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@admin.com";
-const ADMIN_PASS = process.env.ADMIN_PASSWORD || "bataa0818";
 const SUFFIX = Date.now();
 const TEST_TABLE = `flow_test_${SUFFIX}`;
-const TEST_EMAIL = `flow_user_${SUFFIX}@test.com`;
-const TEST_PASS = "testpass123";
 
 describe("Complete Data Flow & Workflow", () => {
     let app: Express;
-    let adminToken: string;
     let threadId: string;
 
     beforeAll(async () => {
@@ -24,11 +19,6 @@ describe("Complete Data Flow & Workflow", () => {
 
         const { app: apiApp } = await import("../api-server.js");
         app = apiApp;
-
-        const adminRes = await request(app)
-            .post("/api/auth/login")
-            .send({ email: ADMIN_EMAIL, password: ADMIN_PASS });
-        adminToken = adminRes.body.token;
     });
 
     afterAll(async () => {
@@ -39,7 +29,6 @@ describe("Complete Data Flow & Workflow", () => {
         await removeDocumentsByPrefix(`uploaded_${TEST_TABLE}_`).catch(() => {});
         await removeDocumentsByPrefix(`dbt_warning_${TEST_TABLE}`).catch(() => {});
         await removeDocumentsByPrefix(`kpi_${TEST_TABLE}`).catch(() => {});
-        await getPool().query(`DELETE FROM users WHERE email = $1`, [TEST_EMAIL]).catch(() => {});
         // Clean up failed_queries.json entries for this test
         const fqp = path.join(process.cwd(), "logs", "failed_queries.json");
         try {
@@ -52,8 +41,8 @@ describe("Complete Data Flow & Workflow", () => {
         } catch {}
     });
 
-    // ─── 1. AUTH FLOW ───────────────────────────────────────
-    describe("Auth Flow", () => {
+    // ─── 1. STATUS ──────────────────────────────────────────
+    describe("Status", () => {
         it("GET /api/status returns ok", async () => {
             if (!app) return;
             const res = await request(app).get("/api/status");
@@ -61,129 +50,35 @@ describe("Complete Data Flow & Workflow", () => {
             expect(res.body.status).toBe("ok");
             expect(res.body.llm).toBeDefined();
         });
-
-        it("POST /api/auth/login — invalid credentials rejected", async () => {
-            if (!app) return;
-            const res = await request(app)
-                .post("/api/auth/login")
-                .send({ email: "wrong@test.com", password: "wrongpass1" });
-            expect(res.status).toBe(401);
-            expect(res.body.error).toMatch(/invalid/i);
-        });
-
-        it("POST /api/auth/login — missing fields rejected", async () => {
-            if (!app) return;
-            const res = await request(app)
-                .post("/api/auth/login")
-                .send({ email: "test@test.com" });
-            expect(res.status).toBe(400);
-        });
-
-        it("POST /api/auth/login — short password rejected", async () => {
-            if (!app) return;
-            const res = await request(app)
-                .post("/api/auth/login")
-                .send({ email: "test@test.com", password: "short" });
-            expect(res.status).toBe(400);
-        });
-
-        it("POST /api/auth/login — bad email rejected", async () => {
-            if (!app) return;
-            const res = await request(app)
-                .post("/api/auth/login")
-                .send({ email: "notanemail", password: "longenough1" });
-            expect(res.status).toBe(400);
-        });
-
-        it("POST /api/auth/login — valid admin gets token", async () => {
-            if (!app) return;
-            const res = await request(app)
-                .post("/api/auth/login")
-                .send({ email: ADMIN_EMAIL, password: ADMIN_PASS });
-            expect(res.status).toBe(200);
-            expect(res.body.token).toBeTruthy();
-            expect(res.body.user.role).toBe("admin");
-            adminToken = res.body.token;
-        });
-
-        it("POST /api/auth/register — creates new user", async () => {
-            if (!app || !adminToken) return;
-            const res = await request(app)
-                .post("/api/auth/register")
-                .set("Authorization", `Bearer ${adminToken}`)
-                .send({ email: TEST_EMAIL, password: TEST_PASS, name: "Flow Tester", role: "analyst" });
-            expect(res.status).toBe(201);
-            expect(res.body.success).toBe(true);
-        });
-
-        it("POST /api/auth/register — duplicate email rejected", async () => {
-            if (!app || !adminToken) return;
-            const res = await request(app)
-                .post("/api/auth/register")
-                .set("Authorization", `Bearer ${adminToken}`)
-                .send({ email: TEST_EMAIL, password: TEST_PASS, name: "Flow Tester", role: "analyst" });
-            expect(res.status).toBe(409);
-        });
-
-        it("POST /api/auth/register — no token rejected", async () => {
-            if (!app) return;
-            const res = await request(app)
-                .post("/api/auth/register")
-                .send({ email: "another@test.com", password: TEST_PASS, name: "Another" });
-            expect(res.status).toBe(401);
-        });
-
-        it("Token verification — invalid tokens rejected across endpoints", async () => {
-            if (!app) return;
-            const tests = [
-                { method: "post" as const, path: "/api/chat" },
-                { method: "get" as const, path: "/api/admin/files" },
-                { method: "post" as const, path: "/api/report/export-pdf" },
-            ];
-            for (const { method, path } of tests) {
-                const res = await request(app)[method](path)
-                    .set("Authorization", "Bearer invalid.token.here");
-                expect(res.status).toBe(401);
-            }
-        });
     });
 
     // ─── 2. FILE MANAGEMENT FLOW ─────────────────────────────
     describe("File Management Flow", () => {
         it("GET /api/admin/files — lists files", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/admin/files")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/admin/files");
             expect(res.status).toBe(200);
             expect(Array.isArray(res.body)).toBe(true);
-        });
-
-        it("GET /api/admin/files — 401 without token", async () => {
-            if (!app) return;
-            const res = await request(app).get("/api/admin/files");
-            expect(res.status).toBe(401);
         });
     });
 
     // ─── 3. CSV UPLOAD & DATA FLOW ──────────────────────────
     describe("CSV Upload & Data Flow", () => {
         it("POST /api/admin/upload-csv — missing fields rejected", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
                 .post("/api/admin/upload-csv")
-                .set("Authorization", `Bearer ${adminToken}`)
                 .send({});
             expect(res.status).toBe(400);
         });
 
         it("POST /api/admin/upload-csv — uploads CSV, creates catalog, returns dbtStatus", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
 
             const csvContent = "date,amount,customer_id\n2024-01-01,100,c1\n2024-02-01,200,c2";
             const res = await request(app)
                 .post("/api/admin/upload-csv")
-                .set("Authorization", `Bearer ${adminToken}`)
                 .send({
                     filename: `${TEST_TABLE}.csv`,
                     csvContent,
@@ -221,10 +116,9 @@ describe("Complete Data Flow & Workflow", () => {
         }, 30000);
 
         it("GET /api/admin/files — lists uploaded file", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/admin/files")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/admin/files");
             expect(res.body.some((f: any) => f.id === TEST_TABLE)).toBe(true);
             const file = res.body.find((f: any) => f.id === TEST_TABLE);
             expect(file.filename).toBe(TEST_TABLE);
@@ -232,10 +126,9 @@ describe("Complete Data Flow & Workflow", () => {
         });
 
         it("GET /api/admin/files/:id/preview — returns preview with columns", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get(`/api/admin/files/${TEST_TABLE}/preview`)
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get(`/api/admin/files/${TEST_TABLE}/preview`);
             expect(res.status).toBe(200);
             expect(res.body.type).toBe("dataset");
             expect(res.body.columns).toContain("amount");
@@ -243,10 +136,9 @@ describe("Complete Data Flow & Workflow", () => {
         });
 
         it("GET /api/admin/files/:id/download — rejects dataset download (only documents)", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get(`/api/admin/files/${TEST_TABLE}/download`)
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get(`/api/admin/files/${TEST_TABLE}/download`);
             expect(res.status).toBe(400);
             expect(res.body.error).toMatch(/document/i);
         });
@@ -254,11 +146,9 @@ describe("Complete Data Flow & Workflow", () => {
 
     // ─── 4. DB CONNECTIVITY & DATA LAKE FLOW ───────────────
     describe("Data Lake & DB Connectivity", () => {
-        it("Database is reachable and catalog has entries for admin", async () => {
-            const catalog = await getCatalog(ADMIN_EMAIL);
+        it("Database is reachable and catalog has entries", async () => {
+            const catalog = await getCatalog("");
             expect(Array.isArray(catalog)).toBe(true);
-            // The catalog may or may not have our test table depending on owner_id resolution
-            // Just verify DB is working
             const count = await getPool().query(`SELECT COUNT(*) AS cnt FROM data_lake_catalog`);
             expect(Number(count.rows[0].cnt)).toBeGreaterThanOrEqual(0);
         });
@@ -274,10 +164,9 @@ describe("Complete Data Flow & Workflow", () => {
         let feedbackId: string;
 
         it("POST /api/feedback — submits feedback with rating", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
                 .post("/api/feedback")
-                .set("Authorization", `Bearer ${adminToken}`)
                 .send({
                     message: `Test query ${SUFFIX}`,
                     response: "test response",
@@ -289,28 +178,25 @@ describe("Complete Data Flow & Workflow", () => {
         });
 
         it("POST /api/feedback — missing fields rejected", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
                 .post("/api/feedback")
-                .set("Authorization", `Bearer ${adminToken}`)
                 .send({ message: "test" });
             expect(res.status).toBe(400);
         });
 
         it("POST /api/feedback — invalid rating rejected", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
                 .post("/api/feedback")
-                .set("Authorization", `Bearer ${adminToken}`)
                 .send({ message: "test", rating: "invalid" });
             expect(res.status).toBe(400);
         });
 
         it("GET /api/admin/feedback/pending — lists pending feedback", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/admin/feedback/pending")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/admin/feedback/pending");
             expect(res.status).toBe(200);
             expect(Array.isArray(res.body)).toBe(true);
             const match = res.body.find((f: any) => f.threadId === `thread_${SUFFIX}`);
@@ -318,19 +204,17 @@ describe("Complete Data Flow & Workflow", () => {
         });
 
         it("POST /api/admin/feedback/:id/approve — approves and adds to RAG", async () => {
-            if (!app || !adminToken || !feedbackId) return;
+            if (!app || !feedbackId) return;
             const res = await request(app)
                 .post(`/api/admin/feedback/${feedbackId}/approve`)
-                .set("Authorization", `Bearer ${adminToken}`)
                 .send({ correctAnswer: "42" });
             expect(res.status).toBe(200);
         });
 
         it("POST /api/admin/feedback/:id/approve — duplicate approval ok", async () => {
-            if (!app || !adminToken || !feedbackId) return;
+            if (!app || !feedbackId) return;
             const res = await request(app)
-                .post(`/api/admin/feedback/${feedbackId}/approve`)
-                .set("Authorization", `Bearer ${adminToken}`);
+                .post(`/api/admin/feedback/${feedbackId}/approve`);
             expect(res.status).toBe(200);
         });
     });
@@ -338,73 +222,45 @@ describe("Complete Data Flow & Workflow", () => {
     // ─── 6. REPORT & EXPORT FLOW ────────────────────────────
     describe("Report & Export Flow", () => {
         it("POST /api/report/export-pdf — generates PDF", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .post("/api/report/export-pdf")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .post("/api/report/export-pdf");
             expect(res.status).toBe(200);
             expect(res.headers["content-type"]).toMatch(/application\/pdf/);
             expect(res.body.slice(0, 5).toString()).toBe("%PDF-");
         });
 
-        it("POST /api/report/export-xlsx — generates XLSX (admin)", async () => {
-            if (!app || !adminToken) return;
+        it("POST /api/report/export-xlsx — generates XLSX", async () => {
+            if (!app) return;
             const res = await request(app)
-                .post("/api/report/export-xlsx")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .post("/api/report/export-xlsx");
             expect(res.status).toBe(200);
             expect(res.headers["content-type"]).toMatch(/spreadsheetml/);
             expect(res.text.length).toBeGreaterThan(100);
             expect(res.text.slice(0, 2)).toBe("PK");
-        });
-
-        it("POST /api/report/export-pdf — 401 without token", async () => {
-            if (!app) return;
-            const res = await request(app).post("/api/report/export-pdf");
-            expect(res.status).toBe(401);
-        });
-
-        it("POST /api/report/export-pdf — 401 with tampered token", async () => {
-            if (!app || !adminToken) return;
-            const parts = adminToken.split(".");
-            const tampered = `${parts[0]}.${parts[1]}.badsig`;
-            const res = await request(app)
-                .post("/api/report/export-pdf")
-                .set("Authorization", `Bearer ${tampered}`);
-            expect(res.status).toBe(401);
         });
     });
 
     // ─── 7. KPI DASHBOARD FLOW ──────────────────────────────
     describe("KPI Dashboard Flow", () => {
         it("GET /api/kpi/:metric — returns data for valid metric", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/kpi/sales")
-                .set("Authorization", `Bearer ${adminToken}`);
-            // 404 is valid if no KPI data exists, but not a server error
+                .get("/api/kpi/sales");
             expect([200, 404]).toContain(res.status);
         });
 
         it("GET /api/kpi/:metric — invalid metric rejected", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/kpi/invalid_metric")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/kpi/invalid_metric");
             expect(res.status).toBe(400);
         });
 
-        it("GET /api/kpi/:metric — 401 without token", async () => {
-            if (!app) return;
-            const res = await request(app).get("/api/kpi/sales");
-            expect(res.status).toBe(401);
-        });
-
         it("GET /api/kpi-history — returns history array", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/kpi-history")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/kpi-history");
             expect([200, 500]).toContain(res.status);
             if (res.status === 200) {
                 expect(Array.isArray(res.body)).toBe(true);
@@ -412,10 +268,9 @@ describe("Complete Data Flow & Workflow", () => {
         });
 
         it("GET /api/dashboard/computed-metrics — returns metrics", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/dashboard/computed-metrics")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/dashboard/computed-metrics");
             expect([200, 404]).toContain(res.status);
             if (res.status === 200) {
                 expect(res.body).toHaveProperty("aov");
@@ -426,27 +281,17 @@ describe("Complete Data Flow & Workflow", () => {
     // ─── 8. CHAT STREAMING FLOW ─────────────────────────────
     describe("Chat Streaming Flow", () => {
         it("POST /api/chat — 400 without message", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
                 .post("/api/chat")
-                .set("Authorization", `Bearer ${adminToken}`)
                 .send({});
             expect(res.status).toBe(400);
         });
 
-        it("POST /api/chat — 401 without token", async () => {
+        it("POST /api/chat/stream — returns SSE data", async () => {
             if (!app) return;
             const res = await request(app)
-                .post("/api/chat")
-                .send({ message: "test" });
-            expect(res.status).toBe(401);
-        });
-
-        it("POST /api/chat/stream — returns SSE data", async () => {
-            if (!app || !adminToken) return;
-            const res = await request(app)
                 .post("/api/chat/stream")
-                .set("Authorization", `Bearer ${adminToken}`)
                 .send({
                     message: "Та хэдэн хүснэгт байгааг жагсаа",
                     threadId: `thread_${SUFFIX}_stream`,
@@ -460,17 +305,10 @@ describe("Complete Data Flow & Workflow", () => {
 
     // ─── 9. FILE DELETION FLOW ──────────────────────────────
     describe("File Deletion & Cleanup Flow", () => {
-        it("DELETE /api/admin/files/:id — 401 without token", async () => {
-            if (!app) return;
-            const res = await request(app).delete(`/api/admin/files/${TEST_TABLE}`);
-            expect(res.status).toBe(401);
-        });
-
         it("DELETE /api/admin/files/:id — deletes file and catalog entry", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .delete(`/api/admin/files/${TEST_TABLE}`)
-                .set("Authorization", `Bearer ${adminToken}`);
+                .delete(`/api/admin/files/${TEST_TABLE}`);
             expect(res.status).toBe(200);
 
             // Verify uploaded_files cleaned
@@ -481,13 +319,12 @@ describe("Complete Data Flow & Workflow", () => {
         });
     });
 
-    // ─── 10. CROSS-TENANT ISOLATION FLOW ─────────────────────
-    describe("Cross-Tenant Isolation Flow", () => {
-        it("GET /api/admin/files — user sees only own files after deletion", async () => {
-            if (!app || !adminToken) return;
+    // ─── 10. POST-DELETION FLOW ─────────────────────────────
+    describe("Post-Deletion Flow", () => {
+        it("GET /api/admin/files — file no longer listed after deletion", async () => {
+            if (!app) return;
             const res = await request(app)
-                .get("/api/admin/files")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/admin/files");
             expect(res.body.some((f: any) => f.id === TEST_TABLE)).toBe(false);
         });
     });

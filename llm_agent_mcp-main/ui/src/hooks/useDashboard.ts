@@ -61,22 +61,21 @@ function buildQs(period: Period): string {
   return params.toString();
 }
 
-async function fetchJson<T>(url: string, token: string, onUnauthorized: () => void): Promise<T> {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (res.status === 401) { onUnauthorized(); throw new Error("Unauthorized"); }
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }
 
 export function useDashboard(
-  token: string | null,
-  isLoggedIn: boolean,
-  onUnauthorized: () => void,
+  _token: string | null,
+  _isLoggedIn: boolean,
+  _onUnauthorized: () => void,
   period: Period,
   setPeriod: (p: Period) => void,
 ) {
   const qs = buildQs(period);
-  const enabled = isLoggedIn && !!token;
+  const enabled = true;
 
   const { data: serverStatus } = useQuery<ServerStatus>({
     queryKey: ["serverStatus"],
@@ -90,50 +89,50 @@ export function useDashboard(
 
   const { data: salesKpi } = useQuery<KpiData>({
     queryKey: ["kpi", "sales", qs],
-    queryFn: () => fetchJson(`/api/kpi/sales?${qs}`, token!, onUnauthorized),
+    queryFn: () => fetchJson(`/api/kpi/sales?${qs}`),
     enabled,
   });
 
   const { data: usersKpi } = useQuery<KpiData>({
     queryKey: ["kpi", "users", qs],
-    queryFn: () => fetchJson(`/api/kpi/users?${qs}`, token!, onUnauthorized),
+    queryFn: () => fetchJson(`/api/kpi/users?${qs}`),
     enabled,
   });
 
   const { data: churnKpi } = useQuery<KpiData>({
     queryKey: ["kpi", "churn_rate", qs],
-    queryFn: () => fetchJson(`/api/kpi/churn_rate?${qs}`, token!, onUnauthorized),
+    queryFn: () => fetchJson(`/api/kpi/churn_rate?${qs}`),
     enabled,
   });
 
   const { data: salesHistory = [] } = useQuery<SalesHistory[]>({
     queryKey: ["kpiHistory", qs],
-    queryFn: () => fetchJson(`/api/kpi-history?${qs}`, token!, onUnauthorized),
+    queryFn: () => fetchJson(`/api/kpi-history?${qs}`),
     enabled,
   });
 
   const { data: computedMetrics } = useQuery<ComputedMetrics>({
     queryKey: ["computedMetrics", qs],
-    queryFn: () => fetchJson(`/api/dashboard/computed-metrics?${qs}`, token!, onUnauthorized),
+    queryFn: () => fetchJson(`/api/dashboard/computed-metrics?${qs}`),
     enabled,
   });
 
   const { data: financeCharts } = useQuery<any>({
     queryKey: ["financeCharts"],
-    queryFn: () => fetchJson(`/api/finance-charts`, token!, onUnauthorized),
+    queryFn: () => fetchJson(`/api/finance-charts`),
     enabled,
   });
 
   const { data: financeAudit } = useQuery<FinanceAudit>({
     queryKey: ["financeAudit"],
-    queryFn: () => fetchJson(`/api/finance-audit`, token!, onUnauthorized),
+    queryFn: () => fetchJson(`/api/finance-audit`),
     enabled,
     staleTime: 60_000,
   });
 
   const { data: tablePassport } = useQuery<TablePassport>({
     queryKey: ["tablePassport"],
-    queryFn: () => fetchJson(`/api/table-passport`, token!, onUnauthorized),
+    queryFn: () => fetchJson(`/api/table-passport`),
     enabled,
     staleTime: 5 * 60_000,
   });

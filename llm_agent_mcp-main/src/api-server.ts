@@ -2,7 +2,6 @@
  * api-server.ts — Express REST API for the Chat UI
  *
  * Route modules:
- *   /api/auth/*  → src/routes/auth.router.ts
  *   /api/chat/*  → src/routes/chat.router.ts
  *   (remaining routes pending extraction to kpi/admin/report routers)
  */
@@ -10,18 +9,16 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { authRouter } from "./routes/auth.router.js";
 import { chatRouter } from "./routes/chat.router.js";
 import { requestContext } from "./context.js";
-import { createToken, requireJwtSecret, verifyBearerHeader, verifyToken, requireRole, roleAtLeast } from "./auth.js";
-import { agentLimiter, authLimiter } from "./rate-limiter.js";
+import { agentLimiter } from "./rate-limiter.js";
+import helmet from "helmet";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
 import { setupKnowledgeBase } from "./rag.js";
 import { ensureProjectReady, runDbtForTable, runDbtTest, runDbtFinanceModels } from "./setup/init.js";
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
-import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, authenticateUser, createUser, quoteIdent, mergeIntoCombined, buildNoiseSubcategoryFilter } from "./db/data-lake.js";
 import { findConceptColumn } from "./agents/columnSynonyms.js";
 import { buildMntAmountExpr } from "./utils/sqlHelpers.js";
@@ -38,9 +35,12 @@ import mammoth from "mammoth";
 
 dotenv.config();
 
+const DEFAULT_USER = { userId: "user-admin-001", role: "admin" as const };
+
 const app = express();
+app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "5mb" }));
 
 // Request ID middleware — propagates requestId through the entire async call chain
 app.use((req, _res, next) => {
@@ -88,7 +88,6 @@ const upload = multer({
 });
 
 // ── Feature routers ──────────────────────────────────────────
-app.use("/api/auth", authRouter);
 app.use("/api/chat", chatRouter);
 
 // ─────────────────────────────────────────────────────────────
@@ -108,8 +107,6 @@ app.get("/api/status", (req, res) => {
   });
 });
 
-// Auth and Chat routes are handled by src/routes/auth.router.ts and src/routes/chat.router.ts
-
 // ─────────────────────────────────────────────────────────────
 function extractDateFilter(req: any): { startDate?: string; endDate?: string } {
   return {
@@ -121,10 +118,7 @@ function extractDateFilter(req: any): { startDate?: string; endDate?: string } {
 // KPI Dashboard Data
 // ─────────────────────────────────────────────────────────────
 app.get("/api/kpi/:metric", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
+  const { userId } = DEFAULT_USER;
 
   const { metric } = req.params;
   const VALID_METRICS = ["sales", "users", "churn_rate"];
@@ -134,7 +128,6 @@ app.get("/api/kpi/:metric", async (req, res) => {
 
   const repo = await getRepository();
   const dateFilter = extractDateFilter(req);
-  const userId = auth.payload.userId;
 
   // Finance table override for "sales" metric
   if (metric === "sales") {
@@ -181,15 +174,10 @@ app.get("/api/kpi/:metric", async (req, res) => {
 });
 
 app.get("/api/kpi-history", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
   const limit = req.query.limit ? Number(req.query.limit) : 6;
   const repo = await getRepository();
   const dateFilter = extractDateFilter(req);
-  const history = await repo.getSalesHistory(limit, dateFilter, auth.payload.userId);
+  const history = await repo.getSalesHistory(limit, dateFilter, DEFAULT_USER.userId);
   res.json(history);
 });
 
@@ -197,15 +185,10 @@ app.get("/api/kpi-history", async (req, res) => {
 // Dashboard — Computed Metrics (AOV, Growth Rate, Top Category)
 // ─────────────────────────────────────────────────────────────
 app.get("/api/dashboard/computed-metrics", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
-    const metrics = await computeMetrics(auth.payload.userId, startDate, endDate);
+    const metrics = await computeMetrics(DEFAULT_USER.userId, startDate, endDate);
     if (!metrics) return res.status(404).json({ error: "No active dataset found" });
     res.json(metrics);
   } catch (err: any) {
@@ -217,10 +200,7 @@ app.get("/api/dashboard/computed-metrics", async (req, res) => {
 // Finance Default Charts
 // ─────────────────────────────────────────────────────────────
 app.get("/api/finance-charts", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-
-  const userId = auth.payload.userId;
+  const userId = DEFAULT_USER.userId;
   const pool = getPool();
 
   try {
@@ -627,10 +607,7 @@ app.get("/api/finance-charts", async (req, res) => {
 // Finance Audit — row-level classification breakdown for transparency
 // ─────────────────────────────────────────────────────────────
 app.get("/api/finance-audit", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-
-  const userId = auth.payload.userId;
+  const userId = DEFAULT_USER.userId;
 
   try {
     const pool = getPool();
@@ -692,11 +669,8 @@ app.get("/api/finance-audit", async (req, res) => {
 // Table Passport — data-driven suggestion questions from DataProfiler
 // ─────────────────────────────────────────────────────────────
 app.get("/api/table-passport", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-
   try {
-    const entry = await getActiveCatalogEntry(auth.payload.userId);
+    const entry = await getActiveCatalogEntry(DEFAULT_USER.userId);
     if (!entry) return res.json({ available: false });
 
     const tableName = entry.table_name;
@@ -723,10 +697,7 @@ app.get("/api/table-passport", async (req, res) => {
 // Finance Detailed Reports — Income Statement, Expense Breakdown, Cash Flow
 // ─────────────────────────────────────────────────────────────
 app.get("/api/finance-reports", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-
-  const userId = auth.payload.userId;
+  const userId = DEFAULT_USER.userId;
   const pool = getPool();
 
   try {
@@ -937,15 +908,10 @@ app.get("/api/finance-reports", async (req, res) => {
 // Report Export — PDF / Excel (JWT-scoped userId)
 // ─────────────────────────────────────────────────────────────
 app.post("/api/report/export-pdf", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
-    const pdfBuffer = await generateReportPdf(auth.payload.userId, startDate, endDate);
+    const pdfBuffer = await generateReportPdf(DEFAULT_USER.userId, startDate, endDate);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.pdf"`);
     res.send(pdfBuffer);
@@ -955,15 +921,10 @@ app.post("/api/report/export-pdf", async (req, res) => {
 });
 
 app.post("/api/report/export-xlsx", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
-    const xlsxBuffer = await generateReportXlsx(auth.payload.userId, startDate, endDate);
+    const xlsxBuffer = await generateReportXlsx(DEFAULT_USER.userId, startDate, endDate);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.xlsx"`);
     res.send(xlsxBuffer);
@@ -976,20 +937,12 @@ app.post("/api/report/export-xlsx", async (req, res) => {
 // File Management
 // ─────────────────────────────────────────────────────────────
 app.get("/api/admin/files", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-  if (!roleAtLeast(auth.payload.role, "analyst")) return res.status(403).json({ error: "Access denied. Analyst role required." });
-
   await initDataLake();
   const result = await getPool().query(`SELECT * FROM uploaded_files ORDER BY created_at DESC`);
   res.json(result.rows);
 });
 
 app.delete("/api/admin/files/:id", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-  if (!roleAtLeast(auth.payload.role, "analyst")) return res.status(403).json({ error: "Access denied. Analyst role required." });
-
   const { id } = req.params;
   await initDataLake();
 
@@ -1021,9 +974,6 @@ app.delete("/api/admin/files/:id", async (req, res) => {
 });
 
 app.get("/api/admin/files/:id/preview", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-
   const { id } = req.params;
   await initDataLake();
 
@@ -1075,10 +1025,6 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
 });
 
 app.get("/api/admin/files/:id/download", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-  if (!roleAtLeast(auth.payload.role, "analyst")) return res.status(403).json({ error: "Access denied. Analyst role required." });
-
   const { id } = req.params;
   await initDataLake();
 
@@ -1271,12 +1217,7 @@ async function processUploadedTable(
 // Admin: Upload CSV Dataset
 // ─────────────────────────────────────────────────────────────
 app.post("/api/admin/upload-csv", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
-  const { userId, role } = auth.payload;
+  const { userId, role } = DEFAULT_USER;
   const { filename, csvContent, tableName, description } = req.body;
   if (!filename || !csvContent || !tableName || !description) {
     return res.status(400).json({ error: "filename, csvContent, tableName, and description are required" });
@@ -1315,12 +1256,7 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 // Admin: Upload Excel (XLSX/XLS)
 // ─────────────────────────────────────────────────────────────
 app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
-  const { userId, role } = auth.payload;
+  const { userId, role } = DEFAULT_USER;
   const { tableName, description } = req.body;
 
   if (!req.file || !tableName || !description) {
@@ -1417,12 +1353,6 @@ if (!fs.existsSync(DOCUMENTS_DIR)) {
 }
 
 app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    if (req.file) fs.promises.unlink(req.file.path).catch(() => {});
-    return res.status(401).json({ error: auth.error });
-  }
-
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   const { description, category, department } = req.body;
@@ -1458,7 +1388,7 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     await addDocumentToCatalog(
         docId,
         `Document: ${originalName}\nDescription: ${description}\n\nContent:\n${extractedText}`,
-        { category: (category === "manual" ? "business_policy" : "data_catalog") as "business_policy" | "data_catalog", department: department || "general", author: auth.payload.userId },
+        { category: (category === "manual" ? "business_policy" : "data_catalog") as "business_policy" | "data_catalog", department: department || "general", author: DEFAULT_USER.userId },
         [originalName.toLowerCase(), "document"]
     );
 
@@ -1466,7 +1396,7 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     await getPool().query(
         `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
          ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
-        [docId, originalName, "document", description, null, new Date().toISOString(), auth.payload.userId]
+        [docId, originalName, "document", description, null, new Date().toISOString(), DEFAULT_USER.userId]
     );
 
     res.json({ success: true, message: `Document '${originalName}' indexed.` });
@@ -1498,11 +1428,6 @@ async function readFailedQueries(): Promise<any[]> {
 }
 
 app.post("/api/feedback", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
   const { message, response, rating, threadId } = req.body;
   if (!message || !rating) {
     return res.status(400).json({ error: "message and rating are required" });
@@ -1513,7 +1438,7 @@ app.post("/api/feedback", async (req, res) => {
 
   const entry = {
     id: `feedback_${Date.now()}`,
-    userId: auth.payload.userId,
+    userId: DEFAULT_USER.userId,
     message,
     response: response || "",
     rating,
@@ -1530,7 +1455,7 @@ app.post("/api/feedback", async (req, res) => {
 
     // Do NOT add to RAG automatically. It must be approved by admin.
 
-    console.log(`[Feedback] ${rating} feedback from ${auth.payload.userId}: "${message.slice(0, 80)}..."`);
+    console.log(`[Feedback] ${rating} feedback from ${DEFAULT_USER.userId}: "${message.slice(0, 80)}..."`);
     const suggestions = rating === "negative"
         ? "Таны санал бүртгэгдлээ. Дараах зүйлсийг санал болгож байна:\n- **Файл оруулах**: Хэрэв өгөгдөл дутуу байвал CSV файлаа upload хийгээрэй\n- **Тодорхой асуулт**: Баганын нэр, огноогоо дурдаж асууна уу\n- **Агент солих**: 'SQL query бич' эсвэл 'борлуулалтын тайлан' гэх мэт чиглэл өгнө үү"
         : "Санал өгсөнд баярлалаа!";
@@ -1542,10 +1467,6 @@ app.post("/api/feedback", async (req, res) => {
 
 // GET /api/admin/feedback/pending - get pending feedback items
 app.get("/api/admin/feedback/pending", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-  if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
-
   try {
     const all = await readFailedQueries();
     const pending = all.filter((f: any) => f.status === "pending");
@@ -1557,10 +1478,6 @@ app.get("/api/admin/feedback/pending", async (req, res) => {
 
 // POST /api/admin/feedback/:id/approve - approve a feedback entry and add to RAG
 app.post("/api/admin/feedback/:id/approve", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-  if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
-
   const { id } = req.params;
 
   try {
@@ -1595,10 +1512,6 @@ app.post("/api/admin/feedback/:id/approve", async (req, res) => {
 
 // POST /api/admin/feedback/:id/reject - reject a feedback entry (do not add to RAG)
 app.post("/api/admin/feedback/:id/reject", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) return res.status(401).json({ error: auth.error });
-  if (auth.payload.role !== "admin") return res.status(403).json({ error: "Access denied. Admins only." });
-
   const { id } = req.params;
 
   try {
@@ -1619,11 +1532,6 @@ app.post("/api/admin/feedback/:id/reject", async (req, res) => {
 // Adjust KPI Targets
 // ─────────────────────────────────────────────────────────────
 app.post("/api/kpi/:metric/target", async (req, res) => {
-  const auth = verifyBearerHeader(req.headers.authorization);
-  if (!auth.success || !auth.payload) {
-    return res.status(401).json({ error: auth.error });
-  }
-
   const { metric } = req.params;
   const VALID_METRICS = ["sales", "users", "churn_rate"];
   if (!VALID_METRICS.includes(metric)) {
@@ -1666,8 +1574,6 @@ async function start() {
     console.warn("[API] Data Lake initialization failed — running in limited mode:", (err as Error).message);
   }
   await setupKnowledgeBase();
-
-  requireJwtSecret();
 
   app.listen(PORT, () => {
     console.log(`\nAPI Server running at http://localhost:${PORT}`);

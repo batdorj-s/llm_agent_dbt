@@ -24,10 +24,6 @@ interface FinanceChartsResponse {
   };
 }
 
-interface Props {
-  token: string;
-}
-
 const fmtMnt = (v: number) => `₮${Math.round(v).toLocaleString()}`;
 
 const CHART_DESCRIPTIONS: Record<string, string> = {
@@ -77,7 +73,7 @@ const IconProfit = () => (
   </svg>
 );
 
-export function FinanceDashboard({ token }: Props) {
+export function FinanceDashboard() {
   const [data, setData] = useState<FinanceChartsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -85,13 +81,13 @@ export function FinanceDashboard({ token }: Props) {
     let cancelled = false;
     setLoading(true);
 
-    fetch("/api/finance-charts", { headers: { Authorization: `Bearer ${token}` } })
+    fetch("/api/finance-charts")
       .then((r) => r.ok ? r.json() : Promise.resolve({ isFinance: false }))
       .then((json) => { if (!cancelled) { setData(json); setLoading(false); } })
       .catch(() => { if (!cancelled) { setData({ isFinance: false }); setLoading(false); } });
 
     return () => { cancelled = true; };
-  }, [token]);
+  }, []);
 
   if (loading) {
     return (

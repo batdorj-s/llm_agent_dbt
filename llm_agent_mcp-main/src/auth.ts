@@ -1,6 +1,3 @@
-import dotenv from "dotenv";
-dotenv.config();
-
 import crypto from "crypto";
 import type { UserRole } from "./multi-agent.js";
 
@@ -16,27 +13,6 @@ export interface AuthResult {
   payload?: TokenPayload;
   error?: string;
 }
-
-const DEV_JWT_SECRET_FALLBACK = "dev-secret-change-in-production-min-32-chars!!";
-const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET_FALLBACK;
-
-if (JWT_SECRET === DEV_JWT_SECRET_FALLBACK) {
-    if (process.env.NODE_ENV === "production") {
-        console.error("\n❌ FATAL: JWT_SECRET not set in production. Set JWT_SECRET env var.");
-        process.exit(1);
-    }
-    console.warn("\n⚠️  WARNING: Using development JWT_SECRET. Set JWT_SECRET before deploying.");
-}
-
-export function isUsingDevJwtSecret(): boolean {
-    return JWT_SECRET === DEV_JWT_SECRET_FALLBACK;
-}
-
-export function requireJwtSecret(): void {
-    // Check is now performed eagerly at module load — this function is kept for backward compatibility.
-}
-
-const JWT_EXPIRES_IN_SECONDS = parseExpiry(process.env.JWT_EXPIRES_IN || "1h");
 
 export function parseExpiry(expr: string): number {
   const match = expr.match(/^(\d+)([smhd])$/);
@@ -64,11 +40,14 @@ export function sign(data: string, secret: string): string {
     .replace(/\//g, "_");
 }
 
+const DEV_JWT_SECRET_FALLBACK = "dev-secret-change-in-production-min-32-chars!!";
+const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET_FALLBACK;
+
 export function createToken(userId: string, role: UserRole): string {
   const header  = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const now     = Math.floor(Date.now() / 1000);
   const payload = base64url(
-    JSON.stringify({ userId, role, iat: now, exp: now + JWT_EXPIRES_IN_SECONDS })
+    JSON.stringify({ userId, role, iat: now, exp: now + 3600 })
   );
   const signature = sign(`${header}.${payload}`, JWT_SECRET);
   return `${header}.${payload}.${signature}`;
@@ -106,13 +85,6 @@ export function verifyToken(token: string): AuthResult {
   }
 }
 
-export function verifyBearerHeader(authHeader: string | undefined): AuthResult {
-  if (!authHeader?.startsWith("Bearer ")) {
-    return { success: false, error: "Missing or malformed Authorization header" };
-  }
-  return verifyToken(authHeader.slice(7));
-}
-
 const ROLE_HIERARCHY: Record<UserRole, number> = {
   viewer: 1,
   analyst: 2,
@@ -133,10 +105,6 @@ export function requireRole(token: string, minRole: UserRole = "admin"): TokenPa
   }
   return result.payload;
 }
-
-// ─────────────────────────────────────────────────────────────
-// Password hashing (Node.js built-in crypto.scryptSync)
-// ─────────────────────────────────────────────────────────────
 
 const HASH_SALT_LEN = 16;
 const HASH_KEY_LEN = 64;

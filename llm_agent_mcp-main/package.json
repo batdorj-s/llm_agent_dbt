@@ -45,6 +45,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "helmet": "^8.2.0",
     "ioredis": "^5.11.1",
     "langfuse-langchain": "^3.38.20",
     "langfuse-node": "^3.38.20",

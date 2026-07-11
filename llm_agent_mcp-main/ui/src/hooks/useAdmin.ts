@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import type { UploadedFile } from "../components/types";
 import type { PreviewState } from "./usePreview";
 
-export function useAdmin(token: string | null, onRefresh: () => void, onPreviewOpen: (p: Partial<PreviewState>) => void) {
+export function useAdmin(_token: string | null, onRefresh: () => void, onPreviewOpen: (p: Partial<PreviewState>) => void) {
   // KPI target
   const [adjustMetric, setAdjustMetric]         = useState<"sales" | "users" | "churn_rate">("sales");
   const [newTargetValue, setNewTargetValue]       = useState<number>(200_000_000);
@@ -35,29 +35,28 @@ export function useAdmin(token: string | null, onRefresh: () => void, onPreviewO
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
   const fetchUploadedFiles = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch("/api/admin/files", { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch("/api/admin/files");
       if (res.ok) setUploadedFiles(await res.json());
     } catch {}
-  }, [token]);
+  }, []);
 
   const handleDeleteFile = async (id: string) => {
-    if (!token || !confirm("Are you sure you want to delete this asset?")) return;
+    if (!confirm("Are you sure you want to delete this asset?")) return;
     try {
       const res = await fetch(`/api/admin/files/${id}`, {
-        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+        method: "DELETE",
       });
       if (res.ok) { fetchUploadedFiles(); onRefresh(); }
     } catch {}
   };
 
   const handleUpdateKpiTarget = async () => {
-    if (newTargetValue === undefined || isNaN(newTargetValue) || isUpdatingTarget || !token) return;
+    if (newTargetValue === undefined || isNaN(newTargetValue) || isUpdatingTarget) return;
     setIsUpdatingTarget(true); setSalesUpdateSuccess(null);
     try {
       const res = await fetch(`/api/kpi/${adjustMetric}/target`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: newTargetValue }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Update failed"); }
@@ -68,14 +67,14 @@ export function useAdmin(token: string | null, onRefresh: () => void, onPreviewO
 
   const handleUploadCsv = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!csvFile || !tableNameInput.trim() || !tableDescInput.trim() || isUploadingCsv || !token) return;
+    if (!csvFile || !tableNameInput.trim() || !tableDescInput.trim() || isUploadingCsv) return;
     setIsUploadingCsv(true); setCsvUploadMessage(null);
     const reader = new FileReader();
     reader.onload = async (event) => {
       const csvContent = event.target?.result as string;
       try {
         const res = await fetch("/api/admin/upload-csv", {
-          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ filename: csvFile.name, csvContent, tableName: tableNameInput, description: tableDescInput }),
         });
         const data = await res.json();
@@ -95,7 +94,7 @@ export function useAdmin(token: string | null, onRefresh: () => void, onPreviewO
 
   const handleUploadExcel = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!excelFile || !excelTableNameInput.trim() || !excelDescInput.trim() || isUploadingExcel || !token) return;
+    if (!excelFile || !excelTableNameInput.trim() || !excelDescInput.trim() || isUploadingExcel) return;
     setIsUploadingExcel(true); setExcelUploadMessage(null);
     const formData = new FormData();
     formData.append("file", excelFile);
@@ -103,7 +102,7 @@ export function useAdmin(token: string | null, onRefresh: () => void, onPreviewO
     formData.append("description", excelDescInput);
     try {
       const res = await fetch("/api/admin/upload-excel", {
-        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
+        method: "POST", body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
@@ -119,7 +118,7 @@ export function useAdmin(token: string | null, onRefresh: () => void, onPreviewO
 
   const handleUploadDoc = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!docFile || !docDescInput.trim() || isUploadingDoc || !token) return;
+    if (!docFile || !docDescInput.trim() || isUploadingDoc) return;
     setIsUploadingDoc(true); setDocUploadMessage(null);
     const formData = new FormData();
     formData.append("file", docFile);
@@ -128,7 +127,7 @@ export function useAdmin(token: string | null, onRefresh: () => void, onPreviewO
     formData.append("department", "general");
     try {
       const res = await fetch("/api/admin/upload-doc", {
-        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
+        method: "POST", body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");

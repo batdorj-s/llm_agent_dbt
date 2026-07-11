@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef } from "react";
 import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, LayoutDashboard, ThumbsUp, ThumbsDown, Sparkles } from "lucide-react";
 
 import { Header } from "../components/Header";
-import { LoginForm } from "../components/LoginForm";
 import { KpiGrid } from "../components/KpiGrid";
 import { ReportView } from "../components/ReportView";
 import { AdminPanel } from "../components/AdminPanel";
@@ -138,9 +137,7 @@ export default function Home() {
   const auth                    = useAuth();
   const preview                 = usePreview(auth.token);
 
-  const dashboard = useDashboard(auth.token, auth.isLoggedIn, () => {
-    auth.logout();
-  }, dashPeriod, setDashPeriod);
+  const dashboard = useDashboard(auth.token, auth.isLoggedIn, () => {}, dashPeriod, setDashPeriod);
 
   const admin = useAdmin(auth.token, dashboard.fetchDashboardData, preview.openRaw);
 
@@ -157,36 +154,20 @@ export default function Home() {
       }))
     : SUGGESTIONS_INITIAL;
 
-  // ── Auth login wrapper ──
-  const handleLogin = async (e?: React.FormEvent, customCreds?: { email: string; role: string }) => {
-    if (e) e.preventDefault();
-    const email    = customCreds ? customCreds.email : loginEmail;
-    const password = customCreds ? "demopassword" : loginPassword;
-    const err = await auth.login(email, password);
-    if (err) { alert(err); return; }
-    chat.addWelcomeMessage();
-    admin.fetchUploadedFiles();
-  };
-
   const handleLogout = () => {
-    auth.logout();
     chat.clearMessages();
     dashboard.resetDashboard();
   };
-
-  // ── Local login form state (only needed until logged in) ──
-  const [loginEmail, setLoginEmail]       = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
 
   // ── Auto-scroll ──
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat.messages]);
 
-  // ── Fetch files on login ──
+  // ── Fetch files on mount ──
   useEffect(() => {
-    if (auth.isLoggedIn && auth.token) admin.fetchUploadedFiles();
-  }, [auth.isLoggedIn, auth.token]);
+    admin.fetchUploadedFiles();
+  }, []);
 
   const hasDataset = admin.uploadedFiles.length > 0;
 
@@ -200,13 +181,7 @@ export default function Home() {
 
       <OfflineBanner />
 
-      {!auth.isLoggedIn ? (
-        <LoginForm
-          email={loginEmail} password={loginPassword} isAuthLoading={auth.isAuthLoading}
-          onEmailChange={setLoginEmail} onPasswordChange={setLoginPassword} onLogin={handleLogin}
-        />
-      ) : (
-        <div className="relative flex-1 flex flex-col min-h-0">
+      <div className="relative flex-1 flex flex-col min-h-0">
 
           {/* ── ASK TAB ── */}
           {activeTab === "ask" && (
@@ -444,7 +419,7 @@ export default function Home() {
 
                     {auth.token && (
                       <div className="animate-fade-in-up" style={{ animationDelay: "80ms" }}>
-                        <FinanceDashboard token={auth.token} />
+                        <FinanceDashboard />
                       </div>
                     )}
 
@@ -552,7 +527,7 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-                {reportMode === "finance" ? <FinanceReportView token={auth.token!} /> : <ReportView token={auth.token!} />}
+                {reportMode === "finance" ? <FinanceReportView /> : <ReportView />}
               </div>
             </main>
           )}
@@ -564,7 +539,6 @@ export default function Home() {
             previewFileId={preview.preview.fileId} onClose={preview.close}
           />
         </div>
-      )}
     </div>
   );
 }

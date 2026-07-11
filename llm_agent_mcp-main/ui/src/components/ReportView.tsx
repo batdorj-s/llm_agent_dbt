@@ -56,7 +56,7 @@ function TrendBadge({ rate, direction }: { rate: number; direction: "up" | "down
   );
 }
 
-function ExportButton({ token, label, endpoint, icon }: { token: string; label: string; endpoint: string; icon: React.ReactNode }) {
+function ExportButton({ label, endpoint, icon }: { label: string; endpoint: string; icon: React.ReactNode }) {
   const [isExporting, setIsExporting] = useState(false);
   const handleExport = async () => {
     if (isExporting) return;
@@ -64,7 +64,6 @@ function ExportButton({ token, label, endpoint, icon }: { token: string; label: 
     try {
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
@@ -94,25 +93,23 @@ function ExportButton({ token, label, endpoint, icon }: { token: string; label: 
 
 type ReportTemplate = "summary" | "detailed";
 
-export const ReportView = ({ token }: { token: string }) => {
+export const ReportView = () => {
   const [data, setData] = useState<ReportData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [template, setTemplate] = useState<ReportTemplate>("detailed");
 
   useEffect(() => {
-    if (!token) { setIsLoading(false); return; }
     let cancelled = false;
     setIsLoading(true);
     setError(null);
 
-    const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
-      fetch("/api/kpi/sales", { headers }),
-      fetch("/api/kpi/users", { headers }),
-      fetch("/api/kpi/churn_rate", { headers }),
-      fetch("/api/kpi-history?limit=12", { headers }),
-      fetch("/api/dashboard/computed-metrics", { headers }),
+      fetch("/api/kpi/sales"),
+      fetch("/api/kpi/users"),
+      fetch("/api/kpi/churn_rate"),
+      fetch("/api/kpi-history?limit=12"),
+      fetch("/api/dashboard/computed-metrics"),
     ]).then(async ([salesRes, usersRes, churnRes, historyRes, computedRes]) => {
       if (cancelled) return;
       const [salesKpi, usersKpi, churnKpi, salesHistory, computedMetrics] = await Promise.all([
@@ -131,7 +128,7 @@ export const ReportView = ({ token }: { token: string }) => {
     });
 
     return () => { cancelled = true; };
-  }, [token]);
+  }, []);
 
   if (isLoading) return <ReportSkeleton />;
   if (error) return (
@@ -181,8 +178,8 @@ export const ReportView = ({ token }: { token: string }) => {
                 Дэлгэрэнгүй
               </button>
             </div>
-            <ExportButton token={token} label="PDF" endpoint="/api/report/export-pdf" icon={<Download className="w-3 h-3" />} />
-            <ExportButton token={token} label="Excel" endpoint="/api/report/export-xlsx" icon={<FileSpreadsheet className="w-3 h-3" />} />
+            <ExportButton label="PDF" endpoint="/api/report/export-pdf" icon={<Download className="w-3 h-3" />} />
+            <ExportButton label="Excel" endpoint="/api/report/export-xlsx" icon={<FileSpreadsheet className="w-3 h-3" />} />
           </div>
         </div>
 

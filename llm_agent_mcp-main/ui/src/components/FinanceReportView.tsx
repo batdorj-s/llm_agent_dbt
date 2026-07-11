@@ -110,7 +110,7 @@ function ReportSkeleton() {
   );
 }
 
-function ExportButton({ token, label, endpoint, icon }: { token: string; label: string; endpoint: string; icon: React.ReactNode }) {
+function ExportButton({ label, endpoint, icon }: { label: string; endpoint: string; icon: React.ReactNode }) {
   const [isExporting, setIsExporting] = useState(false);
   const handleExport = async () => {
     if (isExporting) return;
@@ -118,7 +118,6 @@ function ExportButton({ token, label, endpoint, icon }: { token: string; label: 
     try {
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
@@ -253,7 +252,7 @@ function deriveReportsFromCharts(data: FinanceChartsResponse): FinanceReportsRes
   return { isFinance: true, incomeStatement, expenseBreakdown, cashFlow };
 }
 
-export const FinanceReportView = ({ token }: { token: string }) => {
+export const FinanceReportView = () => {
   const [data, setData] = useState<FinanceChartsResponse | null>(null);
   const [metrics, setMetrics] = useState<ComputedMetrics | null>(null);
   const [reports, setReports] = useState<FinanceReportsResponse | null>(null);
@@ -261,16 +260,14 @@ export const FinanceReportView = ({ token }: { token: string }) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) { setIsLoading(false); return; }
     let cancelled = false;
     setIsLoading(true);
     setError(null);
 
-    const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
-      fetch("/api/finance-charts", { headers }),
-      fetch("/api/dashboard/computed-metrics", { headers }),
-      fetch("/api/finance-reports", { headers }),
+      fetch("/api/finance-charts"),
+      fetch("/api/dashboard/computed-metrics"),
+      fetch("/api/finance-reports"),
     ]).then(async ([chartsRes, metricsRes, reportsRes]) => {
       if (cancelled) return;
       const [chartsData, metricsData, reportsData] = await Promise.all([
@@ -289,7 +286,7 @@ export const FinanceReportView = ({ token }: { token: string }) => {
     });
 
     return () => { cancelled = true; };
-  }, [token]);
+  }, []);
 
   if (isLoading) return <ReportSkeleton />;
   if (error) return (
@@ -324,8 +321,8 @@ export const FinanceReportView = ({ token }: { token: string }) => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <ExportButton token={token} label="PDF" endpoint="/api/report/export-pdf" icon={<Download className="w-3 h-3" />} />
-            <ExportButton token={token} label="Excel" endpoint="/api/report/export-xlsx" icon={<FileSpreadsheet className="w-3 h-3" />} />
+            <ExportButton label="PDF" endpoint="/api/report/export-pdf" icon={<Download className="w-3 h-3" />} />
+            <ExportButton label="Excel" endpoint="/api/report/export-xlsx" icon={<FileSpreadsheet className="w-3 h-3" />} />
           </div>
         </div>
 

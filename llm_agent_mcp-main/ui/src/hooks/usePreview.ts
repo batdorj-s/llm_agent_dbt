@@ -17,15 +17,12 @@ const EMPTY: PreviewState = {
   data: null, columns: [], tableName: "", description: null, content: null, hasDownload: false, fileId: null,
 };
 
-export function usePreview(token: string | null) {
+export function usePreview(_token: string | null) {
   const [preview, setPreview] = useState<PreviewState>(EMPTY);
 
   const open = async (file: UploadedFile) => {
-    if (!token) return;
     try {
-      const res = await fetch(`/api/admin/files/${file.id}/preview`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(`/api/admin/files/${file.id}/preview`);
       if (!res.ok) {
         let msg = `Preview failed (${res.status})`;
         try { const b = await res.json(); if (b.error) msg += `: ${b.error}`; } catch {}

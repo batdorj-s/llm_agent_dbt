@@ -3,13 +3,8 @@ import request from "supertest";
 import { initDataLake, isPgAvailable, getPool } from "../db/data-lake.js";
 import type { Express } from "express";
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@admin.com";
-const ADMIN_PASS = process.env.ADMIN_PASSWORD || "bataa0818";
-
 describe("Dashboard API endpoints", () => {
     let app: Express;
-    let adminToken: string;
-    let adminUserId: string;
     const testTable = `metrics_test_table_${Date.now()}`;
 
     beforeAll(async () => {
@@ -19,39 +14,31 @@ describe("Dashboard API endpoints", () => {
         const { app: apiApp } = await import("../api-server.js");
         app = apiApp;
 
-        const adminRes = await request(app)
-            .post("/api/auth/login")
-            .send({ email: ADMIN_EMAIL, password: ADMIN_PASS });
-        adminToken = adminRes.body.token;
-        adminUserId = adminRes.body.user?.id;
-
-        // Seed a real test table so computeMetrics finds user-owned data
-        if (adminUserId) {
-            await getPool().query(`DROP TABLE IF EXISTS "${testTable}"`);
-            await getPool().query(`
-                CREATE TABLE "${testTable}" (
-                    order_date TEXT,
-                    sales NUMERIC,
-                    quantity NUMERIC,
-                    category TEXT,
-                    customer_id TEXT
-                )
-            `);
-            await getPool().query(`
-                INSERT INTO "${testTable}" VALUES
-                    ('2024-01-15', 1000, 2, 'Technology', 'C001'),
-                    ('2024-02-20', 1500, 3, 'Furniture', 'C002'),
-                    ('2024-03-10', 800, 1, 'Technology', 'C003')
-            `);
-            await getPool().query(`
-                INSERT INTO data_lake_catalog (table_name, columns_info, owner_id, visibility, created_at)
-                VALUES ($1, '["order_date","sales","quantity","category","customer_id"]', $2, 'shared', NOW())
-            `, [testTable, adminUserId]);
-            await getPool().query(`
-                INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)
-                VALUES ($1, $1, 'dataset', 'Test dataset for metrics', $2, 'shared', NOW())
-            `, [testTable, adminUserId]);
-        }
+        // Seed a real test table so computeMetrics finds data
+        await getPool().query(`DROP TABLE IF EXISTS "${testTable}"`);
+        await getPool().query(`
+            CREATE TABLE "${testTable}" (
+                order_date TEXT,
+                sales NUMERIC,
+                quantity NUMERIC,
+                category TEXT,
+                customer_id TEXT
+            )
+        `);
+        await getPool().query(`
+            INSERT INTO "${testTable}" VALUES
+                ('2024-01-15', 1000, 2, 'Technology', 'C001'),
+                ('2024-02-20', 1500, 3, 'Furniture', 'C002'),
+                ('2024-03-10', 800, 1, 'Technology', 'C003')
+        `);
+        await getPool().query(`
+            INSERT INTO data_lake_catalog (table_name, columns_info, owner_id, visibility, created_at)
+            VALUES ($1, '["order_date","sales","quantity","category","customer_id"]', NULL, 'shared', NOW())
+        `, [testTable]);
+        await getPool().query(`
+            INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)
+            VALUES ($1, $1, 'dataset', 'Test dataset for metrics', NULL, 'shared', NOW())
+        `, [testTable]);
     });
 
     afterAll(async () => {
@@ -63,11 +50,10 @@ describe("Dashboard API endpoints", () => {
     });
 
     describe("GET /api/kpi/:metric", () => {
-        it("returns sales KPI for admin token", async () => {
-            if (!app || !adminToken) return;
+        it("returns sales KPI", async () => {
+            if (!app) return;
             const res = await request(app)
-                .get("/api/kpi/sales")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/kpi/sales");
 
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty("name", "sales");
@@ -76,49 +62,37 @@ describe("Dashboard API endpoints", () => {
         });
 
         it("returns users KPI", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/kpi/users")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/kpi/users");
 
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty("name", "users");
         });
 
         it("returns churn_rate KPI", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/kpi/churn_rate")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/kpi/churn_rate");
 
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty("name", "churn_rate");
         });
 
         it("returns 400 for unknown metric", async () => {
-            if (!app || !adminToken) return;
-            const res = await request(app)
-                .get("/api/kpi/nonexistent_metric")
-                .set("Authorization", `Bearer ${adminToken}`);
-
-            expect(res.status).toBe(400);
-        });
-
-        it("returns 401 with no token", async () => {
             if (!app) return;
             const res = await request(app)
-                .get("/api/kpi/sales");
+                .get("/api/kpi/nonexistent_metric");
 
-            expect(res.status).toBe(401);
+            expect(res.status).toBe(400);
         });
     });
 
     describe("GET /api/kpi-history", () => {
-        it("returns sales history array for admin token", async () => {
-            if (!app || !adminToken) return;
+        it("returns sales history array", async () => {
+            if (!app) return;
             const res = await request(app)
-                .get("/api/kpi-history")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/kpi-history");
 
             expect(res.status).toBe(200);
             expect(Array.isArray(res.body)).toBe(true);
@@ -129,43 +103,25 @@ describe("Dashboard API endpoints", () => {
         });
 
         it("respects limit query param", async () => {
-            if (!app || !adminToken) return;
+            if (!app) return;
             const res = await request(app)
-                .get("/api/kpi-history?limit=3")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/kpi-history?limit=3");
 
             expect(res.status).toBe(200);
             expect(res.body.length).toBeLessThanOrEqual(3);
         });
-
-        it("returns 401 with no token", async () => {
-            if (!app) return;
-            const res = await request(app)
-                .get("/api/kpi-history");
-
-            expect(res.status).toBe(401);
-        });
     });
 
     describe("GET /api/dashboard/computed-metrics", () => {
-        it("returns computed metrics for admin token", async () => {
-            if (!app || !adminToken) return;
+        it("returns computed metrics", async () => {
+            if (!app) return;
             const res = await request(app)
-                .get("/api/dashboard/computed-metrics")
-                .set("Authorization", `Bearer ${adminToken}`);
+                .get("/api/dashboard/computed-metrics");
 
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty("aov");
             expect(res.body).toHaveProperty("growthRate");
             expect(res.body).toHaveProperty("topCategory");
-        });
-
-        it("returns 401 with no token", async () => {
-            if (!app) return;
-            const res = await request(app)
-                .get("/api/dashboard/computed-metrics");
-
-            expect(res.status).toBe(401);
         });
     });
 });
