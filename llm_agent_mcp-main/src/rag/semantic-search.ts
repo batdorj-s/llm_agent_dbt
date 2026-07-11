@@ -131,7 +131,7 @@ async function getGeminiEmbedder(): Promise<any> {
 
   try {
     const { GoogleGenerativeAIEmbeddings } = await import("@langchain/google-genai");
-    const modelName = process.env.GEMINI_EMBEDDING_MODEL || "text-embedding-004";
+    const modelName = process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001";
     geminiEmbedder = new GoogleGenerativeAIEmbeddings({
       apiKey,
       modelName,
@@ -317,9 +317,12 @@ export interface HybridSearchResult {
 
 /**
  * Normalize scores to [0, 1] range using min-max normalization.
+ * Returns 0 for all entries if no positive scores exist.
  */
 function normalizeScores(scores: number[]): number[] {
   if (scores.length === 0) return [];
+  const hasPositive = scores.some(s => s > 0);
+  if (!hasPositive) return scores.map(() => 0); // All zeros → all stay zero
   const min = Math.min(...scores);
   const max = Math.max(...scores);
   const range = max - min;
@@ -407,22 +410,44 @@ export async function hybridSearch(
     });
   }
 
-  // Step 5: Normalize and combine
-  const bm25Values = normalizeScores(results.map(r => r.bm25Score));
-  const semanticValues = normalizeScores(results.map(r => r.semanticScore));
+  // Step 5: Combine scores
+  // Separate docs with BM25 matches from those without
+  const bm25Matched = results.filter(r => r.bm25Score > 0);
+  const bm25Unmatched = results.filter(r => r.bm25Score === 0);
 
-  const hasSemanticData = semanticValues.some(v => v > 0);
-  const effectiveAlpha = hasSemanticData ? alpha : 0; // Fall back to pure BM25 if no embeddings
+  // Normalize only BM25-matched docs (avoid inflating unmatched doc scores)
+  if (bm25Matched.length > 0) {
+    const bm25Values = normalizeScores(bm25Matched.map(r => r.bm25Score));
+    const semanticValues = normalizeScores(bm25Matched.map(r => r.semanticScore));
+    const hasSemanticData = semanticValues.some(v => v > 0);
+    const effectiveAlpha = hasSemanticData ? alpha : 0;
 
-  for (let i = 0; i < results.length; i++) {
-    results[i].score =
-      effectiveAlpha * semanticValues[i] +
-      (1 - effectiveAlpha) * bm25Values[i];
+    for (let i = 0; i < bm25Matched.length; i++) {
+      bm25Matched[i].score =
+        effectiveAlpha * semanticValues[i] +
+        (1 - effectiveAlpha) * bm25Values[i];
+    }
   }
 
-  // Step 6: Sort and limit
-  results.sort((a, b) => b.score - a.score);
-  return results.slice(0, limit);
+  // Unmatched docs get raw semantic score (no BM25 component)
+  for (const r of bm25Unmatched) {
+    r.score = r.semanticScore;
+  }
+
+  // Step 6: Sort, filter, and limit
+  // BM25-matched docs first (by hybrid score), then semantic-only docs (by cosine)
+  bm25Matched.sort((a, b) => b.score - a.score);
+  bm25Unmatched.sort((a, b) => b.score - a.score);
+
+  // When BM25 found matches, include ALL accessible docs (preserves system/admin docs
+  // that should be visible even if they don't match keywords)
+  // When BM25 found nothing (pure semantic), require threshold to filter noise
+  const MIN_SEMANTIC_THRESHOLD = 0.70;
+  const filteredUnmatched = bm25Matched.length > 0
+    ? bm25Unmatched  // Include all when BM25 has matches
+    : bm25Unmatched.filter(r => r.semanticScore >= MIN_SEMANTIC_THRESHOLD);
+
+  return [...bm25Matched, ...filteredUnmatched].slice(0, limit);
 }
 
 // ── BM25-only Fallback Search ──────────────────────────────────────────────────
@@ -468,14 +493,12 @@ export function bm25Search(
     }
 
     const score = allScores[i];
-    if (score > 0) {
-      results.push({
-        doc,
-        score,
-        semanticScore: 0,
-        bm25Score: score,
-      });
-    }
+    results.push({
+      doc,
+      score,
+      semanticScore: 0,
+      bm25Score: score,
+    });
   }
 
   results.sort((a, b) => b.score - a.score);

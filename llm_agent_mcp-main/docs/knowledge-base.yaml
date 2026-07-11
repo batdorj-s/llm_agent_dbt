@@ -7,7 +7,7 @@ documents:
       author: "admin"
       created_at: "2026-01-01"
       source_name: "Business Glossary"
-    keywords: ["sales", "revenue", "target", "deals", "kpi", "kpi target"]
+    keywords: ["sales", "revenue", "target", "deals", "kpi", "kpi target", "борлуулалт", "борлуулалтын", "борлуулалтын орлого"]
 
   - id: "doc2"
     text: "Churn Rate is the percentage of users who have not made a purchase in over 6 months. The acceptable threshold is under 2.0%."

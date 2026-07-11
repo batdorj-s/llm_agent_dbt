@@ -193,10 +193,12 @@ describe("bm25Search", () => {
         expect(ids).toContain("doc3"); // author=user123, visible to user123
     });
 
-    it("returns empty for no matches", () => {
+    it("returns all accessible docs for no matches (BM25 score = 0 for all)", () => {
         const index = buildBM25Index(docs);
         const results = bm25SearchFn("xyznonexistent", docs, index);
-        expect(results).toEqual([]);
+        // doc3 has shared:false and author:"user123" — not accessible without userId
+        expect(results.length).toBe(2);
+        expect(results.every((r: any) => r.score === 0)).toBe(true);
     });
 });
 

@@ -42,7 +42,7 @@ terms:
       Ашгийг бууруулна (P&L-д сөрөг нөлөөтэй).
     category: finance
     subcategory: expense
-    tags: [expense, cost, зарлага, зарцуулалт]
+    tags: [expense, cost, зарлага, зарцуулалт, зардал, expense]
 
   - term: "Дүн"
     definition: >
