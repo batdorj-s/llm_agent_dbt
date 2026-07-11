@@ -118,7 +118,7 @@ describe("RAG Security & Multi-Tenant Isolation", () => {
       const docsUnauth = searchUnauth.documents[0];
       expect(docsUnauth.some(d => d.includes("luxury"))).toBe(false);
       expect(docsUnauth.some(d => d.includes("budget"))).toBe(false);
-    });
+    }, 15000);
   });
 
   describe("R3 & R5: Negative Feedback & KB Poisoning", () => {

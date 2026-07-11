@@ -728,19 +728,29 @@ export async function searchKnowledgeBaseWithFilter(
       }
       const chromaWhere = conditions.length > 1 ? { "$and": conditions } : conditions[0];
 
-      // Multi-query retrieval: search with original + expanded queries
+      // Multi-query retrieval: search with original + expanded queries (parallel)
       const chromaResults: Array<{ documents: string[][]; metadatas: unknown[][]; distances: number[][] }> = [];
-      for (const q of allQueries.slice(0, 2)) { // Limit to 2 queries to avoid latency
+      const queryPromises = allQueries.slice(0, 2).map(async (q) => {
         try {
-          const r = await col.query({
-            queryTexts: [q],
-            nResults: limit * 2,
-            where: chromaWhere,
-          });
-          chromaResults.push(r as { documents: string[][]; metadatas: unknown[][]; distances: number[][] });
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("ChromaDB query timeout")), 3000)
+          );
+          const r = await Promise.race([
+            col.query({
+              queryTexts: [q],
+              nResults: limit * 2,
+              where: chromaWhere,
+            }),
+            timeoutPromise,
+          ]);
+          return r as { documents: string[][]; metadatas: unknown[][]; distances: number[][] };
         } catch {
-          // Skip failed queries
+          return null;
         }
+      });
+      const queryResults = await Promise.all(queryPromises);
+      for (const r of queryResults) {
+        if (r) chromaResults.push(r);
       }
 
       // Merge and deduplicate results from multiple queries

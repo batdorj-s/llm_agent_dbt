@@ -196,7 +196,13 @@ export async function embedQuery(query: string): Promise<number[] | null> {
   if (!embedder) return null;
 
   try {
-    const embedding = await embedder.embedQuery(query);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Gemini embed timeout")), 2000)
+    );
+    const embedding = await Promise.race([
+      embedder.embedQuery(query),
+      timeoutPromise,
+    ]);
     cacheQueryEmbedding(query, embedding);
     return embedding;
   } catch (err) {

@@ -230,7 +230,7 @@ describe("Phase 3 — Semantic RAG: Business Glossary", () => {
         // Reset and load full KB so search tests are self-contained
         rag.knowledgeDocuments.length = 0;
         await rag.setupKnowledgeBase();
-    });
+    }, 30000);
     it("STRESS: 'Цэвэр ашиг' returns net profit content", async () => {
         const { searchKnowledgeBase } = await import("../rag.js");
         const result = await searchKnowledgeBase("Цэвэр ашиг гэж юу вэ?", "FinanceAgent", 5);
@@ -250,21 +250,21 @@ describe("Phase 3 — Semantic RAG: Business Glossary", () => {
         const result = await searchKnowledgeBase("ашгийн хувийг хэрхэн бодох", "FinanceAgent", 5);
         const combined = (result.documents?.[0] ?? []).join(" ").toLowerCase();
         expect(combined).toContain("profit");
-    });
+    }, 15000);
 
     it("STRESS: 'ашиг' returns profit-related definitions", async () => {
         const { searchKnowledgeBase } = await import("../rag.js");
         const result = await searchKnowledgeBase("ашиг", "FinanceAgent", 5);
         const combined = (result.documents?.[0] ?? []).join(" ").toLowerCase();
         expect(combined).toContain("profit");
-    });
+    }, 15000);
 
     it("STRESS: churn Mongolian query returns glossary entry", async () => {
         const { searchKnowledgeBase } = await import("../rag.js");
         const result = await searchKnowledgeBase("харилцагчийн алдагдал", "FinanceAgent", 5);
         const combined = (result.documents?.[0] ?? []).join(" ").toLowerCase();
         expect(combined).toContain("churn");
-    });
+    }, 15000);
 
     it("STRESS: self-query filter returns business policy docs", async () => {
         const { searchKnowledgeBaseWithFilter } = await import("../rag.js");
@@ -276,7 +276,7 @@ describe("Phase 3 — Semantic RAG: Business Glossary", () => {
         });
         const docs = (result.documents?.[0] ?? []).join(" ").toLowerCase();
         expect(docs.length).toBeGreaterThan(0);
-    });
+    }, 15000);
 });
 
 // ────────────────────────────────────────────────────────────────────────────
