@@ -248,8 +248,8 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
         ].join("\n");
       }
 
-      // Average transaction value
-      if (/дундаж.гүйлгээ|average.transaction|avg.transaction|avg.amount/i.test(lowerQuery)) {
+    // Average transaction value
+    if (/дундаж.гүйлгээ|average.transaction|avg.transaction|avg.amount/i.test(lowerQuery)) {
         return [
           `SELECT`,
           `  COUNT(*) AS гүйлгээний_тоо,`,
@@ -257,6 +257,83 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
           `  MIN("${amountCol}") AS хамгийн_бага,`,
           `  MAX("${amountCol}") AS хамгийн_их`,
           `FROM "${tableName}";`,
+        ].join("\n");
+      }
+
+      // Window function: ranking (rank, top N by category)
+      if (/рүүр|rank|зэрэглэл|цол|албан тушаал|түвшин|жагсаалт| ranking/i.test(lowerQuery) && dateCol2) {
+        return [
+          `SELECT`,
+          `  "${partyCol || groupCol}" AS нэр,`,
+          `  SUM("${amountCol}") AS нийт_дүн,`,
+          `  RANK() OVER (ORDER BY SUM("${amountCol}") DESC) AS зэрэглэл`,
+          `FROM "${tableName}"`,
+          `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
+          `GROUP BY 1`,
+          `ORDER BY 3`,
+          `LIMIT 20;`,
+        ].join("\n");
+      }
+
+      // Window function: running total / cumulative sum (нийт нэмэлт, цуврал нийлбэр)
+      if (/нийт.нэмэлт|running.total|cumulative|цуврал.нийлбэр|ytd|year.to.date|оны.эхнээс/i.test(lowerQuery) && dateCol2) {
+        return [
+          `SELECT`,
+          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS сар,`,
+          `  SUM("${amountCol}") AS сарын_дүн,`,
+          `  SUM(SUM("${amountCol}")) OVER (ORDER BY TO_CHAR(${dateExpr}, 'YYYY-MM')) AS цуврал_нийлбэр`,
+          `FROM "${tableName}"`,
+          `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
+          `GROUP BY 1`,
+          `ORDER BY 1;`,
+        ].join("\n");
+      }
+
+      // Window function: moving average (хөдөлгөөнт дундаж, 3-сарын)
+      if (/хөдөлгөөнт.дундаж|moving.average|rolling.average|rolling.avg|гүйлгээний.дундаж|gaap/i.test(lowerQuery) && dateCol2) {
+        return [
+          `SELECT`,
+          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS сар,`,
+          `  SUM("${amountCol}") AS сарын_дүн,`,
+          `  AVG(SUM("${amountCol}")) OVER (ORDER BY TO_CHAR(${dateExpr}, 'YYYY-MM') ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS 3_сарын_дундаж`,
+          `FROM "${tableName}"`,
+          `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
+          `GROUP BY 1`,
+          `ORDER BY 1;`,
+        ].join("\n");
+      }
+
+      // Window function: year-over-year comparison (өмнөх жилтэй харьцуулалт)
+      if (/өмнөх.жил|previous.year|last.year|жилийн.өсөлт|yoy|year.over.year|жижиг.харьцуулалт|同比/i.test(lowerQuery) && dateCol2) {
+        return [
+          `WITH monthly AS (`,
+          `  SELECT`,
+          `    TO_CHAR(${dateExpr}, 'YYYY') AS жил,`,
+          `    TO_CHAR(${dateExpr}, 'MM') AS сар,`,
+          `    SUM("${amountCol}") AS дүн`,
+          `  FROM "${tableName}"`,
+          `  WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
+          `  GROUP BY 1, 2`,
+          `)`,
+          `SELECT`,
+          `  жил, сар, дүн,`,
+          `  LAG(дүн) OVER (PARTITION BY сар ORDER BY жил) AS өмнөх_жилийн_дүн`,
+          `FROM monthly`,
+          `ORDER BY жил, сар;`,
+        ].join("\n");
+      }
+
+      // Window function: percent of total (нийтийн хувь)
+      if (/нийтийн.хувь|percent.of.total|percentage|хувь.нь|пропорц|proportion/i.test(lowerQuery)) {
+        return [
+          `SELECT`,
+          `  "${groupCol}" AS ангилал,`,
+          `  SUM("${amountCol}") AS нийт_дүн,`,
+          `  ROUND(SUM("${amountCol}") * 100.0 / SUM(SUM("${amountCol}")) OVER (), 2) AS хувь_нь`,
+          `FROM "${tableName}"`,
+          `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
+          `GROUP BY 1`,
+          `ORDER BY 3 DESC;`,
         ].join("\n");
       }
 

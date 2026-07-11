@@ -10,6 +10,18 @@ export interface KpiMetric {
   updatedAt?: string;
 }
 
+export interface CustomKpiDefinition {
+  id: string;
+  name: string;
+  description: string;
+  formula: string;
+  parameters: Record<string, unknown>;
+  unit: string;
+  target?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SalesRecord {
   month: string;
   revenue: number;

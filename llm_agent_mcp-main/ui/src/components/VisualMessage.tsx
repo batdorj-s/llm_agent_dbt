@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend, ComposedChart, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend, ComposedChart, CartesianGrid, ScatterChart, Scatter, ZAxis } from "recharts";
 import { chartTheme, type ChartType } from "./chartTheme";
 import { DEFAULT_COLORS } from "./types";
 
@@ -67,10 +67,11 @@ const sanitizeVisualJson = (str: string): string => {
 const CHART_LABELS: Record<ChartType, string> = {
   bar: "Багана", horizontal_bar: "Хэвтээ", line: "Шугам", area: "Талбай",
   pie: "Бялуу", donut: "Donut", combo: "Хосолмол", stacked_bar: "Давхар", heatmap: "Дулааны",
+  scatter: "Сарнилт", waterfall: "Усны хүрд",
 };
 
 export function getCompatibleTypes(series: string[] | undefined, hasMultiNumeric: boolean): ChartType[] {
-  const base: ChartType[] = ["bar", "horizontal_bar", "line", "area", "pie", "donut", "heatmap"];
+  const base: ChartType[] = ["bar", "horizontal_bar", "line", "area", "pie", "donut", "heatmap", "scatter", "waterfall"];
   if (series && series.length > 1) {
     return [...base, "combo", "stacked_bar"];
   }
@@ -285,6 +286,43 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
             )}
           </div>
         );
+      case "scatter":
+        return (
+          <ScatterChart data={rows} onClick={(data: any) => { const r = maybeRow(data); if (r) setDrillDown({ ...r, x: data.chartX || 0, y: (data.chartY || 0) - 8 }); }}>
+            <CartesianGrid {...gridStyle} />
+            <XAxis dataKey="label" name="Label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <YAxis dataKey="value" name="Value" stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <ZAxis dataKey="value" range={[60, 60]} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Scatter data={rows} fill={colors[0]} />
+          </ScatterChart>
+        );
+      case "waterfall":
+        // Waterfall: cumulative bar chart showing positive/negative changes
+        const waterfallData = rows.map((row: any, i: number) => {
+          const val = parseFloat(row.value) || 0;
+          const prevSum = rows.slice(0, i).reduce((sum: number, r: any) => sum + (parseFloat(r.value) || 0), 0);
+          return {
+            ...row,
+            start: prevSum,
+            end: prevSum + val,
+            isPositive: val >= 0,
+          };
+        });
+        return (
+          <BarChart data={waterfallData} onClick={(data: any) => { const r = maybeRow(data); if (r) setDrillDown({ ...r, x: data.chartX || 0, y: (data.chartY || 0) - 8 }); }}>
+            <CartesianGrid {...gridStyle} />
+            <XAxis dataKey="label" stroke="#888888" fontSize={chartTheme.font.sizes.axis} />
+            <YAxis stroke="#888888" fontSize={chartTheme.font.sizes.axis} tickFormatter={fmtCompact} width={52} />
+            <Tooltip contentStyle={chartTheme.tooltip.contentStyle} formatter={tooltipFormatter} />
+            <Bar dataKey="start" stackId="waterfall" fill="transparent" />
+            <Bar dataKey="end" stackId="waterfall" radius={[3, 3, 0, 0]}>
+              {waterfallData.map((entry: any, i: number) => (
+                <Cell key={i} fill={entry.isPositive ? "#10b981" : "#ef4444"} />
+              ))}
+            </Bar>
+          </BarChart>
+        );
       default:
         return null;
     }
@@ -362,7 +400,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
                 className={`px-1.5 py-0.5 transition-colors ${effectiveType === t ? "bg-foreground/10 text-foreground font-semibold" : "text-foreground/50 hover:text-foreground/80"}`}
                 title={CHART_LABELS[t]}
               >
-                {({ bar: "▇", horizontal_bar: "≡", line: "╱", area: "◢", pie: "◉", donut: "◎", combo: "⊞", stacked_bar: "▤", heatmap: "▦" } as Record<ChartType, string>)[t]}
+                {({ bar: "▇", horizontal_bar: "≡", line: "╱", area: "◢", pie: "◉", donut: "◎", combo: "⊞", stacked_bar: "▤", heatmap: "▦", scatter: "⁘", waterfall: "▯" } as Record<ChartType, string>)[t]}
               </button>
             ))}
             {compatible.length > 5 && (
@@ -637,12 +675,47 @@ export const DashboardWidget = ({ widget }: { widget: any }) => {
             )}
           </div>
         );
+      case "table":
+        // Table widget: renders data as a sortable, styled HTML table
+        return (
+          <div className="overflow-auto h-full max-h-44">
+            <table className="w-full text-[9px] border-collapse">
+              <thead>
+                <tr className="bg-foreground/5">
+                  {widget.data[0] && Object.keys(widget.data[0]).filter(k => k !== "value").map((key) => (
+                    <th key={key} className="px-2 py-1 text-left font-semibold text-foreground/70 border-b border-border/30 sticky top-0 bg-card">
+                      {key}
+                    </th>
+                  ))}
+                  <th className="px-2 py-1 text-right font-semibold text-foreground/70 border-b border-border/30 sticky top-0 bg-card">
+                    Утга
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {widget.data.slice(0, 20).map((row: any, i: number) => (
+                  <tr key={i} className={`${i % 2 === 0 ? "bg-transparent" : "bg-foreground/3"} hover:bg-foreground/5 transition-colors`}>
+                    {Object.keys(row).filter(k => k !== "value").map((key) => (
+                      <td key={key} className="px-2 py-1 text-foreground/70 border-b border-border/20">
+                        {String(row[key] ?? "")}
+                      </td>
+                    ))}
+                    <td className="px-2 py-1 text-right font-semibold text-foreground/80 border-b border-border/20 tabular-nums">
+                      {fmtFull(Number(row.value) || 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {widget.data.length > 20 && (
+              <div className="text-[8px] text-foreground/40 text-center py-1">
+                +{widget.data.length - 20} мөр илүү...
+              </div>
+            )}
+          </div>
+        );
       default:
         return null;
-    }
-  };
-
-  return (
     <div className="bg-card border border-border/60 rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow duration-150" ref={chartRef}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
