@@ -6,15 +6,18 @@ import { sandboxLimiter } from "../rate-limiter.js";
 import { searchKnowledgeBase } from "../rag.js";
 import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "../rag.js";
 import { detectDateColumn, extractProfileFromSchemaDef } from "./dateColumnHelper.js";
-import { withTimeout } from "./agentState.js";
+import { type AgentState, type AgentConfig, withTimeout } from "./agentState.js";
 import { computeAllStats } from "./statistics.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("DataScientist");
 import { extractCodeBlock } from "../utils.js";
 import { prompts } from "./prompts.js";
 
 const LLM_TIMEOUT_MS = 40000;
 const PYTHON_GEN_TIMEOUT_MS = 55000;
 
-export async function dataScientistNode(state: any, config?: any): Promise<Partial<import("../multi-agent.js").AgentState>> {
+export async function dataScientistNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
     const onChunk = config?.configurable?.onChunk;
     const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
     const userId = state.userId || "system";
@@ -35,11 +38,10 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     try {
         columnList = JSON.parse(activeEntry.columns_info) as string[];
     } catch (e) {
-        console.error("[DataScientist] Failed to parse columns_info:", e);
+        log.error("Failed to parse columns_info:", { error: String(e) });
     }
 
-    console.log(`[DataScientist] Active table: ${tableName}, columns: ${columnList.join(", ")}`);
-
+    log.info(`Active table: ${tableName}`, { columns: columnList.join(", ") });
     const llm = await createLLM({ temperature: 0 });
 
     let ragContext = "";
@@ -53,9 +55,8 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
                         { role: "user", content: query }
                     ]).then((r: any) => r.content as string)
                 );
-                console.log(`[DataScientist] Self-query filter: ${JSON.stringify(filter)}`);
-            } catch (sqErr) {
-                console.warn("[DataScientist] Self-query failed:", (sqErr as Error).message);
+                log.info("Self-query filter applied", { filter: JSON.stringify(filter) });            } catch (sqErr) {
+                log.warn("Self-query failed:", { error: (sqErr as Error).message });
             }
         }
         const ragData = filter
@@ -64,10 +65,9 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
         const docs = ragData.documents?.[0] ?? [];
         if (docs.length > 0) {
             ragContext = "\n\n## Relevant Knowledge\n" + docs.join("\n\n---\n\n");
-            console.log(`[DataScientist] Enriched with ${docs.length} RAG docs`);
-        }
+            log.info(`Enriched with ${docs.length} RAG docs`);        }
     } catch (err) {
-        console.warn("[DataScientist] RAG fetch failed:", (err as Error).message);
+        log.warn("RAG fetch failed:", { error: (err as Error).message });
     }
 
     if (!llm) {
@@ -88,8 +88,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
     else if (isCorrelation) analysisType = "correlation";
     else if (isRegression) analysisType = "regression";
 
-    console.log(`[DataScientist] Analysis type detected: ${analysisType}`);
-
+    log.info(`Analysis type detected: ${analysisType}`);
     const columnTypes = parseColumnTypes(schemaDef);
     const dateCol = findDateColumn(columnList, columnTypes);
     const dateColType = dateCol ? (columnTypes[dateCol] || "unknown") : null;
@@ -117,20 +116,18 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
             if (isPerDimension && categoryCols.length > 0) {
                 dimensionCol = categoryCols[0];
                 forecastDimension = dimensionCol;
-                console.log(`[DataScientist] Per-dimension forecast using: ${dimensionCol}`);
+                log.info(`Per-dimension forecast using: ${dimensionCol}`);
             }
 
             const dimensionSelect = dimensionCol ? `, "${dimensionCol}" AS dimension` : "";
             const dimensionGroupBy = dimensionCol ? `, "${dimensionCol}"` : "";
             const dimensionOrderBy = dimensionCol ? `, "${dimensionCol}"` : "";
             const forecastSql = `SELECT ${dateCast} AS period${dimensionSelect}, SUM(COALESCE("${aggCol}", 0)) AS value FROM "${tableName}" GROUP BY period${dimensionGroupBy} ORDER BY period${dimensionOrderBy}`;
-            console.log(`[DataScientist] Forecast mode: ${dateCol} type=${dateColType}, casting as ${dateCast}`);
-            const aggResult = await handleExecuteSql({ query: forecastSql, userId });
+            log.info(`Forecast mode: ${dateCol}`, { type: dateColType, castAs: dateCast });            const aggResult = await handleExecuteSql({ query: forecastSql, userId });
             if (aggResult.ok && aggResult.results) {
                 sampleData = Array.isArray(aggResult.results) ? aggResult.results : [aggResult.results];
                 exportCsvSql = forecastSql;
-                console.log(`[DataScientist] Forecast data: ${sampleData.length} aggregated rows`);
-            }
+                log.info(`Forecast data: ${sampleData.length} aggregated rows`);            }
         }
 
         if (sampleData.length === 0) {
@@ -142,7 +139,7 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
             exportCsvSql = buildExportSql(tableName, columnList);
         }
     } catch (err) {
-        console.warn("[DataScientist] Data fetch failed:", (err as Error).message);
+        log.warn("Data fetch failed:", { error: (err as Error).message });
     }
 
     const statsResult = computeAllStats(sampleData, numericCols, 0);

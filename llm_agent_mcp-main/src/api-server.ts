@@ -85,9 +85,11 @@ const ALLOWED_MIMES = new Set([
   "text/csv",
 ]);
 
+const MAX_UPLOAD_SIZE = parseInt(process.env.MAX_UPLOAD_SIZE_MB || "10", 10) * 1024 * 1024;
+
 const upload = multer({
   dest: UPLOAD_DIR,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: MAX_UPLOAD_SIZE },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_MIMES.has(file.mimetype)) {
       cb(null, true);
@@ -1036,9 +1038,9 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
       content: content.substring(0, 10000), // cap at 10K chars
       hasDownload: fs.existsSync(path.join(DOCUMENTS_DIR, `${id}_${file.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`)),
     });
-  } catch (err: any) {
-    console.error(`[API] Preview failed for file ${id}:`, err.message);
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    console.error(`[API] Preview failed for file ${id}:`, err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Preview failed" });
   }
 });
 
@@ -1057,9 +1059,9 @@ app.get("/api/admin/files/:id/download", async (req, res) => {
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File not available" });
 
     res.download(filePath, file.filename);
-  } catch (err: any) {
-    console.error(`[API] Download failed for file ${id}:`, err.message);
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    console.error(`[API] Download failed for file ${id}:`, err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Download failed" });
   }
 });
 
@@ -1262,9 +1264,9 @@ app.post("/api/admin/upload-csv", async (req, res) => {
       columns: resultCols,
       dbtStatus,
     });
-  } catch (err: any) {
-    log("error", `CSV Upload Error: ${err.message}`, req);
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    log("error", `CSV Upload Error: ${err instanceof Error ? err.message : String(err)}`, req);
+    res.status(500).json({ error: err instanceof Error ? err.message : "CSV upload failed" });
   } finally {
     fs.promises.unlink(tempFilePath).catch(() => {});
   }
@@ -1353,9 +1355,9 @@ app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
       columns: resultCols,
       dbtStatus: xlDbtStatus,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[API] Excel Upload Error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : "Excel upload failed" });
   } finally {
     if (req.file) fs.promises.unlink(req.file.path).catch(() => {});
     if (csvTempPath) fs.promises.unlink(csvTempPath).catch(() => {});
@@ -1418,10 +1420,10 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     );
 
     res.json({ success: true, message: `Document '${originalName}' indexed.` });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[API] Doc Upload Error:", err);
     fs.promises.unlink(tempPath).catch(() => {});
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : "Document upload failed" });
   }
 });
 

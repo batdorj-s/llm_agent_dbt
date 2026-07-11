@@ -111,8 +111,13 @@ export function runDbtTest(vars: string): string {
       encoding: "utf8",
       stdio: "pipe",
     });
-  } catch (err: any) {
-    return err.stdout || err.message || "Test execution failed";
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      // execFileSync attaches stdout/stderr to the error object
+      const execErr = err as Error & { stdout?: string; stderr?: string };
+      return execErr.stdout || execErr.message || "Test execution failed";
+    }
+    return String(err);
   }
 }
 

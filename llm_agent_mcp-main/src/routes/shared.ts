@@ -40,9 +40,11 @@ const ALLOWED_MIMES = new Set([
   "text/csv",
 ]);
 
+export const MAX_UPLOAD_SIZE_BYTES = parseInt(process.env.MAX_UPLOAD_SIZE_MB || "10", 10) * 1024 * 1024;
+
 export const upload = multer({
   dest: UPLOAD_DIR,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_SIZE_BYTES },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_MIMES.has(file.mimetype)) {
       cb(null, true);

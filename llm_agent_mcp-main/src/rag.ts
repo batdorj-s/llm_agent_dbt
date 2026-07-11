@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 import fs from "fs";
+import { readFile, access } from "fs/promises";
 import path from "path";
 import yaml from "yaml";
 import { syncDbtModelsToRag, syncDbtTestResultsToRag, syncDbtMetricsToRag } from "./dbt-sync.js";
@@ -15,6 +16,7 @@ import {
 } from "./rag/semantic-search.js";
 
 // Self-query cache: avoid redundant LLM calls across agents
+const SELF_QUERY_CACHE_MAX = 200;
 const selfQueryCache = new Map<string, { result: SelfQueryFilter; expiresAt: number }>();
 const SELF_QUERY_CACHE_TTL_MS = 60_000; // 1 minute
 
@@ -312,26 +314,28 @@ export async function setupKnowledgeBase() {
   // Load approved feedback from failed_queries.json
   try {
     const failedQueriesPath = path.join(process.cwd(), "logs", "failed_queries.json");
-    if (fs.existsSync(failedQueriesPath)) {
-      const data = JSON.parse(fs.readFileSync(failedQueriesPath, "utf8"));
-      for (const entry of data) {
-        if (entry.status === "approved" && entry.response) {
-          const ragText = `Failed Query: User asked "${entry.message}". The system responded with: "${entry.response}". This response was rated as incorrect.`;
-          if (!knowledgeDocuments.some(d => d.id === entry.id)) {
-            knowledgeDocuments.push({
-              id: entry.id,
-              text: ragText,
-              metadata: {
-                category: "previous_analysis",
-                department: "analytics",
-                author: entry.userId || "system",
-                created_at: entry.timestamp || new Date().toISOString(),
-                source_name: "User Feedback",
-                shared: true,
-              },
-              keywords: ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)],
-            });
-          }
+    await access(failedQueriesPath).catch(() => {
+      throw new Error("File not found");
+    });
+    const rawData = await readFile(failedQueriesPath, "utf8");
+    const data = JSON.parse(rawData);
+    for (const entry of data) {
+      if (entry.status === "approved" && entry.response) {
+        const ragText = `Failed Query: User asked "${entry.message}". The system responded with: "${entry.response}". This response was rated as incorrect.`;
+        if (!knowledgeDocuments.some(d => d.id === entry.id)) {
+          knowledgeDocuments.push({
+            id: entry.id,
+            text: ragText,
+            metadata: {
+              category: "previous_analysis",
+              department: "analytics",
+              author: entry.userId || "system",
+              created_at: entry.timestamp || new Date().toISOString(),
+              source_name: "User Feedback",
+              shared: true,
+            },
+            keywords: ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)],
+          });
         }
       }
     }
@@ -570,7 +574,11 @@ export async function selfQueryTransform(
       year: typeof parsed.year === "number" ? parsed.year : undefined,
     };
 
-    // Cache the result
+    // Cache the result (evict oldest if at capacity)
+    if (selfQueryCache.size >= SELF_QUERY_CACHE_MAX) {
+      const oldestKey = selfQueryCache.keys().next().value;
+      if (oldestKey) selfQueryCache.delete(oldestKey);
+    }
     selfQueryCache.set(cacheKey, { result, expiresAt: Date.now() + SELF_QUERY_CACHE_TTL_MS });
 
     return result;
@@ -596,8 +604,8 @@ export async function removeDocumentsByPrefix(idPrefix: string): Promise<number>
     try {
       await col.delete(removedIds);
       console.log(`[RAG] Deleted ${removedIds.length} ChromaDB docs by id (prefix: ${idPrefix})`);
-    } catch (err: any) {
-      console.warn(`[RAG] ChromaDB delete failed for prefix ${idPrefix}:`, err.message);
+    } catch (err: unknown) {
+      console.warn(`[RAG] ChromaDB delete failed for prefix ${idPrefix}:`, err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -672,8 +680,8 @@ export async function addDocumentToCatalog(
         metadatas: docs.map(d => ({ ...d.metadata, category: d.metadata.category })),
       });
       console.log(`[RAG] Successfully added ${docs.length} chunk(s) to ChromaDB [OK]`);
-    } catch (err: any) {
-      console.error(`[RAG] Failed to add ${id} to ChromaDB:`, err.message);
+    } catch (err: unknown) {
+      console.error(`[RAG] Failed to add ${id} to ChromaDB:`, err instanceof Error ? err.message : String(err));
     }
   }
 

@@ -2,6 +2,8 @@ import { invokeWithFallback } from "../llm-provider.js";
 import { addDocumentToCatalog } from "../rag.js";
 import { prompts } from "./prompts.js";
 
+const DATA_PROFILER_TIMEOUT_MS = parseInt(process.env.DATA_PROFILER_TIMEOUT_MS || "30000", 10);
+
 export interface DataDimension {
   name: string;
   description: string;
@@ -42,7 +44,7 @@ export async function generateDataPassport(
     const result = await invokeWithFallback([
       { role: "system", content: prompts.data_profiler_system as string },
       { role: "user", content: prompt }
-    ], { temperature: 0.1, timeout: 30000 });
+    ], { temperature: 0.1, timeout: DATA_PROFILER_TIMEOUT_MS });
 
     if (!result.content) {
       console.warn(`[DataProfiler] Empty LLM response for ${tableName}`);

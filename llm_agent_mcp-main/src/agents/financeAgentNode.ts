@@ -3,11 +3,14 @@ import { selfQueryTransform, searchKnowledgeBase, searchKnowledgeBaseWithFilter 
 import { buildFinanceKpiContext } from "../tools/enterprise-tools.js";
 import { getCatalog } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
-import { type AgentState, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
+import { type AgentState, type AgentConfig, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
 import { techAgentNode } from "./techAgentNode.js";
+import { createLogger } from "./logger.js";
 
-export async function financeAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
-    console.log("[Finance Agent] Activated.");
+const log = createLogger("FinanceAgent");
+
+export async function financeAgentNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
+    log.info("Activated.");
     const onChunk = config?.configurable?.onChunk;
 
     const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
@@ -15,8 +18,7 @@ export async function financeAgentNode(state: any, config?: any): Promise<Partia
 
     const llm = await createLLM({ temperature: 0 });
 
-    console.log(`[Finance Agent] Fetching RAG context for query: "${query}"`);
-    let context = "No context available.";
+    log.info(`Fetching RAG context for query: "${query}"`);    let context = "No context available.";
     try {
         let filter;
         if (llm) {
@@ -31,10 +33,9 @@ export async function financeAgentNode(state: any, config?: any): Promise<Partia
                             { role: "user", content: query }
                         ]).then((r: any) => r.content as string)
                     );
-                    console.log(`[Finance Agent] Self-query filter: ${JSON.stringify(filter)}`);
-                }
+                    log.info("Self-query filter applied", { filter: JSON.stringify(filter) });                }
             } catch (sqErr) {
-                console.warn("[Finance Agent] Self-query failed, using plain search:", (sqErr as Error).message);
+                log.warn("Self-query failed, using plain search:", { error: (sqErr as Error).message });
             }
         }
 
@@ -45,26 +46,26 @@ export async function financeAgentNode(state: any, config?: any): Promise<Partia
         if (docs.length > 0) {
             context = docs.join("\n\n---\n\n");
         } else {
-            console.warn("[Finance Agent] RAG returned no documents.");
+            log.warn("RAG returned no documents.");
         }
     } catch (err) {
-        console.error("[Finance Agent] RAG search failed:", err);
+        log.error("RAG search failed:", { error: String(err) });
     }
 
     const liveKpiContext = await buildFinanceKpiContext(query);
     if (liveKpiContext) {
-        console.log("[Finance Agent] Enriched with live KPI data from Data Lake (MCP tools).");
+        log.info("Enriched with live KPI data from Data Lake (MCP tools).");
         context = `${context}\n\n--- Live KPI Data (from database) ---\n${liveKpiContext}`;
     }
 
     const catalog = state.cachedCatalog || await getCatalog(userId);
     if (catalog && catalog.length > 0) {
-        const tableList = catalog.map((e: any) => `- ${e.table_name} (${e.description || "N/A"})`).join("\n");
+        const tableList = catalog.map((e) => `- ${e.table_name} (${e.description || "N/A"})`).join("\n");
         context = `${context}\n\n--- Available Tables in Data Lake ---\n${tableList}`;
     }
 
     if (context === "No context available." || !context) {
-        console.log("[Finance Agent] No context available — falling through to TechAgent for data query.");
+        log.info("No context available — falling through to TechAgent for data query.");
         if (onChunk) onChunk("(Finance Agent → Tech Agent)\nМэдээллийн сангаас дата шүүж байна...\n\n");
         return techAgentNode(state, config);
     }
@@ -87,15 +88,16 @@ export async function financeAgentNode(state: any, config?: any): Promise<Partia
 
     const executeMessages = trimMessages([
         { role: "system", content: systemPrompt },
-        ...state.messages.map((m: any) => ({ role: m.role, content: m.content }))
+        ...state.messages.map((m) => ({ role: m.role, content: m.content }))
     ]);
 
     try {
         let stream: any;
         try {
             stream = await withTimeout(llm.stream(executeMessages), "Finance agent response");
-        } catch (err: any) {
-            console.warn("[Finance Agent] Primary LLM failed, attempting fallback to GROQ:", err.message);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log.warn("Primary LLM failed, attempting fallback to GROQ:", { error: msg });
             const fallbackLLM = await createLLMWithOrder({
                 temperature: 0,
                 providerOrder: ["groq", "openai"]
@@ -119,7 +121,7 @@ export async function financeAgentNode(state: any, config?: any): Promise<Partia
         };
     } catch (streamErr) {
         const fallbackText = `${prefix}[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.`;
-        console.warn("[Finance Agent] Response failed:", (streamErr as Error).message);
+        log.warn("Response failed:", { error: (streamErr as Error).message });
         if (onChunk) onChunk(fallbackText);
         return {
             messages: [{ role: "assistant", content: fallbackText }]

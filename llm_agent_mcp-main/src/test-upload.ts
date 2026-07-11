@@ -49,8 +49,8 @@ async function runTest() {
     }
     console.log("5. Verified Document in RAG memory [OK]");
     console.log("=== All Upload Tests Passed successfully! ===");
-  } catch (err: any) {
-    console.error("[FAIL] Test Failed:", err.message);
+  } catch (err: unknown) {
+    console.error("[FAIL] Test Failed:", err instanceof Error ? err.message : String(err));
   } finally {
     if (fs.existsSync(testCsvPath)) {
       fs.unlinkSync(testCsvPath);

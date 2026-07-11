@@ -1,17 +1,18 @@
 import { createLLM } from "../llm-provider.js";
-import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
+import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition, type DataLakeCatalogEntry } from "../db/data-lake.js";
 import { handleExecuteSql } from "../tools/enterprise-tools.js";
 import { safeJsonParse, buildSemanticGroups, formatSemanticGroups, queryMentionsTable } from "../utils.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, withTimeout } from "./agentState.js";
 
 export async function buildDashboard(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     llm: any,
     query: string,
     userId: string,
     onChunk?: (chunk: string) => void,
-    cachedCatalog?: any[],
-    cachedActiveEntry?: any
+    cachedCatalog?: DataLakeCatalogEntry[],
+    cachedActiveEntry?: DataLakeCatalogEntry | null
 ): Promise<Partial<AgentState>> {
     console.log("[Tech Agent] Dashboard request detected.");
     const dashPrefix = "(Tech Agent)\nDashboard зохиож байна...\n\n";
@@ -19,7 +20,7 @@ export async function buildDashboard(
 
     const catalog = cachedCatalog || await getCatalog(userId);
     const lowerQuery = query.toLowerCase();
-    const mentioned = catalog?.find((e: any) => queryMentionsTable(query, e.table_name));
+    const mentioned = catalog?.find((e) => queryMentionsTable(query, e.table_name));
     const activeEntry = mentioned || cachedActiveEntry || await getActiveCatalogEntry(userId);
     if (!activeEntry) {
         const fallback = `${dashPrefix}[АНХААР] Идэвхтэй хүснэгт олдсонгүй. Эхлээд зүүн талын Upload хэсгээс CSV файл оруулна уу.`;

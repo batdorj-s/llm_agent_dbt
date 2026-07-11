@@ -25,6 +25,8 @@ dotenv.config();
 
 export type LLMProvider = "gemini" | "groq" | "anthropic" | "openai" | "none";
 
+export const LLM_PROVIDER_TIMEOUT_MS = parseInt(process.env.LLM_PROVIDER_TIMEOUT_MS || "60000", 10);
+
 export class AllProvidersExhaustedError extends Error {
     constructor(
         public readonly lastError: Error | null,
@@ -115,7 +117,7 @@ async function createProviderModel(
       temperature: temp,
       streaming,
       maxRetries: 0,
-      timeout: 60000,
+      timeout: LLM_PROVIDER_TIMEOUT_MS,
     });
   }
 

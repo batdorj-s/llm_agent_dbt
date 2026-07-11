@@ -36,7 +36,7 @@ export async function logSqlOutcome(params: {
 }
 
 export const MAX_SQL_RETRIES = 2;
-export const SQL_GEN_TIMEOUT_MS = 45000;
+export const SQL_GEN_TIMEOUT_MS = parseInt(process.env.SQL_GEN_TIMEOUT_MS || "45000", 10);
 
 export function isRateLimitError(err: unknown): boolean {
     const message = err instanceof Error ? err.message : String(err);
@@ -46,14 +46,14 @@ export function isRateLimitError(err: unknown): boolean {
 export async function buildActiveSchemaContext(
   query: string,
   userId: string,
-  cachedCatalog?: any[],
-  cachedActiveEntry?: any,
+  cachedCatalog?: DataLakeCatalogEntry[],
+  cachedActiveEntry?: DataLakeCatalogEntry | null,
   cachedSchema?: string
 ): Promise<string> {
     const catalog = cachedCatalog || await getCatalog(userId);
     if (!catalog || catalog.length === 0) return "(catalog unavailable)";
 
-    const mentioned = catalog.find((e: any) =>
+    const mentioned = catalog.find((e) =>
         queryMentionsTable(query, e.table_name)
     );
     if (mentioned) return cachedSchema || await buildSchemaDefinition(mentioned);

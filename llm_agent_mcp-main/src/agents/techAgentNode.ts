@@ -3,7 +3,7 @@ import { getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js
 import { searchKnowledgeBase } from "../rag.js";
 import { handleExecuteSql, isPythonQuery } from "../tools/enterprise-tools.js";
 import { prompts } from "./prompts.js";
-import { type AgentState, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
+import { type AgentState, type AgentConfig, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
 import { extractCodeBlock, safeJsonParse } from "../utils.js";
 import {
     MAX_SQL_RETRIES,
@@ -17,10 +17,13 @@ import {
     generateVisualTag,
     logSqlOutcome,
 } from "./sqlGeneration.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("TechAgent");
 import { executeTechPythonAgent } from "./pythonExecution.js";
 import { buildDashboard } from "./dashboardBuilder.js";
 
-export async function techAgentNode(state: any, config?: any): Promise<Partial<AgentState>> {
+export async function techAgentNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
     const onChunk = config?.configurable?.onChunk;
 
     const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
@@ -39,7 +42,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
         return await executeTechPythonAgent(llm, query, onChunk, userId);
     }
 
-    console.log("[Tech Agent] Activated. Writing SQL query...");
+    log.info("Activated. Writing SQL query...");
 
     const lowerQuery = query.toLowerCase();
     if (lowerQuery.includes("dashboard") || lowerQuery.includes("ханалтын самбар") || lowerQuery.includes("хана") || lowerQuery.includes("widget") || lowerQuery.includes("вижет")) {
@@ -49,16 +52,16 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
     const prefix = "(Tech Agent)\nМэдээллийн сангаас дата шүүж байна... (MCP execute_sql → Data Lake)\n\n";
     if (onChunk) onChunk(prefix);
 
-    console.log(`[Tech Agent] Fetching Data Lake catalog schema...`);
+    log.info("Fetching Data Lake catalog schema...");
     const schemaContext = await buildActiveSchemaContext(query, userId, state.cachedCatalog, state.cachedActiveEntry, state.cachedSchema);
     try {
-        console.log(`[Tech Agent] Active schema context:\n${schemaContext}`);
+        log.info(`Active schema context:\n${schemaContext}`);
     } catch (err) {
-        console.error("[Tech Agent] Schema lookup failed:", err);
+        log.error("Schema lookup failed:", { error: String(err) });
     }
 
     // Fetch RAG context for business knowledge (column synonyms, dbt docs, user uploads)
-    console.log(`[Tech Agent] Fetching RAG context for query...`);
+    log.info("Fetching RAG context for query...");
     let ragContext = "";
     try {
         const ragResult = await searchKnowledgeBase(query, "TechAgent", 5, userId);
@@ -67,7 +70,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             ragContext = "\n\n## RAG Context (business knowledge, dbt docs, user uploads)\n" + ragDocs.join("\n\n---\n\n");
         }
     } catch (err) {
-        console.warn("[Tech Agent] RAG search failed:", (err as Error).message);
+        log.warn("RAG search failed:", { error: (err as Error).message });
     }
 
     const activeEntry = state.cachedActiveEntry || await getActiveCatalogEntry(userId);
@@ -84,8 +87,9 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             return {
                 messages: [{ content: `${prefix}\n${directResponse}`, role: "assistant" }]
             };
-        } catch (err: any) {
-            console.warn("[Tech Agent] Deterministic SQL fallback failed, continuing with LLM:", err.message);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log.warn("Deterministic SQL fallback failed, continuing with LLM:", { error: msg });
         }
     }
 
@@ -98,8 +102,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
 
     while (attempts < MAX_SQL_RETRIES) {
         attempts++;
-        console.log(`[Tech Agent] SQL generation attempt ${attempts}/${MAX_SQL_RETRIES}...`);
-
+        log.info(`SQL generation attempt ${attempts}/${MAX_SQL_RETRIES}...`);
         if (onChunk && attempts > 1) {
             const warning = `\n*[АНХААР] Системд алдаа гарлаа. Алдааг автоматаар засварлан дахин ажиллуулж байна (Оролдлого ${attempts}/${MAX_SQL_RETRIES})...*\n`;
             onChunk(warning);
@@ -123,8 +126,9 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             let codeGenResponse: any;
             try {
                 codeGenResponse = await executeCodeGen(llm);
-            } catch (err: any) {
-                console.warn("[Tech Agent] Primary LLM for SQL failed, attempting fallback:", err.message);
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                log.warn("Primary LLM for SQL failed, attempting fallback:", { error: msg });
                 const fallbackLLM = await createLLMWithOrder({ temperature: 0, providerOrder: ["groq", "gemini", "openai"] });
                 if (fallbackLLM) {
                     codeGenResponse = await executeCodeGen(fallbackLLM);
@@ -151,7 +155,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
 
                 const schemaError = /багана байхгүй|хүснэгт.*байхгүй|Хүснэгт '/i.test(sqlResult.text);
                 if (schemaError) {
-                    console.log("[Tech Agent] Schema validation error detected — stopping retries.");
+                    log.info("Schema validation error detected — stopping retries.");
                     accumulatedText += `\n[ЗӨВЛӨМЖ] Дээрх алдааны шалтгаан: SQL query-д schema-д байхгүй багана/хүснэгт ашигласан.\n`;
                     void logSqlOutcome({ userId, query, outcome: "schema_error", attempts, tableName: activeEntry?.table_name, error: feedback });
                     break;
@@ -173,7 +177,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
                 
                 if (isEmptyResult && attempts < MAX_SQL_RETRIES) {
                     feedback = prompts.empty_result_feedback as string;
-                    console.log("[Tech Agent] Empty result detected, retrying with self-healing feedback...");
+                    log.info("Empty result detected, retrying with self-healing feedback...");
                     continue;
                 }
                 isSuccess = true;
@@ -181,19 +185,20 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
             } else {
                 feedback = sandboxResult;
             }
-        } catch (err: any) {
-            feedback = err.message;
-            const errorEntry = `\n### Оролдлого ${attempts}\n*Алдаа:* ${err.message}\n`;
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            feedback = msg;
+            const errorEntry = `\n### Оролдлого ${attempts}\n*Алдаа:* ${msg}\n`;
             if (onChunk) onChunk(errorEntry);
             accumulatedText += errorEntry;
             if (isRateLimitError(err)) {
-                console.warn("[Tech Agent] LLM rate limit hit, stopping retries early.");
-                void logSqlOutcome({ userId, query, outcome: "rate_limit", attempts, tableName: activeEntry?.table_name, error: err.message });
+                log.warn("LLM rate limit hit, stopping retries early.");
+                void logSqlOutcome({ userId, query, outcome: "rate_limit", attempts, tableName: activeEntry?.table_name, error: msg });
                 break;
             }
-            if (/багана байхгүй|хүснэгт.*байхгүй|Хүснэгт '/i.test(err.message)) {
-                console.log("[Tech Agent] Schema validation error in catch — stopping retries.");
-                void logSqlOutcome({ userId, query, outcome: "schema_error", attempts, tableName: activeEntry?.table_name, error: err.message });
+            if (/багана байхгүй|хүснэгт.*байхгүй|Хүснэгт '/i.test(msg)) {
+                log.info("Schema validation error in catch — stopping retries.");
+                void logSqlOutcome({ userId, query, outcome: "schema_error", attempts, tableName: activeEntry?.table_name, error: msg });
                 break;
             }
         }
@@ -217,7 +222,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
                     }
                 }
             } catch (fbErr) {
-                console.warn("[Tech Agent] Fallback query failed:", (fbErr as Error).message);
+                log.warn("Fallback query failed:", { error: (fbErr as Error).message });
             }
         }
         if (!isSuccess) {
@@ -245,20 +250,21 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
 
     const explainMessages = trimMessages([
         { role: "system", content: explainPrompt },
-        ...state.messages.map((m: any) => ({ role: m.role, content: m.content }))
+        ...state.messages.map((m) => ({ role: m.role, content: m.content }))
     ]);
 
     async function executeExplainWithFallback(messages: any[]) {
         try {
             return await withTimeout(llm!.stream(messages), "Tech agent explanation");
-        } catch (err: any) {
-            console.warn("[Tech Agent] Primary explanation LLM failed, attempting fallback:", err.message);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log.warn("Primary explanation LLM failed, attempting fallback:", { error: msg });
             const fallbackLLM = await createLLMWithOrder({ 
                 temperature: 0, 
                 providerOrder: ["groq", "anthropic", "openai"] 
             });
             if (fallbackLLM) {
-                console.log("[Tech Agent] Fallback to GROQ for explanation successful.");
+                log.info("Fallback to GROQ for explanation successful.");
                 return await withTimeout(fallbackLLM.stream(messages), "Tech agent fallback explanation");
             }
             throw err;
@@ -278,7 +284,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
         }
     } catch (explainErr) {
         const fallback = `\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Санал болгох: өгөгдлийн сангийн хүснэгт/баганын нэрээ шалгана уу.`;
-        console.warn("[Tech Agent] Explanation failed:", (explainErr as Error).message);
+        log.warn("Explanation failed:", { error: (explainErr as Error).message });
         if (onChunk) onChunk(fallback);
         accumulatedText += fallback;
     }

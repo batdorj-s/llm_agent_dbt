@@ -1,10 +1,13 @@
 import { createLLM } from "../llm-provider.js";
 import { getCatalog, getActiveCatalogEntry } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
-import { trimMessages, withTimeout, type AgentState, type NextAgent } from "./agentState.js";
+import { trimMessages, withTimeout, type AgentState, type AgentConfig, type NextAgent } from "./agentState.js";
 import { queryMentionsTable } from "../utils.js";
 import { z } from "zod";
 import { sanitizeUserInput } from "./sanitize.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("Supervisor");
 
 const RouteSchema = z.object({
     route: z.enum(["FinanceAgent", "TechAgent", "DataScientistAgent", "END"])
@@ -112,23 +115,22 @@ export function routeByKeywords(query: string, hasActiveDataset: boolean, mentio
     return "END";
 }
 
-export async function supervisorNode(state: any, config?: any): Promise<Partial<AgentState>> {
+export async function supervisorNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
     const lastMsg = state.messages[state.messages.length - 1];
     if (!lastMsg) return { nextAgent: "END" };
 
     const lastMessage = sanitizeUserInput(lastMsg.content);
     const userId = state.userId || "system";
-    console.log(`[Supervisor] Analyzing query: "${lastMessage}"`);
-
+    log.info(`Analyzing query: "${lastMessage}"`);
     const systemPrompt = prompts.supervisor;
     const onChunk = config?.configurable?.onChunk;
 
     const catalog = state.cachedCatalog || await getCatalog(userId);
-    const mentionsKnownTable = catalog.some((row: any) => queryMentionsTable(lastMessage, row.table_name));
+    const mentionsKnownTable = catalog.some((row) => queryMentionsTable(lastMessage, row.table_name));
 
     const immediateRoute = routeByKeywords(lastMessage, false, mentionsKnownTable);
     if (immediateRoute !== "END") {
-        console.log(`[Supervisor] Immediate keyword route -> ${immediateRoute}`);
+        log.info(`Immediate keyword route -> ${immediateRoute}`);
         return { nextAgent: immediateRoute, sanitizedQuery: lastMessage };
     }
 
@@ -140,12 +142,11 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
                 { role: "system", content: systemPrompt },
                 { role: "user", content: lastMessage }
             ]), "Supervisor routing");
-            console.log(`[Supervisor] LLM routed to -> ${result.route} (${result.reason})`);
-
+            log.info(`LLM routed to -> ${result.route}`, { reason: result.reason });
             if (result.route === "END") {
                 const hasActive = !!state.cachedSchema || !!(await getActiveCatalogEntry(userId));
                 if (hasActive) {
-                    console.log(`[Supervisor] LLM routed to END but active dataset found. Overriding to TechAgent.`);
+                    log.info(`LLM routed to END but active dataset found. Overriding to TechAgent.`);
                     return { nextAgent: "TechAgent", sanitizedQuery: lastMessage };
                 }
                 const endSystemPrompt = prompts.supervisor_end;
@@ -153,7 +154,7 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const stream: any = await withTimeout((llm as any).stream(trimMessages([
                         { role: "system", content: endSystemPrompt },
-                        ...state.messages.map((m: any) => ({ role: m.role, content: m.content }))
+                        ...state.messages.map((m) => ({ role: m.role, content: m.content }))
                     ])), "Supervisor end response");
                     let fullText = "";
                     for await (const chunk of stream) {
@@ -168,7 +169,7 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
                     };
                 } catch (streamErr) {
                     const fallback = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Одоогоор хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.";
-                    console.warn("[Supervisor] End response failed:", (streamErr as Error).message);
+                    log.warn("End response failed:", { error: (streamErr as Error).message });
                     if (onChunk) onChunk(fallback);
                     return {
                         nextAgent: "END",
@@ -180,15 +181,15 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
 
             return { nextAgent: result.route, sanitizedQuery: lastMessage };
         } catch (err) {
-            console.warn("[Supervisor] LLM routing failed, using keyword fallback:", (err as Error).message);
+            log.warn("LLM routing failed, using keyword fallback:", { error: (err as Error).message });
         }
     } else {
-        console.log("[Supervisor] No LLM API key — using keyword routing fallback.");
+        log.info("No LLM API key — using keyword routing fallback.");
     }
 
     const activeEntry = state.cachedActiveEntry || await getActiveCatalogEntry(userId);
     let route: NextAgent = routeByKeywords(lastMessage, !!activeEntry, mentionsKnownTable);
-    console.log(`[Supervisor] Keyword routed to -> ${route}`);
+    log.info(`Keyword routed to -> ${route}`);
 
     if (route === "END") {
         const text = "Сайн байна уу! Би байгууллагын AI зохицуулагч байна. Би танд санхүүгийн асуултууд, борлуулалтын KPI болон код ажиллуулах даалгавар өгөхөд тусалж чадна.\n\nТа дараах зүйлсийг асууж болно:\n- **Борлуулалтын тайлан** — KPI үзүүлэлт, орлого, зорилт\n- **Өгөгдлийн шинжилгээ** — SQL query, тооцоолол, график\n- **Таамаглал** — Forecast, сегментчлэл, корреляци\n\nЭсвэл дээрх файл оруулах хэсгээр CSV өгөгдлөө upload хийгээрэй.";

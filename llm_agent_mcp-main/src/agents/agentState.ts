@@ -1,4 +1,5 @@
 import { Annotation } from "@langchain/langgraph";
+import type { DataLakeCatalogEntry } from "../db/data-lake.js";
 
 export type UserRole = "viewer" | "analyst" | "admin";
 export type NextAgent = "FinanceAgent" | "TechAgent" | "DataScientistAgent" | "END";
@@ -8,16 +9,22 @@ export interface Message {
     content: string;
 }
 
+export interface AgentConfig {
+    configurable?: {
+        onChunk?: (text: string) => void;
+        threadId?: string;
+    };
+}
+
 export interface AgentState {
     messages: Message[];
     userRole: UserRole;
     userId?: string;
     nextAgent?: NextAgent;
     visualRequest?: boolean;
-    // Cached request-lifetime data to avoid redundant DB calls
-    cachedCatalog?: any[];
+    cachedCatalog?: DataLakeCatalogEntry[];
     cachedSchema?: string;
-    cachedActiveEntry?: any;
+    cachedActiveEntry?: DataLakeCatalogEntry | null;
     sanitizedQuery?: string;
 }
 
@@ -42,7 +49,7 @@ export const AgentStateAnnotation = Annotation.Root({
         reducer: (x, y) => y ?? x,
         default: () => false,
     }),
-    cachedCatalog: Annotation<any[] | undefined>({
+    cachedCatalog: Annotation<DataLakeCatalogEntry[] | undefined>({
         reducer: (x, y) => y ?? x,
         default: () => undefined,
     }),
@@ -50,7 +57,7 @@ export const AgentStateAnnotation = Annotation.Root({
         reducer: (x, y) => y ?? x,
         default: () => undefined,
     }),
-    cachedActiveEntry: Annotation<any | undefined>({
+    cachedActiveEntry: Annotation<DataLakeCatalogEntry | null | undefined>({
         reducer: (x, y) => y ?? x,
         default: () => undefined,
     }),
@@ -62,9 +69,9 @@ export const AgentStateAnnotation = Annotation.Root({
 
 const MAX_HISTORY_MESSAGES = 10;
 
-export function trimMessages(messages: any[]): any[] {
-    const systemMsg = messages.filter((m: any) => m.role === "system");
-    const nonSystem = messages.filter((m: any) => m.role !== "system");
+export function trimMessages(messages: Message[]): Message[] {
+    const systemMsg = messages.filter((m) => m.role === "system");
+    const nonSystem = messages.filter((m) => m.role !== "system");
     const trimmed = nonSystem.slice(-MAX_HISTORY_MESSAGES);
     return [...systemMsg, ...trimmed];
 }
@@ -88,7 +95,9 @@ export function buildContextSummary(messages: Message[]): string {
         : "";
 }
 
-export async function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number = 40000): Promise<T> {
+export const DEFAULT_AGENT_TIMEOUT_MS = parseInt(process.env.DEFAULT_AGENT_TIMEOUT_MS || "40000", 10);
+
+export async function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number = DEFAULT_AGENT_TIMEOUT_MS): Promise<T> {
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<T>((_, reject) => {
         timeoutHandle = setTimeout(() => {

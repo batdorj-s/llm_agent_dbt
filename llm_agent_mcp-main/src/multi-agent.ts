@@ -5,7 +5,7 @@ import { techAgentNode } from "./agents/techAgentNode.js";
 import { supervisorNode } from "./agents/supervisorNode.js";
 import { verifyToken } from "./auth.js";
 import { initTracing } from "./observability/tracer.js";
-import { AgentStateAnnotation, type UserRole } from "./agents/agentState.js";
+import { AgentStateAnnotation, type AgentState, type UserRole } from "./agents/agentState.js";
 export type { UserRole, NextAgent, AgentState } from "./agents/agentState.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "./db/data-lake.js";
 import dotenv from "dotenv";
@@ -16,7 +16,7 @@ const checkpointer = new MemorySaver();
 
 export async function clearConversationMemory() {
     try {
-        const storage = (checkpointer as any).storage as Record<string, unknown> | undefined;
+        const storage = checkpointer.storage;
         if (!storage) return;
 
         for (const threadId of Object.keys(storage)) {
@@ -31,7 +31,7 @@ export async function clearConversationMemory() {
     }
 }
 
-function routerCondition(state: any): string {
+function routerCondition(state: AgentState): string {
     return state.nextAgent === "END" || !state.nextAgent ? "__end__" : state.nextAgent;
 }
 

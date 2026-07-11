@@ -110,11 +110,12 @@ export function assertSelectOnly(query: string): void {
     if (!ALLOWED_STMT_TYPES.has(statements[0].type)) {
       throw new Error(`Only SELECT queries are permitted. Got "${(statements[0] as any).type ?? "unknown"}" statement.`);
     }
-  } catch (err: any) {
-    if (err.message?.startsWith("Only SELECT") || err.message?.startsWith("Expected exactly")) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.startsWith("Only SELECT") || msg.startsWith("Expected exactly")) {
       throw err;
     }
-    throw new Error(`Only SELECT queries are permitted. Query could not be parsed: ${err.message}`);
+    throw new Error(`Only SELECT queries are permitted. Query could not be parsed: ${msg}`);
   }
 }
 
@@ -136,8 +137,8 @@ export async function initDataLake(): Promise<void> {
 
         try {
             await pool.query("SELECT 1");
-        } catch (err: any) {
-            const errMsg = (err as Error).message;
+        } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : String(err);
             console.warn(`[Data Lake] PostgreSQL unavailable: ${errMsg}`);
             await pool.end().catch(() => { });
             pool = null;
@@ -376,8 +377,8 @@ export async function initDataLake(): Promise<void> {
                     // ignore cleanup errors
                 }
             }
-        } catch (err: any) {
-            console.warn(`[Data Lake] Table creation failed: ${(err as Error).message}`);
+        } catch (err: unknown) {
+            console.warn(`[Data Lake] Table creation failed: ${err instanceof Error ? err.message : String(err)}`);
             _pgAvailable = false;
             _initPromise = null;
         }
@@ -974,8 +975,8 @@ export async function seedCsv(
         `, [tableName, ownerId, visibility === "shared" ? null : ownerId, visibility, columnsInfo, description]);
 
         console.log(`[Data Lake] Successfully seeded ${tableName}`);
-    } catch (err: any) {
-        console.error(`[Data Lake] Error seeding ${tableName}:`, err.message);
+    } catch (err: unknown) {
+        console.error(`[Data Lake] Error seeding ${tableName}:`, err instanceof Error ? err.message : String(err));
     }
 }
 
@@ -1119,8 +1120,8 @@ export async function createUser(email: string, password: string, name: string, 
       [id, email, name, hashedPwd, role]
     );
     return id;
-  } catch (err: any) {
-    if (err.code === "23505") return null; // unique violation
+  } catch (err: unknown) {
+    if (err instanceof Error && 'code' in err && (err as { code: string }).code === "23505") return null; // unique violation
     throw err;
   }
 }
@@ -1256,8 +1257,9 @@ export async function executeSql(query: string, readOnly: boolean, userId: strin
             const result = await pool.query(query);
             await pool.query("ROLLBACK");
             return result.rows;
-        } catch (err: any) {
-            const msg = err.message
+        } catch (err: unknown) {
+            const rawMsg = err instanceof Error ? err.message : String(err);
+            const msg = rawMsg
                 .replace(/^syntax error at or near/, "SQL syntax error near")
                 .replace(/^ERROR:\s*/i, "");
             throw new Error(`SQL Execution Error: ${msg}`);
