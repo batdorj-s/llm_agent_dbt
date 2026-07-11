@@ -82,6 +82,66 @@ function isKeySet(envKey: string): boolean {
   return !!val && !val.startsWith("your_") && val !== "";
 }
 
+function getOrderedProviders(order?: LLMProvider[]): ProviderConfig[] {
+  const providerOrder = order ?? DEFAULT_PROVIDER_ORDER;
+  return providerOrder
+    .map((provider) => PROVIDERS.find((entry) => entry.provider === provider))
+    .filter((entry): entry is ProviderConfig => entry !== undefined && isKeySet(entry.envKey));
+}
+
+async function createProviderModel(
+  p: ProviderConfig,
+  options: { temperature: number; streaming?: boolean }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  const { temperature: temp, streaming } = options;
+
+  if (p.provider === "gemini") {
+    const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai");
+    return new ChatGoogleGenerativeAI({
+      model: p.model,
+      apiKey: process.env.GOOGLE_API_KEY,
+      temperature: temp,
+      streaming,
+      maxRetries: 0,
+    });
+  }
+
+  if (p.provider === "groq") {
+    const { ChatGroq } = await import("@langchain/groq");
+    return new ChatGroq({
+      model: p.model,
+      apiKey: process.env.GROQ_API_KEY,
+      temperature: temp,
+      streaming,
+      maxRetries: 0,
+      timeout: 60000,
+    });
+  }
+
+  if (p.provider === "anthropic") {
+    const { ChatAnthropic } = await import("@langchain/anthropic");
+    return new ChatAnthropic({
+      model: p.model,
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      temperature: temp,
+      streaming,
+    });
+  }
+
+  if (p.provider === "openai") {
+    const { ChatOpenAI } = await import("@langchain/openai");
+    return new ChatOpenAI({
+      model: p.model,
+      apiKey: process.env.OPENAI_API_KEY,
+      temperature: temp,
+      streaming,
+    });
+  }
+
+  throw new Error(`Unknown provider: ${p.provider}`);
+}
+
 /**
  * Returns info about the first available LLM provider.
  */
@@ -99,80 +159,26 @@ export function detectProvider(): LLMInfo {
  * Returns null if no API key is configured.
  */
 export async function createLLM(options?: { temperature?: number; streaming?: boolean }) {
-  const llm = await createLLMWithOrder(options);
-  if (!llm) return null;
-
-  // Wrap the LLM in a proxy to handle automatic fallback on execution failure
-  return llm;
+  return await createLLMWithOrder(options);
 }
 
-export async function createLLMWithOrder(options?: { 
-  temperature?: number; 
-  streaming?: boolean; 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function createLLMWithOrder(options?: {
+  temperature?: number;
+  streaming?: boolean;
   providerOrder?: LLMProvider[];
   fallbackOnFailure?: boolean;
-}) {
+}): Promise<any> {
   const temp = options?.temperature ?? 0;
-  const providerOrder = options?.providerOrder ?? DEFAULT_PROVIDER_ORDER;
-  const orderedProviders = providerOrder
-    .map((provider) => PROVIDERS.find((entry) => entry.provider === provider))
-    .filter((entry): entry is ProviderConfig => Boolean(entry));
+  const orderedProviders = getOrderedProviders(options?.providerOrder);
 
   for (const p of orderedProviders) {
-    if (!isKeySet(p.envKey)) continue;
-
     try {
       console.log(`[LLM] Attempting ${p.provider.toUpperCase()} — ${p.model}...`);
-
-      if (p.provider === "gemini") {
-        const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai");
-        const model = new ChatGoogleGenerativeAI({
-          model: p.model,
-          apiKey: process.env.GOOGLE_API_KEY,
-          temperature: temp,
-          streaming: options?.streaming,
-          maxRetries: 0, // We handle retries/fallback manually
-        });
-        
-        // Quick health check (optional but recommended)
-        // For now, we return the model and let the consumer handle errors or use a wrapper
-        return model;
-      }
-
-      if (p.provider === "groq") {
-        const { ChatGroq } = await import("@langchain/groq");
-        return new ChatGroq({
-          model: p.model,
-          apiKey: process.env.GROQ_API_KEY,
-          temperature: temp,
-          streaming: options?.streaming,
-          maxRetries: 0,
-          timeout: 60000,
-        });
-      }
-
-      if (p.provider === "anthropic") {
-        const { ChatAnthropic } = await import("@langchain/anthropic");
-        return new ChatAnthropic({
-          model: p.model,
-          apiKey: process.env.ANTHROPIC_API_KEY,
-          temperature: temp,
-          streaming: options?.streaming,
-        });
-      }
-
-      if (p.provider === "openai") {
-        const { ChatOpenAI } = await import("@langchain/openai");
-        return new ChatOpenAI({
-          model: p.model,
-          apiKey: process.env.OPENAI_API_KEY,
-          temperature: temp,
-          streaming: options?.streaming,
-        });
-      }
+      return await createProviderModel(p, { temperature: temp, streaming: options?.streaming });
     } catch (err) {
       console.warn(`[LLM] Failed to initialize ${p.provider}:`, (err as Error).message);
-      continue; // Try next provider
+      continue;
     }
   }
 
@@ -183,8 +189,8 @@ export async function createLLMWithOrder(options?: {
 /**
  * Check if an error is a rate-limit / quota error.
  */
-export function isRateLimitError(err: any): boolean {
-    const msg = (err?.message || "").toLowerCase();
+export function isRateLimitError(err: unknown): boolean {
+    const msg = ((err as Error)?.message ?? "").toLowerCase();
     return msg.includes("429") || msg.includes("rate limit") || msg.includes("quota") ||
         msg.includes("too many requests") || msg.includes("rate_limit") ||
         msg.includes("resource exhausted") || msg.includes("daily");
@@ -204,71 +210,29 @@ export async function invokeWithFallback(
     }
 ): Promise<{ content: string; provider: LLMProvider }> {
     const temp = options?.temperature ?? 0;
-    const providerOrder = options?.providerOrder ?? DEFAULT_PROVIDER_ORDER;
-    const orderedProviders = providerOrder
-        .map((provider) => PROVIDERS.find((entry) => entry.provider === provider))
-        .filter((entry): entry is ProviderConfig => entry !== undefined && isKeySet(entry.envKey));
+    const orderedProviders = getOrderedProviders(options?.providerOrder);
 
     if (orderedProviders.length === 0) {
         throw new AllProvidersExhaustedError(null, []);
     }
 
-    let lastError: any = null;
+    let lastError: Error | null = null;
     const attempted: LLMProvider[] = [];
     for (const p of orderedProviders) {
         try {
             console.log(`[LLM] Invoking ${p.provider.toUpperCase()} — ${p.model}...`);
-            let model: any;
-
-            if (p.provider === "gemini") {
-                const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai");
-                model = new ChatGoogleGenerativeAI({
-                    model: p.model,
-                    apiKey: process.env.GOOGLE_API_KEY,
-                    temperature: temp,
-                    streaming: options?.streaming,
-                    maxRetries: 0,
-                });
-            } else if (p.provider === "groq") {
-                const { ChatGroq } = await import("@langchain/groq");
-                model = new ChatGroq({
-                    model: p.model,
-                    apiKey: process.env.GROQ_API_KEY,
-                    temperature: temp,
-                    streaming: options?.streaming,
-                    maxRetries: 0,
-                    timeout: 60000,
-                });
-            } else if (p.provider === "anthropic") {
-                const { ChatAnthropic } = await import("@langchain/anthropic");
-                model = new ChatAnthropic({
-                    model: p.model,
-                    apiKey: process.env.ANTHROPIC_API_KEY,
-                    temperature: temp,
-                    streaming: options?.streaming,
-                });
-            } else if (p.provider === "openai") {
-                const { ChatOpenAI } = await import("@langchain/openai");
-                model = new ChatOpenAI({
-                    model: p.model,
-                    apiKey: process.env.OPENAI_API_KEY,
-                    temperature: temp,
-                    streaming: options?.streaming,
-                });
-            } else {
-                continue;
-            }
+            const model = await createProviderModel(p, { temperature: temp, streaming: options?.streaming });
 
             const response = options?.timeout
                 ? await withTimeout(model.invoke(messages), `${p.provider} invoke`, options.timeout)
                 : await model.invoke(messages);
 
             return { content: response.content as string, provider: p.provider };
-        } catch (err: any) {
-            lastError = err;
+        } catch (err: unknown) {
+            lastError = err instanceof Error ? err : new Error(String(err));
             attempted.push(p.provider);
             const isRateLimit = isRateLimitError(err);
-            console.warn(`[LLM] ${p.provider.toUpperCase()} failed: ${isRateLimit ? "RATE LIMIT" : err.message}`);
+            console.warn(`[LLM] ${p.provider.toUpperCase()} failed: ${isRateLimit ? "RATE LIMIT" : lastError.message}`);
             console.log(`[LLM] Falling back to next provider after ${p.provider} failure...`);
         }
     }

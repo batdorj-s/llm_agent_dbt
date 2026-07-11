@@ -150,7 +150,8 @@ export async function supervisorNode(state: any, config?: any): Promise<Partial<
                 }
                 const endSystemPrompt = prompts.supervisor_end;
                 try {
-                    const stream = await withTimeout(llm.stream(trimMessages([
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const stream: any = await withTimeout((llm as any).stream(trimMessages([
                         { role: "system", content: endSystemPrompt },
                         ...state.messages.map((m: any) => ({ role: m.role, content: m.content }))
                     ])), "Supervisor end response");

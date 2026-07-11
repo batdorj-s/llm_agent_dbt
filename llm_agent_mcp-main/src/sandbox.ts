@@ -9,7 +9,12 @@ import { withTimeout } from "./agents/agentState.js";
 
 dotenv.config();
 
-const _sandboxInstances = new Map<string, any>();
+interface SandboxEntry {
+  instance: Sandbox;
+  createdAt: number;
+}
+const SANDBOX_INSTANCE_TTL_MS = 30 * 60_000; // 30 minutes
+const _sandboxInstances = new Map<string, SandboxEntry>();
 
 const SANDBOX_TIMEOUT_MS = 20_000;
 const SANDBOX_CREATE_TIMEOUT_MS = 60_000;
@@ -104,21 +109,29 @@ async function runPythonLocally(code: string, timeoutMs: number): Promise<string
     const tmpFile = path.join(TEMP_DIR, `sandbox_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
     const outputFile = tmpFile.replace(".py", "_out.txt");
     const chartFile = tmpFile.replace(".py", "_chart.png");
+    const configFile = tmpFile.replace(".py", "_config.json");
 
-    // Prepend chart-save logic: redirect matplotlib to a known path
+    // Write paths to a JSON config file instead of interpolating into Python source
+    fs.writeFileSync(configFile, JSON.stringify({ outputFile, chartFile }), "utf8");
+
+    // Prepend chart-save logic: redirect matplotlib to a known path (read from config)
     const chartSaveCode = `
+import json as _json, os as _os
+_sandbox_paths = _json.load(open(${JSON.stringify(configFile)}))
+_orig_chart_file = _sandbox_paths["chartFile"]
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 _orig_savefig = plt.savefig
 def _savefig_wrapper(fname, **kwargs):
-    _orig_savefig("${chartFile.replace(/\\/g, "\\\\")}", **kwargs)
+    _orig_savefig(_orig_chart_file, **kwargs)
 plt.savefig = _savefig_wrapper
 `;
     const fullCode = chartSaveCode + "\n" + code + `\n
 # Save all output to file
-import sys
-with open("${outputFile.replace(/\\/g, "\\\\")}", "w") as _f:
+import sys, json as _j
+_sandbox_out = _j.load(open(${JSON.stringify(configFile)}))["outputFile"]
+with open(_sandbox_out, "w") as _f:
     _f.write(str(globals().get("result", "")))
 `;
 
@@ -157,13 +170,15 @@ with open("${outputFile.replace(/\\/g, "\\\\")}", "w") as _f:
             fs.unlinkSync(chartFile);
         }
 
+        fs.unlinkSync(configFile);
         fs.unlinkSync(tmpFile);
         return output || "Execution complete. No output.";
-    } catch (err: any) {
+    } catch (err: unknown) {
         // Cleanup temp files on error
         try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch {}
         try { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); } catch {}
         try { if (fs.existsSync(chartFile)) fs.unlinkSync(chartFile); } catch {}
+        try { if (fs.existsSync(configFile)) fs.unlinkSync(configFile); } catch {}
         throw err;
     }
 }
@@ -203,7 +218,16 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
         ].join("\n");
     }
 
-    let instance = _sandboxInstances.get(userId);
+    // Evict expired sandbox instances
+    const now = Date.now();
+    for (const [key, entry] of _sandboxInstances.entries()) {
+        if (now - entry.createdAt > SANDBOX_INSTANCE_TTL_MS) {
+            _sandboxInstances.delete(key);
+        }
+    }
+
+    let entry = _sandboxInstances.get(userId);
+    let instance: Sandbox | undefined = entry?.instance;
     try {
         console.log(` Accessing E2B MicroVM Sandbox for user=${userId}...`);
         if (!instance) {
@@ -213,7 +237,7 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
                 "Sandbox creation",
                 SANDBOX_CREATE_TIMEOUT_MS
             );
-            _sandboxInstances.set(userId, instance);
+            _sandboxInstances.set(userId, { instance, createdAt: Date.now() });
         } else {
             console.log(` Reusing cached E2B Sandbox MicroVM for user=${userId} (instant)...`);
         }
@@ -230,8 +254,8 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
 
         const safeCode = skipMemorySafe ? code : preparePythonCode(code);
         console.log(`Python Executing Python Code${skipMemorySafe ? " (full data mode)" : " (memory safe)"}...`);
-        const execution: any = await withTimeout(
-            instance.runCode(safeCode, { timeout: timeoutMs }),
+        const execution = await withTimeout(
+            instance.runCode(safeCode, { timeoutMs }),
             "Python execution",
             timeoutMs
         );
@@ -258,11 +282,12 @@ export async function runPythonCode(code: string, timeoutMs: number = SANDBOX_TI
         }
 
         return output || "Execution complete. No output.";
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Remove only this user's instance on error
         _sandboxInstances.delete(userId);
+        const msg = error instanceof Error ? error.message : String(error);
         console.error(`E2B Sandbox execution error for user=${userId}:`, error);
-        return `E2B Execution Error: ${error.message}`;
+        return `E2B Execution Error: ${msg}`;
     }
 });
 }

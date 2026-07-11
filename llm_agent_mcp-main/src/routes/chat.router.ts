@@ -1,18 +1,48 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
+import { z } from "zod";
 import { agentLimiter } from "../rate-limiter.js";
-import { runMultiAgent, runMultiAgentStream } from "../multi-agent.js";
+import { runMultiAgent, runMultiAgentStream, type UserRole } from "../multi-agent.js";
+import { verifyToken } from "../auth.js";
 
 export const chatRouter = Router();
 
+const DEFAULT_USER_ID = "user-admin-001";
+const DEFAULT_ROLE: UserRole = "admin";
+
+const ChatRequestSchema = z.object({
+  message: z.string().min(1, "message required").max(10_000, "message too long (max 10000 chars)"),
+  threadId: z.string().uuid("threadId must be a valid UUID").optional(),
+  visualRequest: z.boolean().optional(),
+});
+
+function extractAuth(req: Request): { userId: string; role: UserRole } {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
+  }
+  const token = authHeader.slice(7);
+  const result = verifyToken(token);
+  if (result.success && result.payload) {
+    return { userId: result.payload.userId, role: result.payload.role };
+  }
+  return { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
+}
+
 chatRouter.post("/", async (req, res) => {
-  const userId = "user-admin-001";
-  const role = "admin";
+  const parsed = ChatRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Validation failed",
+      details: parsed.error.issues.map(i => ({ field: i.path.join("."), message: i.message })),
+    });
+  }
+
+  const { userId, role } = extractAuth(req);
 
   const limit = await agentLimiter.check(userId);
   if (!limit.allowed) return res.status(429).json({ error: limit.message, resetInMs: limit.resetInMs });
 
-  const { message, threadId, visualRequest } = req.body;
-  if (!message) return res.status(400).json({ error: "message required" });
+  const { message, threadId, visualRequest } = parsed.data;
 
   try {
     const threadIdFinal = threadId ?? `thread_${Date.now()}`;
@@ -25,18 +55,25 @@ chatRouter.post("/", async (req, res) => {
 });
 
 chatRouter.post("/stream", async (req, res) => {
-  const userId = "user-admin-001";
-  const role = "admin";
+  const parsed = ChatRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Validation failed",
+      details: parsed.error.issues.map(i => ({ field: i.path.join("."), message: i.message })),
+    });
+  }
+
+  const { userId, role } = extractAuth(req);
 
   const limit = await agentLimiter.check(userId);
   if (!limit.allowed) return res.status(429).json({ error: limit.message });
 
-  const { message, threadId, visualRequest } = req.body;
-  if (!message) return res.status(400).json({ error: "message required" });
+  const { message, threadId, visualRequest } = parsed.data;
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
 
   const threadIdFinal = threadId ?? `thread_${Date.now()}`;
   let fullResponse = "";

@@ -211,7 +211,8 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
             .replace(/\{pythonCode\}/g, pythonCode)
             .replace(/\{output\}/g, output);
 
-        const stream = await withTimeout(llm.stream([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const stream: any = await withTimeout((llm as any).stream([
             { role: "system", content: explainPrompt },
             { role: "user", content: query },
         ]), "DataScientist explanation");

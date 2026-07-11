@@ -70,7 +70,10 @@ export function verifyToken(token: string): AuthResult {
     const [header, payload, signature] = parts;
     const expectedSig = sign(`${header}.${payload}`, JWT_SECRET);
 
-    if (signature !== expectedSig) {
+    // Timing-safe comparison to prevent signature oracle attacks
+    const sigBuf = Buffer.from(signature, "base64url");
+    const expectedBuf = Buffer.from(expectedSig, "base64url");
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
       return { success: false, error: "Invalid token signature" };
     }
 
