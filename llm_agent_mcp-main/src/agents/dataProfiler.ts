@@ -1,5 +1,6 @@
 import { invokeWithFallback } from "../llm-provider.js";
 import { addDocumentToCatalog } from "../rag.js";
+import { prompts } from "./prompts.js";
 
 export interface DataDimension {
   name: string;
@@ -30,40 +31,16 @@ export async function generateDataPassport(
   const columnInfo = columns.map(c => `  - "${c}"`).join("\n");
   const sampleJson = JSON.stringify(sampleRows.slice(0, 10), null, 2);
 
-  const prompt = `You are a senior data analyst. Analyze this table and generate a structured data passport.
-
-Table Name: ${tableName}
-Description: ${description}
-Columns:
-${columnInfo}
-
-Sample Data (first ${Math.min(sampleRows.length, 10)} rows):
-${sampleJson}
-
-Return ONLY valid JSON with this exact structure:
-{
-  "domain": "the business domain (e.g. e-commerce, finance, healthcare, retail, marketing)",
-  "industry": "specific industry name",
-  "dimensions": [
-    {"name": "column_name", "description": "what this dimension represents in Mongolian", "type": "time|category|geography|id"}
-  ],
-  "metrics": [
-    {"name": "column_name", "description": "what this metric represents in Mongolian", "aggregation": "sum|avg|count|distinct_count"}
-  ],
-  "topBusinessQuestions": [
-    "Mongolian business question 1 that this data can answer",
-    "Mongolian business question 2",
-    "Mongolian business question 3",
-    "Mongolian business question 4",
-    "Mongolian business question 5"
-  ]
-}
-
-Respond with ONLY the raw JSON. No markdown, no code fences, no explanations.`;
+  const prompt = (prompts.data_profiler_passport as string)
+    .replace(/\{tableName\}/g, tableName)
+    .replace(/\{description\}/g, description)
+    .replace(/\{columnInfo\}/g, columnInfo)
+    .replace(/\{sampleRows\}/g, String(Math.min(sampleRows.length, 10)))
+    .replace(/\{sampleJson\}/g, sampleJson);
 
   try {
     const result = await invokeWithFallback([
-      { role: "system", content: "You are a precise data analyst. Return ONLY valid JSON without any markdown formatting or code fences." },
+      { role: "system", content: prompts.data_profiler_system as string },
       { role: "user", content: prompt }
     ], { temperature: 0.1, timeout: 30000 });
 

@@ -9,6 +9,7 @@ import { detectDateColumn, extractProfileFromSchemaDef } from "./dateColumnHelpe
 import { withTimeout } from "./agentState.js";
 import { computeAllStats } from "./statistics.js";
 import { extractCodeBlock } from "../utils.js";
+import { prompts } from "./prompts.js";
 
 const LLM_TIMEOUT_MS = 40000;
 const PYTHON_GEN_TIMEOUT_MS = 55000;
@@ -204,23 +205,11 @@ export async function dataScientistNode(state: any, config?: any): Promise<Parti
         const resultBlock = `### Гүйцэтгэлийн үр дүн\n\`\`\`\n${cleanOutput}\n\`\`\`\n`;
         if (onChunk) onChunk(resultBlock);
 
-        const explainPrompt = `You are a senior data scientist. Explain the Python analysis results in Mongolian to a business user. Be concise, clear, and actionable.
-
-Analysis type: ${analysisType}
-User query: ${query}
-
-Python code executed:
-${pythonCode}
-
-Output:
-${output}
-
-CRITICAL: 
-- If this was a forecast, state the predicted values and confidence
-- If this was clustering, describe each cluster's characteristics
-- If this was correlation/regression, state the relationship strength and direction
-- Always include the actual numbers from the output
-- End with a business recommendation in Mongolian`;
+        const explainPrompt = (prompts.data_scientist_explain as string)
+            .replace(/\{analysisType\}/g, analysisType)
+            .replace(/\{query\}/g, query)
+            .replace(/\{pythonCode\}/g, pythonCode)
+            .replace(/\{output\}/g, output);
 
         const stream = await withTimeout(llm.stream([
             { role: "system", content: explainPrompt },
@@ -358,111 +347,43 @@ ${dimensionHint}`,
 - Print a clear summary of findings`,
     };
 
-    return `You are a senior data scientist. Write executable Python 3 code for data analysis.
-Use pandas, numpy, scikit-learn, statsmodels, matplotlib, and seaborn as needed.
+    const dimensionChartHint = forecastDimension
+        ? `\n- Since data includes dimension "${forecastDimension}", use a separate line (or subplot) for each unique value. Add a legend showing which line belongs to which category.`
+        : "";
 
-## Available Data
-The data is from table "${tableName}" with columns: ${columns.join(", ")}
-${dateHint}
-Numeric columns: ${numericCols.join(", ") || "auto-detect from data"}
-Categorical columns: ${categoryCols.join(", ") || "auto-detect from data"}
+    const forecastAggNote = analysisType === "forecast"
+        ? `The data is PRE-AGGREGATED by ${dateCol || "period"} (${totalRows} rows). Use it directly for time-series forecasting. If you need more granular data, note that this is already the full aggregated dataset.`
+        : `The data contains ${totalRows} sampled rows from the full table — sufficient for analysis.`;
 
-## Schema
-${schemaDef}
-${ragContext}
+    // Use YAML template and replace placeholders
+    let prompt = (prompts.data_scientist_python_gen as string)
+        .replace(/\{tableName\}/g, tableName)
+        .replace(/\{columns\}/g, columns.join(", "))
+        .replace(/\{dateHint\}/g, dateHint)
+        .replace(/\{numericCols\}/g, numericCols.join(", ") || "auto-detect from data")
+        .replace(/\{categoryCols\}/g, categoryCols.join(", ") || "auto-detect from data")
+        .replace(/\{schemaDef\}/g, schemaDef)
+        .replace(/\{ragContext\}/g, ragContext)
+        .replace(/\{dataSource\}/g, dataSource)
+        .replace(/\{sampleJson\}/g, sampleJson)
+        .replace(/\{statsSummary\}/g, statsSummary)
+        .replace(/\{analysisType\}/g, analysisType.toUpperCase())
+        .replace(/\{analysisHints\}/g, analysisHints[analysisType] || analysisHints.general)
+        .replace(/\{chartType\}/g, chartInfo.chart.toUpperCase())
+        .replace(/\{chartReason\}/g, chartInfo.reason)
+        .replace(/\{totalRows\}/g, String(totalRows));
 
-## Data Source: ${dataSource}
-## Sample Data (first 5 rows of ${totalRows} total)
-${sampleJson}
+    // Add dimension-specific chart hint
+    if (dimensionChartHint) {
+        prompt = prompt.replace(
+            "- general: Bar chart for categorical counts or histogram for distributions.",
+            `- general: Bar chart for categorical counts or histogram for distributions.${dimensionChartHint}`
+        );
+    }
 
-${statsSummary}
+    // Add sample data as hardcoded dictionary (Rule 2)
+    prompt += `\n\n## Rules\n2. Load data from the hardcoded dictionary below — do NOT read any external file or CSV:\n   data = ${JSON.stringify(sampleData, null, 2)}\n`;
+    prompt += `\n11. ${forecastAggNote}`;
 
-## Analysis Type: ${analysisType.toUpperCase()}
-${analysisHints[analysisType] || analysisHints.general}
-
-## CHART GENERATION — CRITICAL
-You MUST generate a chart/plot and save it as a PNG file. Charts are the primary output.
-
-### Chart Type for This Analysis: ${chartInfo.chart.toUpperCase()} — ${chartInfo.reason}
-
-### Styling Template (MANDATORY — add at the top)
-You MUST set these matplotlib/seaborn style defaults BEFORE any plotting code:
-\`\`\`python
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-plt.style.use('seaborn-v0_8-whitegrid')
-sns.set_palette("husl")
-plt.rcParams['figure.facecolor'] = 'white'
-plt.rcParams['axes.facecolor'] = 'white'
-plt.rcParams['font.size'] = 11
-plt.rcParams['axes.titlesize'] = 14
-plt.rcParams['axes.labelsize'] = 11
-plt.rcParams['xtick.labelsize'] = 9
-plt.rcParams['ytick.labelsize'] = 9
-plt.rcParams['legend.fontsize'] = 10
-plt.rcParams['figure.dpi'] = 150
-\`\`\`
-Use this EXACT block at the start of your plotting code. Do NOT change or omit these settings.
-
-### Required Plotting Template
-Use this EXACT template for every chart:
-\`\`\`python
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-# Styling block — do NOT modify or remove
-plt.style.use('seaborn-v0_8-whitegrid')
-sns.set_palette("husl")
-plt.rcParams['figure.facecolor'] = 'white'
-plt.rcParams['axes.facecolor'] = 'white'
-plt.rcParams['font.size'] = 11
-plt.rcParams['axes.titlesize'] = 14
-plt.rcParams['axes.labelsize'] = 11
-plt.rcParams['xtick.labelsize'] = 9
-plt.rcParams['ytick.labelsize'] = 9
-plt.rcParams['legend.fontsize'] = 10
-plt.rcParams['figure.dpi'] = 150
-
-fig, ax = plt.subplots(figsize=(10, 6))
-
-# [YOUR PLOTTING CODE HERE]
-
-ax.set_title('Title in Mongolian or English', fontsize=14, fontweight='bold')
-ax.set_xlabel('X-axis label', fontsize=11)
-ax.set_ylabel('Y-axis label', fontsize=11)
-ax.grid(True, alpha=0.3, color='#cccccc')
-plt.tight_layout()
-plt.savefig('analysis_plot.png', dpi=150, bbox_inches='tight')
-plt.close()
-\`\`\`
-
-### Chart Guidelines by Type
-- **forecast**: Line chart. Plot historical values as solid line, forecasted values as dashed line with confidence interval shading.${forecastDimension ? "\n- Since data includes dimension \"" + forecastDimension + "\", use a separate line (or subplot) for each unique value. Add a legend showing which line belongs to which category." : ""}
-- **cluster**: Bar chart. Show cluster sizes (count) as bars, optionally add a second chart showing average values per cluster.
-- **correlation**: Scatter plot. Use sns.regplot() to add regression line. Add correlation coefficient in title.
-- **regression**: Scatter plot of predicted vs actual. Include R² in title. Add residual plot as second subplot.
-- **general**: Bar chart for categorical counts or histogram for numeric distributions.
-
-### Styling Rules (OVERRIDES)
-- ALL charts MUST use the Styling Template block above (whitegrid, husl palette, white facecolor)
-- Figure size: (10, 6)
-- DPI: 150
-- Add subtle grid via plt.grid(True, alpha=0.3, color='#cccccc')
-- Rotate x-axis labels 45 degrees if they overlap
-- Do NOT use seaborn-v0_8-darkgrid or any other style — whitegrid is required for clean dashboards
-
-## Rules
-1. Import all libraries inside the code. Do NOT assume pre-installed packages beyond: pandas, numpy, scikit-learn, statsmodels, scipy, matplotlib, seaborn
-2. Load data from the hardcoded dictionary below — do NOT read any external file or CSV:
-   data = ${JSON.stringify(sampleData, null, 2)}
-3. Convert the list of dicts to a pandas DataFrame: df = pd.DataFrame(data)
-4. Handle missing values with df.fillna(0) or df.dropna()
-5. Print ALL numerical results clearly. Use print() for every important output.
-6. CRITICAL: Do NOT try to read CSV files or connect to databases. The data is already loaded as the 'data' variable above.
-7. Do NOT use exit() or sys.exit().
-8. ALWAYS save the chart as 'analysis_plot.png' using plt.savefig().
-9. After saving the chart, print the text "##CHART_SAVED##" on its own line so the system knows the chart was generated.
-10. Return ONLY the Python code inside a markdown \`\`\`python block. No explanation outside the block.
-11. ${analysisType === "forecast" ? `The data is PRE-AGGREGATED by ${dateCol || "period"} (${totalRows} rows). Use it directly for time-series forecasting. If you need more granular data, note that this is already the full aggregated dataset.` : `The data contains ${totalRows} sampled rows from the full table — sufficient for analysis.`}`;
+    return prompt;
 }

@@ -109,7 +109,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
         const sqlGenPrompt = (prompts.tech_agent_sql_gen as string).replace("{catalog}", schemaContext || "(catalog unavailable)") + ragContext;
         let userContent = `Task: ${query}`;
         if (feedback) {
-            userContent += `\n\nYour previous SQL query failed with the following error:\n${feedback}\n\nPlease analyze this error and rewrite the SQL query to resolve it. Ensure you only use tables and columns available in the schema provided below. Do not repeat the same incorrect query. IMPORTANT: Never use PostgreSQL function names (TO_DATE, TO_CHAR, EXTRACT, DATE_TRUNC, etc.) as table names, aliases, or CTE names — they will be misinterpreted as table references.\n\n--- Schema ---\n${schemaContext || "(catalog unavailable)"}${ragContext}`;
+            userContent += `\n\n${(prompts.sql_retry_feedback as string).replace(/\{query\}/g, query).replace(/\{feedback\}/g, feedback).replace(/\{schemaContext\}/g, schemaContext || "(catalog unavailable)")}${ragContext}`;
         }
 
         try {
@@ -172,7 +172,7 @@ export async function techAgentNode(state: any, config?: any): Promise<Partial<A
                 const isEmptyResult = Array.isArray(parsedResults.data) && parsedResults.data.length === 0;
                 
                 if (isEmptyResult && attempts < MAX_SQL_RETRIES) {
-                    feedback = "The SQL executed successfully but returned 0 rows (empty result). Possible causes: (1) categorical filter value mismatch — check the sample values in the schema and use ILIKE with partial matching instead of exact match (=), (2) date column type may be INT (Excel serial) or TEXT when you assumed DATE/TIMESTAMP — check column types in schema, (3) data may use different capitalization or format. Try using ILIKE with % wildcards, verify date column type conversion, and add fallback conditions.";
+                    feedback = prompts.empty_result_feedback as string;
                     console.log("[Tech Agent] Empty result detected, retrying with self-healing feedback...");
                     continue;
                 }

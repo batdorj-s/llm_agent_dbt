@@ -2,6 +2,7 @@ import { createLLM } from "../llm-provider.js";
 import { runPythonCode } from "../sandbox.js";
 import { type AgentState, withTimeout } from "./agentState.js";
 import { extractCodeBlock } from "../utils.js";
+import { prompts } from "./prompts.js";
 
 export async function executeTechPythonAgent(
     llm: any,
@@ -13,12 +14,7 @@ export async function executeTechPythonAgent(
     const prefix = "(Tech Agent)\nPython код бэлдэж, E2B sandbox-д ажиллуулж байна...\n\n";
     if (onChunk) onChunk(prefix);
 
-    const pythonPrompt = `You are a Python data analyst. Write executable Python 3 code for this task.
-Use pandas if reading CSV files (superstore_sales.csv or retail_sales_dataset.csv may exist in the sandbox).
-IMPORTANT - Memory safety: NEVER load entire datasets into memory. ALWAYS use df.head(500) or df.sample(500) or pd.read_csv(nrows=1000) to limit data size. The sandbox has limited RAM.
-Return ONLY the Python code inside a markdown \`\`\`python block. No explanation outside the block.
-
-Task: ${rawQuery}`;
+    const pythonPrompt = (prompts.tech_agent_python_gen as string).replace(/\{rawQuery\}/g, rawQuery);
 
     try {
         const codeGenResponse = await withTimeout(llm.invoke([
@@ -36,7 +32,9 @@ Task: ${rawQuery}`;
         const resultBlock = `### Гүйцэтгэлийн үр дүн\n\`\`\`\n${output}\n\`\`\`\n`;
         if (onChunk) onChunk(resultBlock);
 
-        const explainPrompt = `Summarize the Python execution results for a business user in Mongolian. Be concise. Include "Тооцооны аргачлал:" section explaining how numbers were calculated.\n\nCode:\n${pythonCode}\n\nOutput:\n${output}`;
+        const explainPrompt = (prompts.tech_agent_python_explain as string)
+            .replace(/\{pythonCode\}/g, pythonCode)
+            .replace(/\{output\}/g, output);
         const stream: any = await withTimeout(llm.stream([
             { role: "system", content: explainPrompt },
             { role: "user", content: rawQuery },

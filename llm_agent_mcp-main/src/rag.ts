@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import yaml from "yaml";
 import { syncDbtModelsToRag, syncDbtTestResultsToRag, syncDbtMetricsToRag } from "./dbt-sync.js";
+import { prompts } from "./agents/prompts.js";
 import {
   buildBM25Index,
   hybridSearch,
@@ -545,24 +546,7 @@ export async function selfQueryTransform(
     return cached.result;
   }
 
-  const systemPrompt = `Extract search filters from the user's query. Return ONLY a JSON object with these fields:
-- "query": the core search query (remove date/year references, keep the main subject)
-- "categories": array of relevant categories from: finance, technical, business_policy, data_catalog, previous_analysis
-- "departments": array of relevant departments if mentioned (e.g. sales, engineering, analytics, security, retention)
-- "year": 4-digit year if a specific year is mentioned, or null
-
-Examples:
-Input: "2024 оны маркетингийн тайланг харуул"
-Output: {"query":"маркетингийн тайлан","categories":["finance","business_policy"],"departments":[],"year":2024}
-
-Input: "SQL бичихдээ ILIKE хэрхэн ашиглах вэ"
-Output: {"query":"ILIKE SQL usage","categories":["technical"],"departments":["engineering"],"year":null}
-
-Input: "Борлуулалтын KPI ямар байна"
-Output: {"query":"sales KPI","categories":["finance"],"departments":["sales"],"year":null}
-
-If unsure, return: {"query":"${query.replace(/"/g, "'")}","categories":[],"departments":[],"year":null}
-Respond with ONLY valid JSON. No markdown, no explanation, no code fences.`;
+  const systemPrompt = (prompts.self_query_transform as string).replace(/\{query\}/g, query.replace(/"/g, "'"));
 
   try {
     const response = await llmInvoke(systemPrompt);
