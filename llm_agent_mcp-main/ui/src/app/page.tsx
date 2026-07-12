@@ -292,7 +292,7 @@ export default function Home() {
         )}
 
         {activeTab === "report" && (
-          <div id="panel-report" role="tabpanel" aria-label="Тайлан" className="flex-1 min-h-0 overflow-auto">
+          <div id="panel-report" role="tabpanel" aria-label="Тайлан" className="flex-1 min-h-0 flex flex-col">
             <ReportTab reportMode={reportMode} setReportMode={setReportMode} />
           </div>
         )}
