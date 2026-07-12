@@ -65,9 +65,19 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
     }
 
     if (context === "No context available." || !context) {
-        log.info("No context available — falling through to TechAgent for data query.");
-        if (onChunk) onChunk("(Finance Agent → Tech Agent)\nМэдээллийн сангаас дата шүүж байна...\n\n");
-        return techAgentNode(state, config);
+        // Асуулт нь санхүүгийн ойлголтын талаар асууж байна уу, эсвэл SQL query хийх шаардлагатай юу?
+        const isDataQuery = /\b(sql|query|select|хүснэгт|багана|өгөгдөл|дата|row|мөр|column)\b/i.test(query)
+            || /\b(how many|хэд|нийт|total|count|sum|average|дундаж|нийлбэр)\b/i.test(query);
+
+        if (isDataQuery) {
+            // SQL query хийх шаардлагатай → TechAgent руу шилжүүлэх
+            log.info("No RAG context + data query detected — falling through to TechAgent.");
+            if (onChunk) onChunk("(Finance Agent → Tech Agent)\nМэдээллийн сангаас дата шүүж байна...\n\n");
+            return techAgentNode(state, config);
+        }
+
+        // Ойлголтын асуулт → LLM-ийн мэдлэгээр хариулна (RAG contextгүй ч гэсэн)
+        log.info("No RAG context — answering from LLM knowledge (conceptual finance question).");
     }
 
     if (!llm) {

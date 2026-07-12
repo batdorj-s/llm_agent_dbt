@@ -376,9 +376,14 @@ function computeRecencyScore(createdAt: string | undefined): number {
   }
 }
 
+// Нэгдсэн scoring weights — бүх search path-уудад хэрэглэнэ
+const SEMANTIC_WEIGHT = 0.6;
+const KEYWORD_WEIGHT = 0.25;
+const RECENCY_WEIGHT = 0.15;
+
 /**
  * Apply recency weighting to search results.
- * Blends the original score with recency: 85% original + 15% recency.
+ * Uses unified weights: 60% semantic + 25% keyword + 15% recency.
  */
 function applyRecencyWeighting(
   docs: RagDocument[],
@@ -386,7 +391,7 @@ function applyRecencyWeighting(
 ): Array<{ doc: RagDocument; score: number }> {
   return docs.map((doc, i) => {
     const recency = computeRecencyScore(doc.metadata.created_at);
-    const blendedScore = 0.85 * scores[i] + 0.15 * recency;
+    const blendedScore = (SEMANTIC_WEIGHT + KEYWORD_WEIGHT) * scores[i] + RECENCY_WEIGHT * recency;
     return { doc, score: blendedScore };
   });
 }
@@ -784,7 +789,7 @@ export async function searchKnowledgeBaseWithFilter(
             ? (!author || author === "admin" || author === "system" || author === userId)
             : (!author || author === "admin" || author === "system"));
           if (allowed) {
-            // Hybrid score: 0.6 * vector + 0.3 * keyword + 0.1 * recency
+            // Hybrid score using unified weights
             const distance = mergedDistances[i] ?? 0.5;
             const vectorScore = 1 - distance;
             const keywordScore = queryWords.reduce((acc, word) => {
@@ -793,7 +798,7 @@ export async function searchKnowledgeBaseWithFilter(
               return acc;
             }, 0);
             const recencyScore = computeRecencyScore(meta.created_at as string | undefined);
-            const finalScore = 0.6 * vectorScore + 0.3 * Math.min(keywordScore, 1) + 0.1 * recencyScore;
+            const finalScore = SEMANTIC_WEIGHT * vectorScore + KEYWORD_WEIGHT * Math.min(keywordScore, 1) + RECENCY_WEIGHT * recencyScore;
             matched.push({ text, meta: meta as Record<string, unknown>, score: finalScore });
           }
         });

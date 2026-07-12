@@ -118,8 +118,25 @@ export function bm25Score(
 
 let geminiEmbedder: any = null;
 let embedderInitAttempted = false;
+let embedderLastFailTime = 0;
+const EMBEDDER_RETRY_COOLDOWN_MS = 30_000; // 30 секундын дараа дахин оролдоно
+const EMBEDDER_MAX_RETRIES = 3;
+let embedderRetryCount = 0;
 
 async function getGeminiEmbedder(): Promise<any> {
+  // Амжилтгүй болсон бол retry cooldown хүлээх
+  if (!geminiEmbedder && embedderInitAttempted) {
+    const now = Date.now();
+    if (embedderRetryCount >= EMBEDDER_MAX_RETRIES) {
+      return null; // Макс retry хүрсэн
+    }
+    if (now - embedderLastFailTime < EMBEDDER_RETRY_COOLDOWN_MS) {
+      return null; // Хүлээх хугацаа дуулаагүй
+    }
+    // Retry боломжтой — flag-ийг reset хийх
+    embedderInitAttempted = false;
+  }
+
   if (embedderInitAttempted) return geminiEmbedder;
   embedderInitAttempted = true;
 
@@ -137,9 +154,13 @@ async function getGeminiEmbedder(): Promise<any> {
       modelName,
     });
     console.log(`[SemanticSearch] Gemini embedding model ready: ${modelName}`);
+    embedderRetryCount = 0; // Амжилттай бол retry тоог цэвэрлэх
     return geminiEmbedder;
   } catch (err) {
     console.warn("[SemanticSearch] Failed to init Gemini embeddings:", (err as Error).message);
+    embedderLastFailTime = Date.now();
+    embedderRetryCount++;
+    embedderInitAttempted = false; // Retry боломжтой болгох
     return null;
   }
 }
@@ -155,12 +176,15 @@ const queryEmbeddingCache = new Map<string, CacheEntry>();
 const docEmbeddingStore = new Map<string, { embedding: number[]; text: string }>();
 
 function cacheKey(text: string): string {
-  // Simple hash for cache key — avoids storing long strings as keys
-  let hash = 0;
+  // Богино query-г (< 100 тэмдэгт) шууд cache key болгох — collision багасгана
+  if (text.length < 100) return text;
+  // Урт query-г hash ашиглах — FNV-1a hash (Java-style-ээс илүү тархалттай)
+  let hash = 0x811c9dc5; // FNV offset basis
   for (let i = 0; i < text.length; i++) {
-    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193); // FNV prime
   }
-  return `${hash}_${text.length}`;
+  return `fnv_${hash.toString(16)}_${text.length}`;
 }
 
 function getCachedQueryEmbedding(query: string): number[] | null {

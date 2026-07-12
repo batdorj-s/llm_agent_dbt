@@ -39,14 +39,13 @@ export const TECH_SIGNALS = [
     "first", "last", "limit", "offset",
     "purchase", "channel", "suva", "суваг", "худалдан авалт", "худалдаа",
     "platform", "платформ", "source", "эх сурвалж",
-    "даргаар", "зарлага", "зардал", "кампанит",
-    "campaign", "marketing", "маркетинг", "ad", "advertising", "зар",
+    "кампанит",
+    "campaign", "marketing", "маркетинг", "ad", "advertising",
     "conversion", "хөрвүүлэлт", "impression", "reach",
     "click", "тогших", "rate", "cost", "spend",
-    // Санхүүгийн өгөгдлийн асуултад шууд TechAgent-д шилжих
+    // Санхүүгийн өгөгдлийн асуултуудыг FinanceAgent руу шилжүүлсэн
     "борлуулалт", "борлуулалтын", "тайлан",
-    "төсөв",     "зарлагын", "зарлагууд", "зарлага", "орлого", "орлогын",
-    "өсөлт", "бууралт", "харьцуулалт", "харьцуулах",
+    "төсөв", "өсөлт", "бууралт", "харьцуулалт", "харьцуулах",
     "хувь", "percentage", "зорилт", "зорилго", "target",
     "үзүүлэлт", "indicator", "гүйцэтгэл",
     "хэрэглэгч", "хэрэглэгчид", "user", "users",
@@ -76,8 +75,9 @@ export const FINANCE_SIGNALS = [
     "борлуулалтын төлөвлөгөө", "орлогын төлөвлөгөө", "ашгийн төлөвлөгөө",
     // Санхүүгийн гүйлгээний Монгол keyword-ууд
     // "дүн" нь "борлуулалтын дүн" SQL query-д ч гардаг тул оруулаагүй
-    "орлого", "шилжүүлэг", "ашиг", "алдагдал",
+    "орлого", "орлогын", "шилжүүлэг", "ашиг", "алдагдал",
     "касс", "түрээс", "зээл", "тайлбар",
+    "зарлага", "зардал", "зарлагын", "зарлагууд",
     "дотоод шилжүүлэг", "эздийн зээл", "бусад орлого",
     "дэд түрээс", "дэд түрээсийн",
     // Санхүүгийн Англи keyword-ууд
@@ -94,12 +94,45 @@ export const FINANCE_SIGNALS = [
     "татвар", "татварын", "НӨАТ", "vat",
 ];
 
+// Mongolian үгсийн төрөл бүрийн хэлбэрүүдийг зөв танихын тулд
+// Богино үгсийг (2-3 тэмдэгт) эх/төгсгөлд нь тэмдэгт нэмж шалгадаг
+const MONGOLIAN_BOUNDARY_SUFFIXES = [
+    "ын", "ийн", "ы", "ий", "д", "дээр", "аар", "оор", "ээр", "оор",
+    "с", "аас", "оос", "ээс", "ууд", "үүд", "наас", "нээс", "аар", "оор",
+];
+
 export function hasSignal(text: string, signal: string): boolean {
+    // ASCII үгсийг word boundary ашиглан шалгадаг
     if (/^[a-zA-Z0-9_.\-+]+$/.test(signal)) {
         const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
     }
-    return text.includes(signal);
+
+    // Бүрэн тэмдэгт үгсийг (≥4 тэмдэгт) substring-аар шалгадаг
+    // Мөн бүрэн үгсийн жагсаалтад байгаа эсэхийг шалгадаг
+    if (signal.length >= 4) {
+        return text.includes(signal);
+    }
+
+    // Богино үгсийг (2-3 тэмдэгт) зөв шалгадаг:
+    // 1. Шууд тааралдалт байх
+    // 2. Эсвэл эхэндээ/төгсгөлдээ whitespace эсвэл тэмдэгт байх
+    if (text.includes(signal)) {
+        const idx = text.indexOf(signal);
+        const before = idx > 0 ? text[idx - 1] : ' ';
+        const after = idx + signal.length < text.length ? text[idx + signal.length] : ' ';
+        // Тэмдэгт биш (whitespace, punctuation) эсвэл үгний эх/төгсгөл
+        const isWordBoundary = /[\s,.\-;:!?\[\](){}'"\/]/.test(before) && /[\s,.\-;:!?\[\](){}'"\/]/.test(after);
+        if (isWordBoundary) return true;
+
+        // Мөн suffix нэмэгдсэн хэлбэрт шалгадаг (жишээ: "зардал" → "зардалд", "зардлын")
+        for (const suffix of MONGOLIAN_BOUNDARY_SUFFIXES) {
+            const withSuffix = signal + suffix;
+            if (text.includes(withSuffix)) return true;
+        }
+    }
+
+    return false;
 }
 
 export function routeByKeywords(query: string, hasActiveDataset: boolean, mentionsKnownTable?: boolean): NextAgent {
