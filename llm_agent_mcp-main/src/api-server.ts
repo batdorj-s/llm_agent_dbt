@@ -106,6 +106,7 @@ app.use(express.json({ limit: "5mb" }));
 app.use((req, _res, next) => {
     const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     req.reqId = reqId;
+    _res.setHeader("X-Request-Id", reqId);
     requestContext.run({ requestId: reqId, ipAddress: req.ip }, next);
 });
 
@@ -114,6 +115,23 @@ app.use(requireAuth);
 
 // Request timeout — kill requests that exceed 60s
 app.use(requestTimeout);
+
+// Request logging middleware — logs all incoming requests
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    const level = res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info";
+    log(level as "info" | "warn" | "error", `${req.method} ${req.path} ${res.statusCode}`, req, {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      durationMs: duration,
+      ip: req.ip,
+    });
+  });
+  next();
+});
 
 function log(level: "info" | "warn" | "error", msg: string, req?: express.Request, meta?: Record<string, unknown>) {
     const entry: Record<string, unknown> = {
@@ -236,15 +254,53 @@ app.get("/api/status", (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+import { z } from "zod";
+
+const DateFilterSchema = z.object({
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate must be YYYY-MM-DD").optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "endDate must be YYYY-MM-DD").optional(),
+});
+
 function extractDateFilter(req: express.Request): { startDate?: string; endDate?: string } {
-  return {
-    startDate: req.query.startDate as string | undefined,
-    endDate: req.query.endDate as string | undefined,
-  };
+  const parsed = DateFilterSchema.safeParse({
+    startDate: req.query.startDate,
+    endDate: req.query.endDate,
+  });
+  if (!parsed.success) return {};
+  return parsed.data;
 }
 
 // KPI Dashboard Data
 // ─────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/kpi/{metric}:
+ *   get:
+ *     tags: [KPI]
+ *     summary: Get KPI metric data
+ *     parameters:
+ *       - in: path
+ *         name: metric
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [sales, users, churn_rate]
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *     responses:
+ *       200:
+ *         description: KPI metric data
+ *       400:
+ *         description: Invalid metric
+ */
 app.get("/api/kpi/:metric", async (req, res) => {
   const userId = getUserId(req);
 
@@ -1703,6 +1759,29 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // Conversation Persistence — CRUD for chat history
 // ─────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/conversations:
+ *   get:
+ *     tags: [Conversations]
+ *     summary: List user conversations
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *     responses:
+ *       200:
+ *         description: List of conversations
+ */
 app.get("/api/conversations", async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -1791,7 +1870,11 @@ app.use((err: Error & { code?: string; statusCode?: number }, _req: express.Requ
     return;
   }
   console.error("[API] Unhandled error:", err);
-  res.status(500).json({ error: "Internal server error" });
+  const isDev = process.env.NODE_ENV !== "production";
+  res.status(500).json({
+    error: "Internal server error",
+    ...(isDev && { details: err.message, stack: err.stack?.split("\n").slice(0, 5) }),
+  });
 });
 
 const PORT = process.env.API_PORT || 3001;

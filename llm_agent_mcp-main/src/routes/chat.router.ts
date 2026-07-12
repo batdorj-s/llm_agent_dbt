@@ -73,6 +73,10 @@ chatRouter.post("/", async (req, res) => {
   const limit = await agentLimiter.check(userId);
   if (!limit.allowed) return res.status(429).json({ error: limit.message, resetInMs: limit.resetInMs });
 
+  // Set rate limit headers
+  res.setHeader("X-RateLimit-Limit", "10");
+  res.setHeader("X-RateLimit-Remaining", String(limit.remaining));
+
   const { message, threadId, visualRequest } = parsed.data;
 
   try {
