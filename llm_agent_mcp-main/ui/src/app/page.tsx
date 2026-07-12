@@ -264,7 +264,7 @@ export default function Home() {
         )}
 
         {activeTab === "dashboard" && (
-          <div id="panel-dashboard" role="tabpanel" aria-label="Dashboard">
+          <div id="panel-dashboard" role="tabpanel" aria-label="Dashboard" className="flex-1 min-h-0 flex flex-col">
             <DashboardTab
               user={auth.user!}
               token={auth.token}
@@ -292,7 +292,7 @@ export default function Home() {
         )}
 
         {activeTab === "report" && (
-          <div id="panel-report" role="tabpanel" aria-label="Тайлан">
+          <div id="panel-report" role="tabpanel" aria-label="Тайлан" className="flex-1 min-h-0 overflow-auto">
             <ReportTab reportMode={reportMode} setReportMode={setReportMode} />
           </div>
         )}
