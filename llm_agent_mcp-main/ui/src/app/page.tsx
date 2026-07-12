@@ -172,7 +172,11 @@ export default function Home() {
     if (messages.length > 0) {
       chat.clearMessages();
       messages.forEach(m => {
-        chat.addSystemMessage(m.content, m.agentType ?? undefined);
+        if (m.role === "user") {
+          chat.addUserMessage(m.content);
+        } else {
+          chat.addSystemMessage(m.content, m.agentType ?? undefined);
+        }
       });
     }
   };
@@ -194,6 +198,20 @@ export default function Home() {
   useEffect(() => {
     admin.fetchUploadedFiles();
   }, []);
+
+  // Fetch chat history on mount
+  useEffect(() => {
+    if (auth.isLoggedIn) {
+      conversation.fetchConversations();
+    }
+  }, [auth.isLoggedIn]);
+
+  // Refresh chat history when sidebar opens
+  useEffect(() => {
+    if (convoSidebarOpen) {
+      conversation.fetchConversations();
+    }
+  }, [convoSidebarOpen]);
 
   const hasDataset = admin.uploadedFiles.length > 0;
 

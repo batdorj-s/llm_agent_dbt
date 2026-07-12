@@ -159,10 +159,19 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
     }]);
   };
 
+  const addUserMessage = (text: string) => {
+    setMessages(p => [...p, {
+      id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      sender: "user",
+      text,
+      timestamp: new Date(),
+    }]);
+  };
+
   return {
     messages, input, setInput, isChatLoading, streamEnabled, setStreamEnabled,
     lastAgentType, activeRoutingState, feedbackState, feedbackSentMsgs,
     handleSendMessage, handleCancelMessage, handleFeedback,
-    addWelcomeMessage, clearMessages, addSystemMessage,
+    addWelcomeMessage, clearMessages, addSystemMessage, addUserMessage,
   };
 }
