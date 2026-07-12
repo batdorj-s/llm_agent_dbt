@@ -23,14 +23,7 @@ interface RadarProps {
   height?: number;
 }
 
-const defaultData: RadarDataItem[] = [
-  { label: "Орлогын өсөлт", value: 95 },
-  { label: "Зарлагын хяналт", value: 78 },
-  { label: "Мөнгөн урсгал", value: 65 },
-  { label: "Тогтвортой байдал", value: 40 },
-  { label: "Санхүүгийн ашиг", value: 45 },
-  { label: "Гүйлгээний идэвх", value: 93 },
-];
+const EMPTY_DATA: RadarDataItem[] = [];
 
 /* Custom tick that word-wraps long Mongolian labels */
 const RadarTick = ({ payload, x, y, textAnchor, cx }: any) => {
@@ -71,11 +64,20 @@ const tooltipStyle = {
 };
 
 export const Radar: React.FC<RadarProps> = ({
-  data = defaultData,
+  data = EMPTY_DATA,
   name = "Үзүүлэлт",
   color = "#3b82f6",
   height = 300,
 }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center text-foreground/40 gap-2 py-12">
+        <div className="text-4xl">📊</div>
+        <p className="text-xs font-semibold">Өгөгдөл байхгүй байна</p>
+        <p className="text-[10px]">Эхлээд өгөгдөлөө оруулна уу</p>
+      </div>
+    );
+  }
   return (
     <div className="w-full">
       <ResponsiveContainer width="100%" height={height}>

@@ -22,11 +22,8 @@ describe("Data Lake — Active Catalog Entry", () => {
         }
     });
 
-    it("BUG-SCENARIO: when uploaded_files is empty, falls back to catalog[0]", async () => {
+    it("BUG-SCENARIO: when uploaded_files is empty, returns null (no fallback)", async () => {
         if (!isPgAvailable()) return;
-
-        const catalog = await getCatalog("system");
-        expect(catalog.length).toBeGreaterThan(0);
 
         const saved = await getPool().query(`SELECT id FROM uploaded_files WHERE type = 'dataset' AND (visibility = 'shared' OR owner_id = 'system')`);
         const savedIds = saved.rows.map((r: any) => r.id);
@@ -36,8 +33,7 @@ describe("Data Lake — Active Catalog Entry", () => {
             }
 
             const activeEntry = await getActiveCatalogEntry("system");
-            expect(activeEntry).not.toBeNull();
-            expect(activeEntry!.table_name).toBe(catalog[0].table_name);
+            expect(activeEntry).toBeNull();
         } finally {
             for (const id of savedIds) {
                 await getPool().query(
@@ -156,14 +152,37 @@ describe("Data Lake — Active Catalog Entry", () => {
         }
     });
 
-    it("active entry has valid columns_info", async () => {
+    it("active entry has valid columns_info when uploads exist", async () => {
         if (!isPgAvailable()) return;
 
-        const activeEntry = await getActiveCatalogEntry("system");
-        expect(activeEntry).not.toBeNull();
+        const testName = `_test_cols_info_${Date.now()}`;
+        const userId = `cols_info_user_${runSuffix}`;
+        testCreated.push(testName);
+        try {
+            await getPool().query(`CREATE TABLE IF NOT EXISTS "${testName}" (id INT, name TEXT)`);
+            await getPool().query(
+                `INSERT INTO data_lake_catalog (table_name, created_by, owner_id, visibility, columns_info, description)
+                 VALUES ($1, 'test', $2, 'private', '["id","name"]', 'cols info test')
+                 ON CONFLICT (table_name) DO UPDATE SET owner_id = EXCLUDED.owner_id, visibility = EXCLUDED.visibility, columns_info = '["id","name"]'`,
+                [testName, userId]
+            );
+            await getPool().query(
+                `INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)
+                 VALUES ($1, $1, 'dataset', 'cols info test', $2, 'private', NOW())
+                 ON CONFLICT (id) DO UPDATE SET owner_id = EXCLUDED.owner_id, visibility = EXCLUDED.visibility, created_at = EXCLUDED.created_at`,
+                [testName, userId]
+            );
 
-        const cols: string[] = JSON.parse(activeEntry!.columns_info);
-        expect(Array.isArray(cols)).toBe(true);
-        expect(cols.length).toBeGreaterThan(0);
+            const activeEntry = await getActiveCatalogEntry(userId);
+            expect(activeEntry).not.toBeNull();
+
+            const cols: string[] = JSON.parse(activeEntry!.columns_info);
+            expect(Array.isArray(cols)).toBe(true);
+            expect(cols.length).toBeGreaterThan(0);
+        } finally {
+            await getPool().query(`DROP TABLE IF EXISTS "${testName}" CASCADE`).catch(() => {});
+            await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [testName]).catch(() => {});
+            await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [testName]).catch(() => {});
+        }
     });
 });

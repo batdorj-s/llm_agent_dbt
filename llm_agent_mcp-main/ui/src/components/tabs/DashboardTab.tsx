@@ -297,8 +297,10 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
                   <div className="border border-border/60 rounded-xl p-5 bg-card shadow-sm flex flex-col items-center justify-center">
                     <Gauge
                       percent={financeData.financeSummary
-                        ? Math.min(100, Math.round((fs.totalIncome / (dashboard.salesKpi?.target ?? 200_000_000)) * 100))
-                        : dashboard.salesKpi ? Math.min(100, Math.round((dashboard.salesKpi.current / dashboard.salesKpi.target) * 100)) : 89}
+                        ? dashboard.salesKpi?.target
+                          ? Math.min(100, Math.round((fs.totalIncome / dashboard.salesKpi.target) * 100))
+                          : Math.min(100, Math.round((fs.totalIncome / fs.totalExpense) * 100))
+                        : dashboard.salesKpi ? Math.min(100, Math.round((dashboard.salesKpi.current / dashboard.salesKpi.target) * 100)) : 0}
                       title="Орлогын гүйцэтгэл" size={180}
                     />
                   </div>
@@ -306,8 +308,10 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
                     <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Дүүргэлт</span>
                     <Liquid
                       percent={financeData.financeSummary
-                        ? Math.min(1, fs.totalIncome / (dashboard.salesKpi?.target ?? 200_000_000))
-                        : dashboard.salesKpi ? Math.min(1, dashboard.salesKpi.current / (dashboard.salesKpi.target * 1.15)) : 0.50}
+                        ? dashboard.salesKpi?.target
+                          ? Math.min(1, fs.totalIncome / dashboard.salesKpi.target)
+                          : Math.min(1, fs.totalIncome / fs.totalExpense)
+                        : dashboard.salesKpi ? Math.min(1, dashboard.salesKpi.current / (dashboard.salesKpi.target * 1.15)) : 0}
                       height={130}
                     />
                   </div>

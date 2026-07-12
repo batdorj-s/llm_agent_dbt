@@ -274,21 +274,11 @@ export async function initDataLake(): Promise<void> {
             await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_outcome ON sql_gen_log (outcome)`);
 
             const existing = await pool.query("SELECT metric_name, target_value, unit FROM kpi_targets");
-            if (existing.rows.length === 0) {
-                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["sales", 200000000, "₮"]);
-                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["users", 10, "харилцагч"]);
-                await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["churn_rate", 100.0, "%"]);
-            } else {
+            if (existing.rows.length > 0) {
                 // Migrate stale defaults inserted with wrong USD/generic values
                 for (const row of existing.rows as Array<{ metric_name: string; target_value: number; unit: string }>) {
                     if (row.metric_name === "sales" && row.unit === "USD") {
-                        await pool.query("UPDATE kpi_targets SET target_value = $1, unit = $2 WHERE metric_name = $3", [200000000, "₮", "sales"]);
-                    }
-                    if (row.metric_name === "users" && row.target_value === 2000) {
-                        await pool.query("UPDATE kpi_targets SET target_value = $1, unit = $2 WHERE metric_name = $3", [10, "харилцагч", "users"]);
-                    }
-                    if (row.metric_name === "churn_rate" && row.target_value === 2.0) {
-                        await pool.query("UPDATE kpi_targets SET target_value = $1 WHERE metric_name = $2", [100.0, "churn_rate"]);
+                        await pool.query("UPDATE kpi_targets SET target_value = $1, unit = $2 WHERE metric_name = $3", [0, "₮", "sales"]);
                     }
                 }
             }
@@ -451,8 +441,7 @@ export async function getActiveCatalogEntry(userId: string): Promise<DataLakeCat
         const catalog = await getCatalog(userId);
         if (catalog.length === 0) return null;
 
-        console.warn(`[Data Lake] uploaded_files has no dataset entries — returning catalog[0] '${catalog[0].table_name}' as fallback`);
-        return catalog[0];
+        return null;
     } catch {
         return null;
     }

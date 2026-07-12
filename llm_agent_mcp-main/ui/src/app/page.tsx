@@ -103,19 +103,19 @@ function useFinanceChartData(financeCharts: Record<string, unknown> | null, sale
 
   const financeRadarData = (() => {
     if (!financeSummary) return null;
-    const target = Number((salesKpi?.target as number) ?? 200_000_000);
+    const target = Number(salesKpi?.target ?? 0);
     const totalIncome = Number(financeSummary.totalIncome ?? 0);
     const totalExpense = Number(financeSummary.totalExpense ?? 0);
     const operatingProfit = Number(financeSummary.operatingProfit ?? 0);
-    const incomeScore  = totalIncome > 0 ? Math.min(100, Math.round((totalIncome / target) * 100)) : 50;
-    const expenseRatio = totalIncome > 0 ? Math.round((1 - totalExpense / totalIncome) * 100) : 50;
-    const profitScore  = totalIncome > 0 ? Math.min(100, Math.round((operatingProfit / totalIncome) * 100 * 5)) : 50;
+    const incomeScore  = target > 0 && totalIncome > 0 ? Math.min(100, Math.round((totalIncome / target) * 100)) : 0;
+    const expenseRatio = totalIncome > 0 ? Math.round((1 - totalExpense / totalIncome) * 100) : 0;
+    const profitScore  = totalIncome > 0 ? Math.min(100, Math.round((operatingProfit / totalIncome) * 100 * 5)) : 0;
     return [
       { subject: "Нийт орлого",               A: Math.min(100, incomeScore), fullMark: 100 },
       { subject: "Зарлагын хяналт",            A: Math.min(100, expenseRatio), fullMark: 100 },
       { subject: "ҮА ашиг",                    A: Math.min(100, profitScore), fullMark: 100 },
-      { subject: "Гүйлгээний тоо",             A: 85, fullMark: 100 },
-      { subject: "Мөнгөн урсгал",              A: operatingProfit > 0 ? 70 : 40, fullMark: 100 },
+      { subject: "Гүйлгээний тоо",             A: 0, fullMark: 100 },
+      { subject: "Мөнгөн урсгал",              A: operatingProfit > 0 ? 70 : 0, fullMark: 100 },
       { subject: "Санхүүгийн тогтвортой байдал", A: Math.min(100, Math.round((incomeScore + expenseRatio + profitScore) / 3)), fullMark: 100 },
     ];
   })();

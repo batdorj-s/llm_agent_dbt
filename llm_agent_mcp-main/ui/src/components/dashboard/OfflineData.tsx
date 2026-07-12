@@ -23,64 +23,16 @@ interface OfflineDataProps {
   monthlyExpenses?: Record<string, { month: string; amount: number }[]>;
 }
 
-const defaultCategories: ExpenseCategory[] = [
-  { name: "Цалин", share: 0.362, color: "#3b82f6" },
-  { name: "Төсөл", share: 0.245, color: "#10b981" },
-  { name: "Зээл", share: 0.198, color: "#f59e0b" },
-  { name: "Бусад", share: 0.082, color: "#8b5cf6" },
-  { name: "Түрээс", share: 0.054, color: "#ec4899" },
-  { name: "ҮАЗ", share: 0.053, color: "#ef4444" },
-  { name: "Оффис", share: 0.006, color: "#14b8a6" },
-];
-
-const monthlyExpenses: Record<string, { month: string; amount: number }[]> = {
-  "Цалин": [
-    { month: "1-р сар", amount: 27000000 },
-    { month: "2-р сар", amount: 20000000 },
-    { month: "3-р сар", amount: 30876281 },
-  ],
-  "Төсөл": [
-    { month: "1-р сар", amount: 18000000 },
-    { month: "2-р сар", amount: 14000000 },
-    { month: "3-р сар", amount: 20607526 },
-  ],
-  "Зээл": [
-    { month: "1-р сар", amount: 14157933 },
-    { month: "2-р сар", amount: 14157933 },
-    { month: "3-р сар", amount: 14157934 },
-  ],
-  "Бусад": [
-    { month: "1-р сар", amount: 7000000 },
-    { month: "2-р сар", amount: 5000000 },
-    { month: "3-р сар", amount: 5600000 },
-  ],
-  "Түрээс": [
-    { month: "1-р сар", amount: 3867302 },
-    { month: "2-р сар", amount: 3867302 },
-    { month: "3-р сар", amount: 3867302 },
-  ],
-  "ҮАЗ": [
-    { month: "1-р сар", amount: 5000000 },
-    { month: "2-р сар", amount: 2000000 },
-    { month: "3-р сар", amount: 4457856 },
-  ],
-  "Оффис": [
-    { month: "1-р сар", amount: 452500 },
-    { month: "2-р сар", amount: 452500 },
-    { month: "3-р сар", amount: 452500 },
-  ],
-};
-
 const ringGradientId = "offlineRingGrad";
 
 const formatM = (v: number) => `₮${(v / 1_000_000).toFixed(1)}M`;
 
 export const OfflineData: React.FC<OfflineDataProps> = ({
   loading = false,
-  categories: activeCategories = defaultCategories,
-  monthlyExpenses: activeMonthlyExpenses = monthlyExpenses,
+  categories: activeCategories = [],
+  monthlyExpenses: activeMonthlyExpenses = {},
 }) => {
-  const [activeKey, setActiveKey] = useState(activeCategories[0].name);
+  const [activeKey, setActiveKey] = useState<string>("");
 
   useEffect(() => {
     if (activeCategories.length > 0 && !activeCategories.find(c => c.name === activeKey)) {
@@ -93,6 +45,18 @@ export const OfflineData: React.FC<OfflineDataProps> = ({
       <div className="rounded-xl border border-border/80 bg-card p-5 animate-pulse">
         <div className="h-8 bg-foreground/10 rounded mb-4" />
         <div className="h-[300px] bg-foreground/5 rounded" />
+      </div>
+    );
+  }
+
+  if (!activeCategories || activeCategories.length === 0) {
+    return (
+      <div className="rounded-xl border border-border/80 bg-card p-5">
+        <div className="flex flex-col items-center justify-center text-foreground/40 gap-2 py-12">
+          <div className="text-4xl">📋</div>
+          <p className="text-xs font-semibold">Зарлагын ангилал байхгүй байна</p>
+          <p className="text-[10px]">Эхлээд санхүүгийн өгөгдлөө оруулна уу</p>
+        </div>
       </div>
     );
   }

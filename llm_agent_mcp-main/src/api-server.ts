@@ -341,7 +341,7 @@ app.get("/api/kpi/:metric", async (req, res) => {
           const targetRow = targetResult.rows[0] as Record<string, unknown>;
           return res.json({
             name: "sales", current,
-            target: targetRow?.target_value ?? 200000000,
+            target: targetRow?.target_value ?? 0,
             unit: targetRow?.unit ?? "₮",
             updatedAt: new Date().toISOString(),
           });
