@@ -283,7 +283,7 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
                   categories={financeData.financeExpenseCategories ?? undefined}
                   monthlyExpenses={(() => {
                     const charts = (dashboard.financeCharts?.charts as Array<Record<string, unknown>>) ?? [];
-                    const esc = charts.find((c) => c.id === "monthly_expense_subcat");
+                    const esc = charts.find((c) => c.id === "expense_breakdown_monthly") ?? charts.find((c) => c.id === "monthly_expense_subcat");
                     if (!esc?.data) return undefined;
                     const result: Record<string, { month: string; amount: number }[]> = {};
                     const subcats = Object.keys((esc.data as Array<Record<string, unknown>>)[0] || {}).filter((k) => k !== "label");

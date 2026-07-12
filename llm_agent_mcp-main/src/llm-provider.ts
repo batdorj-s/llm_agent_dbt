@@ -221,22 +221,34 @@ export async function invokeWithFallback(
     let lastError: Error | null = null;
     const attempted: LLMProvider[] = [];
     for (const p of orderedProviders) {
-        try {
-            console.log(`[LLM] Invoking ${p.provider.toUpperCase()} — ${p.model}...`);
-            const model = await createProviderModel(p, { temperature: temp, streaming: options?.streaming });
+        let lastProviderError: Error | null = null;
+        // Retry once on rate-limit with exponential backoff (5s, then 15s)
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                console.log(`[LLM] Invoking ${p.provider.toUpperCase()} — ${p.model} (attempt ${attempt + 1})...`);
+                const model = await createProviderModel(p, { temperature: temp, streaming: options?.streaming });
 
-            const response = options?.timeout
-                ? await withTimeout(model.invoke(messages), `${p.provider} invoke`, options.timeout)
-                : await model.invoke(messages);
+                const response = options?.timeout
+                    ? await withTimeout(model.invoke(messages), `${p.provider} invoke`, options.timeout)
+                    : await model.invoke(messages);
 
-            return { content: response.content as string, provider: p.provider };
-        } catch (err: unknown) {
-            lastError = err instanceof Error ? err : new Error(String(err));
-            attempted.push(p.provider);
-            const isRateLimit = isRateLimitError(err);
-            console.warn(`[LLM] ${p.provider.toUpperCase()} failed: ${isRateLimit ? "RATE LIMIT" : lastError.message}`);
-            console.log(`[LLM] Falling back to next provider after ${p.provider} failure...`);
+                return { content: response.content as string, provider: p.provider };
+            } catch (err: unknown) {
+                lastProviderError = err instanceof Error ? err : new Error(String(err));
+                const isRateLimit = isRateLimitError(err);
+                console.warn(`[LLM] ${p.provider.toUpperCase()} failed: ${isRateLimit ? "RATE LIMIT" : lastProviderError.message}`);
+                if (isRateLimit && attempt === 0) {
+                    const delayMs = 5000 * (attempt + 1);
+                    console.log(`[LLM] Rate limited on ${p.provider}, retrying in ${delayMs / 1000}s...`);
+                    await new Promise((resolve) => setTimeout(resolve, delayMs));
+                } else {
+                    break;
+                }
+            }
         }
+        lastError = lastProviderError;
+        attempted.push(p.provider);
+        console.log(`[LLM] Falling back to next provider after ${p.provider} failure...`);
     }
 
     console.error(`[LLM] All providers exhausted (tried: ${attempted.join(", ")}). Last error: ${lastError?.message}`);

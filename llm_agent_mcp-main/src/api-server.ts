@@ -626,6 +626,9 @@ app.get("/api/finance-charts", async (req, res) => {
     // Noise filter: exclude internal transfers and owner loans (Дотоод шилжүүлэг, Эздийн зээл)
     const notNoise = `${qCat} NOT ILIKE '%шилжүүлэг%' AND ${qCat} NOT ILIKE '%эздийн зээл%'`;
 
+    // Safe date filter: exclude NULL and empty-string dates that break ::DATE cast
+    const validDate = dateCol ? `(${quoteIdent(dateCol)} IS NOT NULL AND ${quoteIdent(dateCol)}::text != '')` : null;
+
     const charts: Array<{ id: string; title: string; type?: string; data: Array<Record<string, unknown>>; config?: Record<string, unknown> }> = [];
 
     // 1. Category breakdown — operating expense by subcategory (excl. loan repayments)
@@ -664,7 +667,7 @@ app.get("/api/finance-charts", async (req, res) => {
             SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) AS "Орлого",
             SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS "Зарлага"
           FROM ${qTbl}
-          WHERE ${qDate} IS NOT NULL AND ${notNoise}
+          WHERE ${validDate} AND ${notNoise}
           GROUP BY 1 ORDER BY 1
         `);
         if (r.rows.length > 0) {
@@ -715,7 +718,7 @@ app.get("/api/finance-charts", async (req, res) => {
             SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) -
             SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS value
           FROM ${qTbl}
-          WHERE ${qDate} IS NOT NULL AND ${notNoise}
+          WHERE ${validDate} AND ${notNoise}
           GROUP BY 1, ${qDate}::DATE ORDER BY ${qDate}::DATE
         `);
         if (r.rows.length > 0) {
@@ -740,7 +743,7 @@ app.get("/api/finance-charts", async (req, res) => {
             SUM(CASE WHEN ${isOpIncome}  THEN ${qAmt} ELSE 0 END) -
             SUM(CASE WHEN ${isOpExpense} THEN ${qAmt} ELSE 0 END) AS value
           FROM ${qTbl}
-          WHERE ${notNoise} AND ${qDate} IS NOT NULL
+          WHERE ${validDate} AND ${notNoise}
           GROUP BY 1 ORDER BY 1
         `);
         if (r.rows.length > 0) {
@@ -769,7 +772,7 @@ app.get("/api/finance-charts", async (req, res) => {
             ${qSub} AS subcat,
             SUM(${qAmt}) AS total
           FROM ${qTbl}
-          WHERE ${isOpExpense} AND ${qSub} IS NOT NULL AND ${qDate} IS NOT NULL
+          WHERE ${isOpExpense} AND ${qSub} IS NOT NULL AND ${validDate}
           GROUP BY 1, 2
           ORDER BY 1
         `);
@@ -829,7 +832,7 @@ app.get("/api/finance-charts", async (req, res) => {
           FROM ${qTbl}
           WHERE ${notNoise}
             AND (${isOpIncome} OR ${isOpExpense})
-            AND ${qDate} IS NOT NULL
+            AND ${validDate}
           GROUP BY 1, 2, 3
           ORDER BY 1, 3
         `);
@@ -961,7 +964,7 @@ app.get("/api/finance-charts", async (req, res) => {
             EXTRACT(QUARTER FROM MIN(${qDate}::DATE)) AS min_q,
             EXTRACT(QUARTER FROM MAX(${qDate}::DATE)) AS max_q
           FROM ${qTbl}
-          WHERE ${qDate} IS NOT NULL AND ${qDate} != ''
+          WHERE ${validDate}
         `);
         const row = pr.rows[0];
         const minY = row?.min_year;
