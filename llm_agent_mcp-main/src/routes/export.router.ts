@@ -1,21 +1,39 @@
 import { Router } from "express";
+import type express from "express";
 import { requireAuth } from "../auth.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { getRawData } from "../services/sql.js";
+import { getActiveCatalogEntry, getPool } from "../db/data-lake.js";
 
 const router = Router();
 
+/** Helper: extract userId from request (set by requireAuth middleware) */
+function getUserId(req: express.Request): string {
+  return (req as express.Request & { userId: string }).userId || "user-admin-001";
+}
+
 /**
  * GET /api/export?table=...&format=csv|json
- * Export dashboard data as CSV or JSON
+ * Export dashboard data as CSV or JSON.
+ * Defaults to the user's active dataset if no table param is provided.
  */
 router.get("/", requireAuth, requirePermission("export:csv"), async (req, res) => {
   try {
-    const tableName = (req.query.table as string) || "raw_data";
     const format = (req.query.format as string) || "csv";
 
-    // Fetch raw table data
-    const data = await getRawData(tableName, 5000);
+    // Resolve table name: explicit query param > user's active dataset
+    let tableName = req.query.table as string | undefined;
+    if (!tableName) {
+      const entry = await getActiveCatalogEntry(getUserId(req));
+      if (!entry) {
+        res.status(404).json({ error: "No active dataset found. Upload data first." });
+        return;
+      }
+      tableName = entry.table_name;
+    }
+
+    // Fetch data from the resolved table
+    const pool = getPool();
+    const { rows: data } = await pool.query(`SELECT * FROM "${tableName}" LIMIT 5000`);
 
     if (!data || data.length === 0) {
       res.status(404).json({ error: "No data found" });

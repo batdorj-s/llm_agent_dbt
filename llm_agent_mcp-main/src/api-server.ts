@@ -2169,7 +2169,7 @@ app.use("/api/export", exportRouter);
  */
 app.get("/api/alerts", requireAuth, requirePermission("alert:read"), async (req, res) => {
   try {
-    const alerts = await scanAlerts();
+    const alerts = await scanAlerts(getUserId(req));
     res.json({ success: true, data: alerts, count: alerts.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Alert scan failed" });

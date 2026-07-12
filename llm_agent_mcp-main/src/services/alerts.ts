@@ -1,9 +1,11 @@
 /**
  * Auto Alert System
  * Monitors KPI data and generates alerts based on thresholds.
+ * Dynamically detects columns from the user's active dataset.
  */
 
-import { getRawData } from "./sql.js";
+import { getActiveCatalogEntry } from "../db/data-lake.js";
+import { getPool } from "../db/data-lake.js";
 
 export interface Alert {
   id: string;
@@ -19,11 +21,43 @@ interface AlertRule {
   id: string;
   type: Alert["type"];
   category: string;
-  condition: (data: Record<string, unknown>[]) => Alert | null;
+  condition: (data: Record<string, unknown>[], columns: string[]) => Alert | null;
+}
+
+/** Keywords used to identify numeric columns dynamically */
+const NUMERIC_KEYWORDS = [
+  /amount/i, /total/i, /sum/i, /avg/i, /revenue/i, /income/i, /profit/i,
+  /expense/i, /cost/i, /sales/i, /price/i, /value/i, /quantity/i, /count/i,
+  /rate/i, /score/i, /balance/i, /num/i, /дүн/i, /орлого/i, /зардал/i, /ашиг/i,
+];
+
+/** Keywords to identify potentially negative/profit-like columns (checked for negative totals) */
+const PROFIT_KEYWORDS = [/profit/i, /ашиг/i, /цэвэр/i, /net/i];
+
+/** Keywords to identify revenue/income-like columns */
+const REVENUE_KEYWORDS = [/revenue/i, /income/i, /орлого/i, /борлуулалт/i, /sales/i];
+
+/** Keywords to identify expense-like columns */
+const EXPENSE_KEYWORDS = [/expense/i, /cost/i, /зардал/i, /зарлага/i, /spend/i];
+
+function getNumericColumns(firstRow: Record<string, unknown>): string[] {
+  return Object.keys(firstRow).filter(k => NUMERIC_KEYWORDS.some(p => p.test(k)));
+}
+
+function findColumn(columns: string[], keywords: RegExp[]): string | undefined {
+  return columns.find(col => keywords.some(kw => kw.test(col)));
+}
+
+function sumColumn(data: Record<string, unknown>[], col: string | undefined): number {
+  if (!col) return 0;
+  return data.reduce((sum, row) => {
+    const v = typeof row[col] === "number" ? row[col] : 0;
+    return sum + v;
+  }, 0);
 }
 
 /**
- * Default alert rules for financial/sales data
+ * Build alert rules dynamically based on available columns
  */
 function buildDefaultRules(): AlertRule[] {
   return [
@@ -31,17 +65,16 @@ function buildDefaultRules(): AlertRule[] {
       id: "negative-profit",
       type: "critical",
       category: "Санхүү",
-      condition: (data) => {
-        const totalProfit = data.reduce((sum, row) => {
-          const profit = typeof row["Нийт ашиг"] === "number" ? row["Нийт ашиг"] : 0;
-          return sum + profit;
-        }, 0);
+      condition: (data, columns) => {
+        const profitCol = findColumn(columns, PROFIT_KEYWORDS);
+        if (!profitCol) return null;
+        const totalProfit = sumColumn(data, profitCol);
         if (totalProfit < 0) {
           return {
             id: "negative-profit-" + Date.now(),
             type: "critical",
             category: "Санхүү",
-            message: `Нийт ашиг сөрөг байна: ${totalProfit.toLocaleString()}`,
+            message: `Нийт ашиг сөрөг байна (${profitCol}): ${totalProfit.toLocaleString()}`,
             value: totalProfit,
             threshold: ">= 0",
             detectedAt: new Date().toISOString(),
@@ -51,44 +84,24 @@ function buildDefaultRules(): AlertRule[] {
       },
     },
     {
-      id: "low-margin",
-      type: "warning",
-      category: "Ашиг шимтгэл",
-      condition: (data) => {
-        if (data.length === 0) return null;
-        const avgMargin = data.reduce((sum, row) => {
-          const margin = typeof row["Ашиг шимтгэл"] === "number" ? row["Ашиг шимтгэл"] : 0;
-          return sum + margin;
-        }, 0) / data.length;
-        if (avgMargin < 10) {
-          return {
-            id: "low-margin-" + Date.now(),
-            type: "warning",
-            category: "Ашиг шимтгэл",
-            message: `Дундаж ашиг шимтгэл ${avgMargin.toFixed(1)}% байна (<10%)`,
-            value: avgMargin,
-            threshold: ">= 10%",
-            detectedAt: new Date().toISOString(),
-          };
-        }
-        return null;
-      },
-    },
-    {
-      id: "zero-sales",
+      id: "zero-values",
       type: "critical",
       category: "Борлуулалт",
-      condition: (data) => {
+      condition: (data, columns) => {
+        if (data.length === 0) return null;
+        const amountCol = findColumn(columns, [/amount/i, /дүн/i, /үнийн дүн/i, /value/i, /total/i]);
+        if (!amountCol) return null;
         const zeroRows = data.filter(row => {
-          const amount = typeof row["Дүн"] === "number" ? row["Дүн"] : 0;
+          const amount = typeof row[amountCol] === "number" ? row[amountCol] : 0;
           return amount === 0;
         });
-        if (zeroRows.length > data.length * 0.3) {
+        const zeroRatio = zeroRows.length / data.length;
+        if (zeroRatio > 0.3) {
           return {
-            id: "zero-sales-" + Date.now(),
+            id: "zero-values-" + Date.now(),
             type: "critical",
             category: "Борлуулалт",
-            message: `${zeroRows.length} мөр 0 дүнтэй байна (${((zeroRows.length / data.length) * 100).toFixed(0)}%)`,
+            message: `${zeroRows.length} мөр 0 дүнтэй байна (${(zeroRatio * 100).toFixed(0)}%) — "${amountCol}" багана`,
             value: zeroRows.length,
             threshold: "< 30% of rows",
             detectedAt: new Date().toISOString(),
@@ -101,15 +114,12 @@ function buildDefaultRules(): AlertRule[] {
       id: "high-expense-ratio",
       type: "warning",
       category: "Зардал",
-      condition: (data) => {
-        const totalRevenue = data.reduce((sum, row) => {
-          const rev = typeof row["Орлого"] === "number" ? row["Орлого"] : (typeof row["Дүн"] === "number" ? row["Дүн"] : 0);
-          return sum + rev;
-        }, 0);
-        const totalExpense = data.reduce((sum, row) => {
-          const exp = typeof row["Зардал"] === "number" ? row["Зардал"] : 0;
-          return sum + exp;
-        }, 0);
+      condition: (data, columns) => {
+        const revCol = findColumn(columns, REVENUE_KEYWORDS);
+        const expCol = findColumn(columns, EXPENSE_KEYWORDS);
+        if (!revCol || !expCol) return null;
+        const totalRevenue = sumColumn(data, revCol);
+        const totalExpense = sumColumn(data, expCol);
         if (totalRevenue > 0 && totalExpense / totalRevenue > 0.8) {
           return {
             id: "high-expense-" + Date.now(),
@@ -128,13 +138,11 @@ function buildDefaultRules(): AlertRule[] {
       id: "anomaly-zscore",
       type: "info",
       category: "Аномали",
-      condition: (data) => {
-        const numericCols = Object.keys(data[0] || {}).filter(k =>
-          typeof data[0]?.[k] === "number"
-        );
-        for (const col of numericCols) {
-          const values = data.map(r => r[col] as number).filter(v => !isNaN(v));
-          if (values.length < 3) continue;
+      condition: (data, columns) => {
+        if (data.length < 10) return null;
+        for (const col of columns) {
+          const values = data.map(r => r[col] as number).filter(v => typeof v === "number" && !isNaN(v));
+          if (values.length < 10) continue;
           const mean = values.reduce((a, b) => a + b, 0) / values.length;
           const std = Math.sqrt(values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length);
           if (std === 0) continue;
@@ -158,18 +166,31 @@ function buildDefaultRules(): AlertRule[] {
 }
 
 /**
- * Scan all alerts against current data
+ * Scan all alerts against the user's active dataset
  */
-export async function scanAlerts(tableName = "raw_data"): Promise<Alert[]> {
+export async function scanAlerts(userId: string): Promise<Alert[]> {
   try {
-    const data = await getRawData(tableName, 2000);
-    if (!data || data.length === 0) return [];
+    const entry = await getActiveCatalogEntry(userId);
+    if (!entry) return [];
+
+    const tableName = entry.table_name;
+    let columnList: string[] = [];
+    try { columnList = JSON.parse(entry.columns_info) as string[]; } catch {}
+
+    const pool = getPool();
+    const safeCols = columnList.map(c => `"${c.replace(/"/g, '""')}"`).join(", ");
+    if (!safeCols) return [];
+    const { rows } = await pool.query(`SELECT ${safeCols} FROM "${tableName}" LIMIT 2000`);
+    if (!rows || rows.length === 0) return [];
+
+    const numericCols = getNumericColumns(rows[0] as Record<string, unknown>);
+    if (numericCols.length === 0) return [];
 
     const rules = buildDefaultRules();
     const alerts: Alert[] = [];
 
     for (const rule of rules) {
-      const alert = rule.condition(data);
+      const alert = rule.condition(rows, numericCols);
       if (alert) alerts.push(alert);
     }
 
