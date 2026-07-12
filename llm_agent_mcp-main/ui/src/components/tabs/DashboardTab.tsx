@@ -6,6 +6,9 @@ import { KpiGrid } from "../KpiGrid";
 import { AdminPanel } from "../AdminPanel";
 import { Footer } from "../Footer";
 import { AnomalyBadge } from "../AnomalyBadge";
+import { WhatIfPanel } from "../WhatIfPanel";
+import { AlertBell } from "../AlertBell";
+import { ExportButton } from "../ExportButton";
 import AvatarList from "../AvatarList";
 import { SalesCard, TopSearch, ProportionSales, ActiveChart, IntroduceRow, OfflineData, Gauge, Radar, PageLoading, Liquid, EditableLinkGroup, PageHeaderContent, ExtraContent } from "../dashboard";
 import { FinanceDashboard } from "../FinanceDashboard";
@@ -195,6 +198,9 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
                 </div>
               </div>
               {hasDataset && <AnomalyBadge token={token} />}
+              {hasDataset && <WhatIfPanel token={token} />}
+              {hasDataset && <AlertBell token={token} />}
+              {hasDataset && <ExportButton token={token} />}
             </div>
 
             <div className="animate-fade-in-up" style={{ animationDelay: "50ms" }}>

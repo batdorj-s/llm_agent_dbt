@@ -73,6 +73,10 @@ export const DATA_SCIENCE_SIGNALS = [
     "хэвийн бус", "гажуудал", "хэт их", "хэт бага", "үл хамаарах",
     "unexpected", "abnormal", "outlier", "unusual", "spike", "drop",
     "алдаа", "error", "зөрүү", "deviation", "төөрөгдөл", "stand out",
+    // What-if scenario signals
+    "what if", "юу бол", "хэрэв", "what-if", "ценарий", "scenario",
+    "тохируул", "өөрчлөх", "нэмэх", "хасах", "өсгөх", "бууруулах",
+    "проекц", "projection", "урьдчилсан тооцоо", "impact", "нөлөөлөл",
 ];
 export const FINANCE_SIGNALS = [
     "sales target", "revenue target", "profit target", "margin target", "kpi", "kpi target",

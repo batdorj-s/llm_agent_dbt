@@ -82,9 +82,11 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
     const isCorrelation = /корреляци|correlation|хамаарал|нөлөөл/i.test(lowerQuery);
     const isRegression = /regression|регресс/i.test(lowerQuery);
     const isAnomaly = /аномали|anomaly|хэвийн бус|гажуудал|outlier|хэт их|хэт бага|unexpected|abnormal|unusual|spike|drop|зөрүү|deviation/i.test(lowerQuery);
+    const isWhatIf = /what\s*if|юу бол|хэрэв|what-if|ценарий|scenario|тохируул|проекц|projection|урьдчилсан тооцоо|impact|нөлөөлөл/i.test(lowerQuery);
 
     let analysisType = "general";
-    if (isAnomaly) analysisType = "anomaly";
+    if (isWhatIf) analysisType = "whatif";
+    else if (isAnomaly) analysisType = "anomaly";
     else if (isForecast) analysisType = "forecast";
     else if (isCluster) analysisType = "cluster";
     else if (isCorrelation) analysisType = "correlation";
@@ -315,6 +317,7 @@ function buildPythonPrompt(
         correlation: { chart: "scatter", reason: "Relationship between two variables — scatter plot with trend line" },
         regression: { chart: "scatter", reason: "Predicted vs actual values — scatter plot with regression line" },
         anomaly: { chart: "line", reason: "Anomaly detection — line chart with highlighted outliers" },
+        whatif: { chart: "bar", reason: "Scenario comparison — bar chart shows baseline vs projected" },
         general: { chart: "bar", reason: "Categorical comparison or histogram for distribution" },
     };
     const chartInfo = chartRules[analysisType] || chartRules.general;
@@ -355,6 +358,15 @@ ${dimensionHint}`,
 - If "${dateCol}" exists, show which time periods have anomalies
 - Highlight any patterns: are anomalies clustered in time? Are certain columns more prone?
 - Generate a line chart of the time series with anomaly points highlighted in RED`,
+        whatif: `## What-If Scenario Analysis
+- Parse the user query to identify: (1) which column to change, (2) by what percentage, (3) what outcome to measure
+- Example: "Хэрэв зардал 10%-иар нэмэгдвэл ашигт хэр нөлөөлөх вэ?" → change "Зардал" by +10%, measure impact on "Ашиг"
+- Apply the percentage change to the identified column
+- Recalculate ALL summary statistics for all numeric columns
+- Compare baseline vs projected in a clear table
+- Generate a grouped bar chart: baseline vs projected for each numeric column
+- Print the business impact in clear terms
+- If the user doesn't specify a percentage, try common scenarios: +10%, +20%, -10%, -20%`,
         general: `## General Statistical Analysis
 - Provide descriptive statistics (mean, median, std, min, max) for numeric columns
 - If ${categoryCols.length > 0 ? "categorical columns exist (" + categoryCols.join(", ") + ")" : "no categorical columns"}, show distribution counts

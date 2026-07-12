@@ -32,6 +32,9 @@ import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { sendSuccess, sendError, asyncHandler } from "./utils/apiResponse.js";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
+import exportRouter from "./routes/export.router.js";
+import { scanAlerts } from "./services/alerts.js";
+import { requirePermission, getPermissions } from "./middleware/rbac.js";
 
 // ── Swagger/OpenAPI Setup ───────────────────────────────────────
 const swaggerSpec = swaggerJsdoc({
@@ -369,7 +372,7 @@ app.get("/api/kpi-history", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // Anomaly Detection — Z-score & IQR based
 // ─────────────────────────────────────────────────────────────
-app.get("/api/kpi/anomalies", async (req, res) => {
+app.get("/api/kpi/anomalies", requireAuth, requirePermission("kpi:anomaly"), async (req, res) => {
   try {
     const userId = getUserId(req);
     const pool = getPool();
@@ -446,6 +449,123 @@ app.get("/api/kpi/anomalies", async (req, res) => {
           return acc;
         }, {} as Record<string, number>),
       },
+    });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// What-If Scenario — simulate impact of changing a value
+// ─────────────────────────────────────────────────────────────
+app.post("/api/whatif", requireAuth, requirePermission("kpi:whatif"), async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { column, changePercent, scenarioName } = req.body;
+
+    if (!column || typeof column !== "string") {
+      return res.status(400).json({ error: "column is required" });
+    }
+    if (changePercent === undefined || typeof changePercent !== "number") {
+      return res.status(400).json({ error: "changePercent (number) is required" });
+    }
+    if (Math.abs(changePercent) > 1000) {
+      return res.status(400).json({ error: "changePercent must be between -1000 and 1000" });
+    }
+
+    const entry = await getActiveCatalogEntry(userId);
+    if (!entry) return res.status(404).json({ error: "No active dataset" });
+
+    const tableName = entry.table_name;
+    let columnList: string[] = [];
+    try { columnList = JSON.parse(entry.columns_info) as string[]; } catch {}
+
+    if (!columnList.includes(column)) {
+      return res.status(400).json({ error: `Column "${column}" not found in dataset` });
+    }
+
+    const numericKeywords = [/age/i, /amount/i, /balance/i, /price/i, /cost/i, /revenue/i, /sales/i,
+      /income/i, /profit/i, /spend/i, /value/i, /quantity/i, /count/i, /rate/i, /score/i,
+      /total/i, /sum/i, /avg/i, /num/i, /rating/i, /зардал/i, /орлого/i];
+    const numericCols = columnList.filter(col => numericKeywords.some(p => p.test(col)));
+    const targetCols = numericCols.filter(c => c !== column);
+    const targetColumn = req.body.targetColumn && targetCols.includes(req.body.targetColumn)
+      ? req.body.targetColumn
+      : targetCols[0] || column;
+
+    const pool = getPool();
+    const safeCols = columnList.map(c => `"${c}"`).join(", ");
+    const { rows } = await pool.query(`SELECT ${safeCols} FROM "${tableName}" LIMIT 2000`);
+
+    // Compute baseline stats
+    const baselineValues = rows.map(r => Number(r[targetColumn])).filter(v => !isNaN(v));
+    const baselineSum = baselineValues.reduce((a, b) => a + b, 0);
+    const baselineMean = baselineValues.length > 0 ? baselineSum / baselineValues.length : 0;
+
+    const sourceValues = rows.map(r => Number(r[column])).filter(v => !isNaN(v));
+    const sourceSum = sourceValues.reduce((a, b) => a + b, 0);
+    const sourceMean = sourceValues.length > 0 ? sourceSum / sourceValues.length : 0;
+
+    const multiplier = 1 + changePercent / 100;
+
+    // Simple proportional impact model
+    const projectedSum = baselineSum * multiplier;
+    const projectedMean = baselineMean * multiplier;
+    const impact = projectedSum - baselineSum;
+    const impactPercent = ((projectedSum - baselineSum) / (baselineSum || 1)) * 100;
+
+    // Category breakdown: apply change per category if a category column exists
+    const categoryKeywords = [/category/i, /type/i, /status/i, /segment/i, /channel/i, /product/i, /branch/i, /салбар/i, /бүтээгдэхүүн/i];
+    const categoryCol = columnList.find(col => categoryKeywords.some(p => p.test(col)));
+
+    let categoryImpact: Array<{ category: string; baseline: number; projected: number; change: number }> = [];
+    if (categoryCol) {
+      const groups = new Map<string, number[]>();
+      rows.forEach(r => {
+        const cat = String(r[categoryCol] || "Unknown");
+        const val = Number(r[targetColumn]);
+        if (!isNaN(val)) {
+          const existing = groups.get(cat) || [];
+          existing.push(val);
+          groups.set(cat, existing);
+        }
+      });
+      for (const [cat, vals] of groups) {
+        const catSum = vals.reduce((a, b) => a + b, 0);
+        categoryImpact.push({
+          category: cat,
+          baseline: Math.round(catSum * 100) / 100,
+          projected: Math.round(catSum * multiplier * 100) / 100,
+          change: Math.round((catSum * multiplier - catSum) * 100) / 100,
+        });
+      }
+      categoryImpact.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+      categoryImpact = categoryImpact.slice(0, 10);
+    }
+
+    res.json({
+      scenario: {
+        name: scenarioName || `${column} ${changePercent > 0 ? "+" : ""}${changePercent}%`,
+        column,
+        changePercent,
+        targetColumn,
+        rowsAffected: rows.length,
+      },
+      baseline: {
+        columnSum: Math.round(sourceSum * 100) / 100,
+        columnMean: Math.round(sourceMean * 100) / 100,
+        targetSum: Math.round(baselineSum * 100) / 100,
+        targetMean: Math.round(baselineMean * 100) / 100,
+      },
+      projected: {
+        targetSum: Math.round(projectedSum * 100) / 100,
+        targetMean: Math.round(projectedMean * 100) / 100,
+      },
+      impact: {
+        absolute: Math.round(impact * 100) / 100,
+        percent: Math.round(impactPercent * 100) / 100,
+      },
+      categoryImpact,
     });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
@@ -1213,7 +1333,7 @@ app.get("/api/admin/files", async (req, res) => {
   res.json(result.rows);
 });
 
-app.delete("/api/admin/files/:id", async (req, res) => {
+app.delete("/api/admin/files/:id", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   const { id } = req.params;
   await initDataLake();
 
@@ -1487,7 +1607,7 @@ async function processUploadedTable(
 // ─────────────────────────────────────────────────────────────
 // Admin: Upload CSV Dataset
 // ─────────────────────────────────────────────────────────────
-app.post("/api/admin/upload-csv", async (req, res) => {
+app.post("/api/admin/upload-csv", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   const userId = getUserId(req);
   const role = getRole(req);
 
@@ -1534,7 +1654,7 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // Admin: Upload Excel (XLSX/XLS)
 // ─────────────────────────────────────────────────────────────
-app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
+app.post("/api/admin/upload-excel", requireAuth, requirePermission("admin:upload"), upload.single("file"), async (req, res) => {
   const userId = getUserId(req);
   const role = getRole(req);
 
@@ -1639,7 +1759,7 @@ if (!fs.existsSync(DOCUMENTS_DIR)) {
   fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 }
 
-app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
+app.post("/api/admin/upload-doc", requireAuth, requirePermission("admin:upload"), upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   // Rate limit uploads per user
@@ -1771,7 +1891,7 @@ app.get("/api/admin/feedback/pending", async (req, res) => {
 });
 
 // POST /api/admin/feedback/:id/approve - approve a feedback entry and add to RAG
-app.post("/api/admin/feedback/:id/approve", async (req, res) => {
+app.post("/api/admin/feedback/:id/approve", requireAuth, requirePermission("admin:users"), async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -1805,7 +1925,7 @@ app.post("/api/admin/feedback/:id/approve", async (req, res) => {
 });
 
 // POST /api/admin/feedback/:id/reject - reject a feedback entry (do not add to RAG)
-app.post("/api/admin/feedback/:id/reject", async (req, res) => {
+app.post("/api/admin/feedback/:id/reject", requireAuth, requirePermission("admin:users"), async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -1894,6 +2014,28 @@ app.get("/api/auth/me", async (req, res) => {
     return res.status(401).json({ error: result.error || "Invalid token" });
   }
   res.json({ success: true, user: { id: result.payload.userId, role: result.payload.role } });
+});
+
+/**
+ * @openapi
+ * /api/auth/permissions:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Get current user's permissions
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User permissions
+ */
+app.get("/api/auth/permissions", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  if (!user) return res.status(401).json({ error: "Not authenticated" });
+  res.json({
+    success: true,
+    role: user.role,
+    permissions: getPermissions(user.role),
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -2004,6 +2146,33 @@ app.patch("/api/conversations/:id", async (req, res) => {
     res.json({ success: true });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// ⑦ Export Center
+// ─────────────────────────────────────────────────────────────
+app.use("/api/export", exportRouter);
+
+// ─────────────────────────────────────────────────────────────
+// ① Auto Alert System
+// ─────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /api/alerts:
+ *   get:
+ *     summary: Get auto-generated alerts for the dataset
+ *     tags: [Alerts]
+ *     responses:
+ *       200:
+ *         description: List of alerts
+ */
+app.get("/api/alerts", requireAuth, requirePermission("alert:read"), async (req, res) => {
+  try {
+    const alerts = await scanAlerts();
+    res.json({ success: true, data: alerts, count: alerts.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Alert scan failed" });
   }
 });
 
