@@ -167,7 +167,7 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
         ) : isDashboardLoading ? (
           <PageLoading />
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-5">
             <div className="flex items-center gap-2 md:hidden">
               <button onClick={() => setSidebarOpen(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-border rounded bg-sidebar text-foreground/60 hover:text-foreground transition-colors cursor-pointer">
@@ -277,8 +277,8 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
               <ActiveChart cashData={financeData.financeCashData ?? undefined} />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-up" style={{ animationDelay: "300ms" }}>
-              <div className="lg:col-span-2">
+            <div className="animate-fade-in-up" style={{ animationDelay: "300ms" }}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
                 <OfflineData
                   categories={financeData.financeExpenseCategories ?? undefined}
                   monthlyExpenses={(() => {
@@ -293,34 +293,32 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
                     return result;
                   })()}
                 />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="border border-border/60 rounded-xl p-5 bg-card shadow-sm flex flex-col items-center justify-center">
+                    <Gauge
+                      percent={financeData.financeSummary
+                        ? Math.min(100, Math.round((fs.totalIncome / (dashboard.salesKpi?.target ?? 200_000_000)) * 100))
+                        : dashboard.salesKpi ? Math.min(100, Math.round((dashboard.salesKpi.current / dashboard.salesKpi.target) * 100)) : 89}
+                      title="Орлогын гүйцэтгэл" size={180}
+                    />
+                  </div>
+                  <div className="border border-border/60 rounded-xl p-5 bg-card shadow-sm flex flex-col items-center justify-center gap-3">
+                    <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Дүүргэлт</span>
+                    <Liquid
+                      percent={financeData.financeSummary
+                        ? Math.min(1, fs.totalIncome / (dashboard.salesKpi?.target ?? 200_000_000))
+                        : dashboard.salesKpi ? Math.min(1, dashboard.salesKpi.current / (dashboard.salesKpi.target * 1.15)) : 0.50}
+                      height={130}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col gap-4">
-                <div className="border border-border/60 rounded-xl p-6 bg-card shadow-sm flex flex-col items-center justify-center">
-                  <Gauge
-                    percent={financeData.financeSummary
-                      ? Math.min(100, Math.round((fs.totalIncome / (dashboard.salesKpi?.target ?? 200_000_000)) * 100))
-                      : dashboard.salesKpi ? Math.min(100, Math.round((dashboard.salesKpi.current / dashboard.salesKpi.target) * 100)) : 89}
-                    title="Орлогын гүйцэтгэл" size={210}
-                  />
+              <div className="border border-border/60 rounded-xl p-5 bg-card shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="block w-0.5 h-4 rounded-full bg-purple-500" />
+                  <p className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider">Үзүүлэлтийн харьцуулалт</p>
                 </div>
-                <div className="border border-border/60 rounded-xl p-6 bg-card shadow-sm flex flex-col items-center justify-center gap-3">
-                  <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider">Дүүргэлт</span>
-                  <Liquid
-                    percent={financeData.financeSummary
-                      ? Math.min(1, fs.totalIncome / (dashboard.salesKpi?.target ?? 200_000_000))
-                      : dashboard.salesKpi ? Math.min(1, dashboard.salesKpi.current / (dashboard.salesKpi.target * 1.15)) : 0.50}
-                    height={130}
-                  />
-                </div>
-                <div className="border border-border/60 rounded-xl p-4 bg-card shadow-sm flex-1 flex flex-col">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="block w-0.5 h-4 rounded-full bg-purple-500" />
-                    <p className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider">Үзүүлэлтийн харьцуулалт</p>
-                  </div>
-                  <div className="flex-1">
-                    <Radar data={financeData.financeRadarData?.map(r => ({ label: r.subject, value: r.A })) ?? undefined} height={260} />
-                  </div>
-                </div>
+                <Radar data={financeData.financeRadarData?.map(r => ({ label: r.subject, value: r.A })) ?? undefined} height={280} />
               </div>
             </div>
 

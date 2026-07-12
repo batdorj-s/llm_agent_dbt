@@ -65,7 +65,7 @@ export const ActiveChart: React.FC<ActiveChartProps> = ({ cashData = defaultCash
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={180}>
+      <ResponsiveContainer width="100%" height={240}>
         <AreaChart data={cashData} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
           <defs>
             <linearGradient id="cashGradient" x1="0" y1="0" x2="0" y2="1">
