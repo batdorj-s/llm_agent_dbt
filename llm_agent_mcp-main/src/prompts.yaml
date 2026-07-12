@@ -452,6 +452,15 @@ data_scientist_python_gen: |
   6. Save chart as 'analysis_plot.png' using plt.savefig()
   7. After saving chart, print "##CHART_SAVED##" on its own line
   8. Return ONLY Python code inside a markdown ```python block
+  9. AFTER the chart is saved, ALSO output an interactive chart JSON for the frontend.
+     Print it on its own line as: ##VISUAL_JSON:{"title":"Chart Title","type":"bar|line|area|pie|scatter","data":[{"label":"Category","value":123},...],"config":{"series":["value"],"colors":["#3b82f6","#ef4444","#10b981"]}}
+     - type must be one of: bar, line, area, pie, scatter
+     - data must be an array of {label, value} objects
+     - config.series is the list of numeric keys in data (use ["value"] for single series)
+     - config.colors is optional hex color array
+     - config.description is optional explanation text
+     - Use Mongolian labels for data points where appropriate
+     - For multi-series data, include multiple numeric keys in each data object (e.g. {"label":"Q1","value":100,"value2":200})
 
 data_scientist_explain: |
   You are a senior data scientist. Explain the Python analysis results to a business user.

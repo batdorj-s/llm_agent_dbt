@@ -201,11 +201,22 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
 
         let cleanOutput = output;
         let chartTag = "";
+        let visualTag = "";
         const chartMatch = output.match(/##BASE64_IMAGE:([A-Za-z0-9+/=]+)/);
         if (chartMatch) {
             const base64 = chartMatch[1];
             chartTag = `\n\n<img src="data:image/png;base64,${base64}" alt="Analysis Chart" style="max-width:100%; border-radius:8px; margin:12px 0;" />\n`;
             cleanOutput = output.replace(/##CHART_SAVED##\n?/, "").replace(/##BASE64_IMAGE:[A-Za-z0-9+/=]+\n?/, "");
+        }
+
+        // Parse interactive chart JSON for frontend rendering
+        const visualMatch = output.match(/##VISUAL_JSON:(\{.*?\})\s*$/m);
+        if (visualMatch) {
+            try {
+                const chartData = JSON.parse(visualMatch[1]);
+                visualTag = `\n\n<visual>${JSON.stringify(chartData)}</visual>\n`;
+                cleanOutput = cleanOutput.replace(/##VISUAL_JSON:\{.*?\}\s*$/m, "");
+            } catch { /* invalid JSON, skip interactive chart */ }
         }
 
         const resultBlock = `### Гүйцэтгэлийн үр дүн\n\`\`\`\n${cleanOutput}\n\`\`\`\n`;
@@ -227,6 +238,10 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
         if (chartTag) {
             accumulatedText += chartTag + "\n";
             if (onChunk) onChunk(chartTag + "\n");
+        }
+        if (visualTag) {
+            accumulatedText += visualTag + "\n";
+            if (onChunk) onChunk(visualTag + "\n");
         }
         if (onChunk) onChunk("\n");
         for await (const chunk of stream) {
