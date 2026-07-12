@@ -64,6 +64,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
     // Dev fallback — allow unauthenticated requests with default user
     (req as Request & { userId: string; role: UserRole }).userId = DEFAULT_USER_ID;
     (req as Request & { userId: string; role: UserRole }).role = DEFAULT_ROLE;
+    (req as any).user = { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
     return next();
   }
   const token = authHeader.slice(7);
@@ -71,11 +72,13 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   if (result.success && result.payload) {
     (req as Request & { userId: string; role: UserRole }).userId = result.payload.userId;
     (req as Request & { userId: string; role: UserRole }).role = result.payload.role;
+    (req as any).user = { userId: result.payload.userId, role: result.payload.role };
     return next();
   }
   // Invalid token — fall back to default (dev mode)
   (req as Request & { userId: string; role: UserRole }).userId = DEFAULT_USER_ID;
   (req as Request & { userId: string; role: UserRole }).role = DEFAULT_ROLE;
+  (req as any).user = { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
   next();
 }
 

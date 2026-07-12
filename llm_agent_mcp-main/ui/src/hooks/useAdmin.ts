@@ -3,8 +3,11 @@
 import { useState, useCallback } from "react";
 import type { UploadedFile } from "../components/types";
 import type { PreviewState } from "./usePreview";
+import { useAuth } from "./useAuth";
 
 export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<PreviewState>) => void) {
+  const { token } = useAuth();
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   // KPI target
   const [adjustMetric, setAdjustMetric]         = useState<"sales" | "users" | "churn_rate">("sales");
   const [newTargetValue, setNewTargetValue]       = useState<number>(200_000_000);
@@ -36,7 +39,7 @@ export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<Previ
 
   const fetchUploadedFiles = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/files");
+      const res = await fetch("/api/admin/files", { headers: authHeaders });
       if (res.ok) setUploadedFiles(await res.json());
     } catch {}
   }, []);
@@ -45,7 +48,7 @@ export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<Previ
     if (!confirm("Are you sure you want to delete this asset?")) return;
     try {
       const res = await fetch(`/api/admin/files/${id}`, {
-        method: "DELETE",
+        method: "DELETE", headers: authHeaders,
       });
       if (res.ok) { fetchUploadedFiles(); onRefresh(); }
     } catch {}
@@ -56,7 +59,7 @@ export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<Previ
     setIsUpdatingTarget(true); setSalesUpdateSuccess(null);
     try {
       const res = await fetch(`/api/kpi/${adjustMetric}/target`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ target: newTargetValue }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Update failed"); }
@@ -74,7 +77,7 @@ export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<Previ
       const csvContent = event.target?.result as string;
       try {
         const res = await fetch("/api/admin/upload-csv", {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json", ...authHeaders },
           body: JSON.stringify({ filename: csvFile.name, csvContent, tableName: tableNameInput, description: tableDescInput }),
         });
         const data = await res.json();
@@ -102,7 +105,7 @@ export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<Previ
     formData.append("description", excelDescInput);
     try {
       const res = await fetch("/api/admin/upload-excel", {
-        method: "POST", body: formData,
+        method: "POST", headers: authHeaders, body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
@@ -127,7 +130,7 @@ export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<Previ
     formData.append("department", "general");
     try {
       const res = await fetch("/api/admin/upload-doc", {
-        method: "POST", body: formData,
+        method: "POST", headers: authHeaders, body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
