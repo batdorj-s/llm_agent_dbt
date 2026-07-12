@@ -158,3 +158,74 @@ documents:
       created_at: "2026-01-01"
       source_name: "Business Glossary"
     keywords: ["churn", "churn rate", "алдагдал", "харилцагч", "retention", "тасралт", "үйлчилгээ"]
+
+  # ── Үйлдвэрлэлийн тооцоо ────────────────────────────────
+  - id: "manufacturing_cost"
+    text: "Бүтээгдэхүүний өртөг тооцоо: Нийт зардал = Шууд материал + Шууд ажиллах хүч + Ерөнхий үйлдвэрлэлийн зардал (overhead). Нэг бүтээгдэхүүний өртөг = Нийт зардал / Үйлдвэрлэсэн тоо. Нөөцийг хянах: Safety Stock = (Дундаж өдрийн хэрэглээ × Нөхөн сэргээх хугацаа) + Чухал хэрэглээний нөөц. Экономийн захиалгын хэмжээ (EOQ) = √(2DS/H), энд D=жилийн хэрэглээ, S=захиалгын зардал, H=нэг бүрийн хадгаламжийн зардал."
+    metadata:
+      category: "business_policy"
+      department: "manufacturing"
+      author: "admin"
+      created_at: "2026-01-01"
+      source_name: "Manufacturing Guide"
+    keywords: ["manufacturing", "өртөг", "cost", "production", "үйлдвэрлэл", "material", "labor", "overhead", "EOQ", "safety stock", "нөөц"]
+
+  - id: "inventory_management"
+    text: "Агуулахын удирдлага: FIFO (First In First Out) — эхлээд орсон бараа эхлээд гарна. Лайคลын төрөл: A=өндөр үнэ цэнэ (20%), B=дунд (30%), C=бага (50%). Бүх барааг нэгэн төрөл болгох шаардлагагүй — А төрлийг хянахад л хангалттай. Нөөц хэтрэхээс сэргийлэх: нөөцийн эргэлтийн хугацааг хянах (Inventory Days = (Нөөц / Өртгийн зардал) × 365)."
+    metadata:
+      category: "business_policy"
+      department: "operations"
+      author: "admin"
+      created_at: "2026-01-01"
+      source_name: "Operations Guide"
+    keywords: ["inventory", "нөөц", "warehouse", "агуулах", "FIFO", "ABC analysis", "safety stock", "inventory days"]
+
+  - id: "ifrs_overview"
+    text: "IFRS (Олон Улсын Санхүүгийн Тайлагналын Стандарт): IFRS 15 = Орлого: Эцсийн захиалагчтай гэрээнээс орлого таних. IFRS 16 = Түрээс: Бүх түрээсийг баланс дээр харуулна (operating lease ч бас). IAS 2 = Нөөц: Нөөцийг хамгийн бага өртөгөөр (LCM) үнэлнэ. IAS 16 = Биет хөрөнгө: Эхний өртөг + суулгах зардал. IAS 36 = Хөрөнгийн элэгдэл: Нөөц нөлөөллийг шалгана. Монголд MFRS (Монголын Санхүүгийн Тайлагналын Стандарт) нь IFRS-тэй ихэнхдээ таарч байна."
+    metadata:
+      category: "business_policy"
+      department: "accounting"
+      author: "admin"
+      created_at: "2026-01-01"
+      source_name: "IFRS Reference"
+    keywords: ["IFRS", "MFRS", "стандарт", "standard", "accounting", "нягтлан", "орлого", "түрээс", "нөөц"]
+
+  - id: "sql_error_resolution"
+    text: "SQL Алдаа Засварлах Гарын Авлага: 1) 'relation does not exist' — tabla нэр буруу байна эсвэл CREATE TABLE хийгээгүй байна. 2) 'column does not exist' — баганы нэр буруу эсвэл case-sensitive байна. 3) 'syntax error at' — SQL бичиглэлд алдаа байна —括弧, тасалгал, keywords-ийг шалгана. 4) 'permission denied' — PostgreSQL хэрэглэгчийн эрх хүрэлцэхгүй байна. 5) 'duplicate key' — Primary key давхардсан — ON CONFLICT ашиглах эсвэл өөр ID үүсгэх. 6) 'connection refused' — PostgreSQL ажиллаж байгаа эсэхийг шалгана. 7) 'timeout' — Query хэт удаан — индекс нэмэх эсвэл query optimization хийх."
+    metadata:
+      category: "data_catalog"
+      department: "engineering"
+      author: "admin"
+      created_at: "2026-01-01"
+      source_name: "SQL Best Practices"
+    keywords: ["SQL", "error", "алдаа", "засвар", "troubleshooting", "relation", "column", "permission", "timeout"]
+
+  - id: "cash_flow_analysis"
+    text: "Мөнгөн урсгалын шинжилгээ: 3 төрлийн мөнгөн урсгал: 1) Үйл ажиллагааны (Operating) — үндсэн бизнесийн мөнгөн урсгал. 2) Хөрөнгө оруулалтын (Investing) — хөрөнгө худалдан авах/зарах. 3. Санхүүжилтийн (Financing) — зээл авах/төлөх, хувьцаа гаргах. Free Cash Flow = Үйл ажиллагааны мөнгөн урсгал - Капиталын зардал. Мөнгөн урсгалын хүрээлэлт: Сар бүр мөнгөн урсгалын урьдчилсан төсөв гаргах — зээлийн хүү төлөх хугацааг мөнгөтэй тохируулах."
+    metadata:
+      category: "business_policy"
+      department: "finance"
+      author: "admin"
+      created_at: "2026-01-01"
+      source_name: "Finance Guide"
+    keywords: ["cash flow", "мөнгөн урсгал", "free cash flow", "operating", "investing", "financing", "урьдчилсан төсөв"]
+
+  - id: "data_quality_rules"
+    text: "Өгөгдлийн чанарын дүрэм: 1) Давхардал шалгах: PRIMARY KEY давхардалгүй байх ёстой. 2) Хоосон утга шалгах: NOT NULL constraint-ийг хэрэглэх. 3) Формат шалгах: Огноо YYYY-MM-DD, дүн тоо байх ёстой. 4) Холболт шалгах: FOREIGN KEY нь parent table-д байх ёстой. 5) Түвшин шалгах: CHECK constraint ашиглах (ж.нь: дүн > 0). 6) Автомат шалгалт: dbt test ашиглах — unique, not_null, accepted_values, relationships. 7) Бичилтийн алдаа: Монгол үсгийн encoding UTF-8 байх ёстой."
+    metadata:
+      category: "data_catalog"
+      department: "engineering"
+      author: "admin"
+      created_at: "2026-01-01"
+      source_name: "Data Quality Guide"
+    keywords: ["data quality", "чанар", "дүрэм", "validation", "shalgalt", "PRIMARY KEY", "FOREIGN KEY", "dbt test"]
+
+  - id: "financial_ratios_guide"
+    text: "Санхүүгийн харьцааны гарын авлага: Ликвид байдал: Current Ratio = Эргэлтийн хөрөнгө / Богино хугацааны өр (1.5+ сайн). Quick Ratio = (Эргэлтийн хөрөнгө - Нөөц) / Богино хугацааны өр (1.0+ сайн). Ашгийн хувь: Gross Margin = (Орлого - Өртөг) / Орлого (40%+ сайн). Net Margin = Цэвэр ашиг / Орлого (10%+ сайн). Өрийн хүндэтгэл: Debt-to-Equity = Нийт пассив / Эцэг хөрөнгө (1.0-аас доош сайн). ROI = (Ашиг - Хөрөнгө оруулалт) / Хөрөнгө оруулалт × 100%."
+    metadata:
+      category: "business_policy"
+      department: "finance"
+      author: "admin"
+      created_at: "2026-01-01"
+      source_name: "Finance Reference"
+    keywords: ["ratio", "харьцаа", "current ratio", "quick ratio", "gross margin", "net margin", "debt-to-equity", "ROI", "ликвид"]

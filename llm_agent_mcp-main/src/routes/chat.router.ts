@@ -2,18 +2,49 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { agentLimiter } from "../rate-limiter.js";
 import { runMultiAgent, runMultiAgentStream, type UserRole } from "../multi-agent.js";
-import { verifyToken } from "../auth.js";
+import { verifyToken, DEFAULT_USER_ID, DEFAULT_ROLE } from "../auth.js";
 
 export const chatRouter = Router();
-
-const DEFAULT_USER_ID = "user-admin-001";
-const DEFAULT_ROLE: UserRole = "admin";
 
 const ChatRequestSchema = z.object({
   message: z.string().min(1, "message required").max(10_000, "message too long (max 10000 chars)"),
   threadId: z.string().uuid("threadId must be a valid UUID").optional(),
   visualRequest: z.boolean().optional(),
 });
+
+/**
+ * @openapi
+ * /api/chat:
+ *   post:
+ *     tags: [Chat]
+ *     summary: Send a message to the AI analyst
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [message]
+ *             properties:
+ *               message:
+ *                 type: string
+ *                 maxLength: 10000
+ *                 description: User message in Mongolian or English
+ *               threadId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Conversation thread ID
+ *               visualRequest:
+ *                 type: boolean
+ *                 description: Request visual/chart output
+ *     responses:
+ *       200:
+ *         description: Agent response with analysis
+ *       400:
+ *         description: Validation error
+ *       429:
+ *         description: Rate limit exceeded
+ */
 
 function extractAuth(req: Request): { userId: string; role: UserRole } {
   const authHeader = req.headers.authorization;

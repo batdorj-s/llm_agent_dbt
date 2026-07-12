@@ -214,3 +214,87 @@ describe("selfQueryTransform", () => {
         expect(result.year).toBeUndefined();
     });
 });
+
+// ── Finance Glossary Quality ────────────────────────────────────
+describe("Finance Glossary Quality", () => {
+    let glossary: any;
+
+    beforeEach(async () => {
+        const yaml = readFileSync("src/rag/finance-glossary.yaml", "utf-8");
+        const { parse } = await import("yaml");
+        glossary = parse(yaml);
+    });
+
+    it("has 30+ terms", () => {
+        expect(glossary.terms.length).toBeGreaterThanOrEqual(30);
+    });
+
+    it("each term has required fields", () => {
+        for (const term of glossary.terms) {
+            expect(term.term).toBeTruthy();
+            expect(term.definition).toBeTruthy();
+            expect(term.category).toBeTruthy();
+            expect(term.tags).toBeInstanceOf(Array);
+            expect(term.tags.length).toBeGreaterThan(0);
+        }
+    });
+
+    it("covers balance sheet categories", () => {
+        const categories = glossary.terms.map((t: any) => t.subcategory);
+        expect(categories).toContain("balance_sheet");
+        expect(categories).toContain("income");
+        expect(categories).toContain("expense");
+        expect(categories).toContain("tax");
+    });
+
+    it("includes key Mongolian finance terms", () => {
+        const termNames = glossary.terms.map((t: any) => t.term);
+        expect(termNames).toContain("НӨАТ");
+        expect(termNames).toContain("Орлого");
+        expect(termNames).toContain("Цэвэр ашиг");
+        expect(termNames).toContain("Баланс");
+        expect(termNames).toContain("Актив");
+        expect(termNames).toContain("Пассив");
+        expect(termNames).toContain("Эцэг хөрөнгө");
+    });
+});
+
+// ── Knowledge Base Document Quality ─────────────────────────────
+describe("Knowledge Base Document Quality", () => {
+    let kb: any;
+
+    beforeEach(async () => {
+        const yaml = readFileSync("docs/knowledge-base.yaml", "utf-8");
+        const { parse } = await import("yaml");
+        kb = parse(yaml);
+    });
+
+    it("has 20+ documents", () => {
+        expect(kb.documents.length).toBeGreaterThanOrEqual(20);
+    });
+
+    it("each document has required fields", () => {
+        for (const doc of kb.documents) {
+            expect(doc.id).toBeTruthy();
+            expect(doc.text).toBeTruthy();
+            expect(doc.metadata).toBeTruthy();
+            expect(doc.keywords).toBeInstanceOf(Array);
+        }
+    });
+
+    it("includes manufacturing documents", () => {
+        const ids = kb.documents.map((d: any) => d.id);
+        expect(ids).toContain("manufacturing_cost");
+        expect(ids).toContain("inventory_management");
+    });
+
+    it("includes IFRS reference", () => {
+        const ids = kb.documents.map((d: any) => d.id);
+        expect(ids).toContain("ifrs_overview");
+    });
+
+    it("includes SQL error resolution guide", () => {
+        const ids = kb.documents.map((d: any) => d.id);
+        expect(ids).toContain("sql_error_resolution");
+    });
+});

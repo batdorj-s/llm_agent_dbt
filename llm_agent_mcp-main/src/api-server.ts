@@ -12,19 +12,62 @@ import dotenv from "dotenv";
 
 import { chatRouter } from "./routes/chat.router.js";
 import { requestContext } from "./context.js";
-import { agentLimiter } from "./rate-limiter.js";
+import { agentLimiter, uploadLimiter } from "./rate-limiter.js";
 import helmet from "helmet";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
 import { setupKnowledgeBase } from "./rag.js";
 import { ensureProjectReady, runDbtForTable, runDbtTest, runDbtFinanceModels } from "./setup/init.js";
+import { requireAuth } from "./auth.js";
+import type { UserRole } from "./multi-agent.js";
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, quoteIdent, mergeIntoCombined, buildNoiseSubcategoryFilter } from "./db/data-lake.js";
+import { initConversationSchema, createConversation, getConversations, getConversationById, deleteConversation, addMessage, getMessages, searchConversations } from "./services/conversation.js";
 import { findConceptColumn } from "./agents/columnSynonyms.js";
 import { buildMntAmountExpr } from "./utils/sqlHelpers.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix, getPassportByTableName, parsePassportQuestions } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
+import { sendSuccess, sendError, asyncHandler } from "./utils/apiResponse.js";
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
+
+// ── Swagger/OpenAPI Setup ───────────────────────────────────────
+const swaggerSpec = swaggerJsdoc({
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "Шинжээч.ai API",
+      version: "1.0.0",
+      description: "Mongolian AI Data Analytics Platform — multi-agent system with RAG, KPI dashboards, and SQL analysis.",
+    },
+    servers: [{ url: "http://localhost:3001", description: "Local dev" }],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+        },
+      },
+    },
+    security: [{ bearerAuth: [] }],
+  },
+  apis: ["./src/api-server.ts"],
+});
+
+// ── Request Timeout Middleware ──────────────────────────────────
+const REQUEST_TIMEOUT_MS = 60_000; // 60 seconds
+function requestTimeout(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  const timer = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(408).json({ error: "Request timeout", message: "Request exceeded 60s limit" });
+    }
+  }, REQUEST_TIMEOUT_MS);
+  res.on("finish", () => clearTimeout(timer));
+  res.on("close", () => clearTimeout(timer));
+  next();
+}
 import { computeMetrics } from "./agents/reportMetrics.js";
 import { generateReportPdf, generateReportXlsx } from "./agents/reportExport.js";
 import { generateDataPassport } from "./agents/dataProfiler.js";
@@ -45,7 +88,14 @@ interface DbFileRow {
   [key: string]: unknown;
 }
 
-const DEFAULT_USER = { userId: "user-admin-001", role: "admin" as const };
+/** Helper: extract userId from request (set by requireAuth middleware) */
+function getUserId(req: express.Request): string {
+  return (req as express.Request & { userId: string }).userId || "user-admin-001";
+}
+/** Helper: extract role from request (set by requireAuth middleware) */
+function getRole(req: express.Request): UserRole {
+  return (req as express.Request & { role: UserRole }).role || "admin";
+}
 
 const app = express();
 app.use(helmet());
@@ -58,6 +108,12 @@ app.use((req, _res, next) => {
     req.reqId = reqId;
     requestContext.run({ requestId: reqId, ipAddress: req.ip }, next);
 });
+
+// Auth middleware — extracts userId and role from JWT on every request
+app.use(requireAuth);
+
+// Request timeout — kill requests that exceed 60s
+app.use(requestTimeout);
 
 function log(level: "info" | "warn" | "error", msg: string, req?: express.Request, meta?: Record<string, unknown>) {
     const entry: Record<string, unknown> = {
@@ -105,12 +161,64 @@ app.use("/api/chat", chatRouter);
 // ─────────────────────────────────────────────────────────────
 // Health / Status
 // ─────────────────────────────────────────────────────────────
-app.get("/api/health", (_req, res) => {
+/**
+ * @openapi
+ * /api/health:
+ *   get:
+ *     tags: [System]
+ *     summary: Health check with service status
+ *     responses:
+ *       200:
+ *         description: System health with PostgreSQL and ChromaDB status
+ */
+app.get("/api/health", async (_req, res) => {
+  const checks: Record<string, string> = {};
+
+  // Check PostgreSQL
+  try {
+    const pool = getPool();
+    await pool.query("SELECT 1");
+    checks.postgresql = "ok";
+  } catch {
+    checks.postgresql = "unavailable";
+  }
+
+  // Check ChromaDB
+  try {
+    const ragModule = await import("./rag.js");
+    const client = (ragModule as any).chromaClient;
+    if (client && typeof client.heartbeat === "function") {
+      await client.heartbeat();
+      checks.chromadb = "ok";
+    } else {
+      checks.chromadb = "unavailable";
+    }
+  } catch {
+    checks.chromadb = "unavailable";
+  }
+
+  const mem = process.memoryUsage();
+  const status = Object.values(checks).every(v => v === "ok") ? "ok" : "degraded";
+
   res.json({
-    status: "ok",
+    status,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
+    services: checks,
+    memory: {
+      rss: `${(mem.rss / 1024 / 1024).toFixed(1)}MB`,
+      heapUsed: `${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB`,
+    },
   });
+});
+
+// ── Swagger UI ───────────────────────────────────────────────
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: "Шинжээч.ai API Docs",
+  customCss: ".swagger-ui .topbar { display: none }",
+}));
+app.get("/api-docs.json", (_req, res) => {
+  res.json(swaggerSpec);
 });
 
 app.get("/api/status", (req, res) => {
@@ -138,7 +246,7 @@ function extractDateFilter(req: express.Request): { startDate?: string; endDate?
 // KPI Dashboard Data
 // ─────────────────────────────────────────────────────────────
 app.get("/api/kpi/:metric", async (req, res) => {
-  const { userId } = DEFAULT_USER;
+  const userId = getUserId(req);
 
   const { metric } = req.params;
   const VALID_METRICS = ["sales", "users", "churn_rate"];
@@ -197,7 +305,7 @@ app.get("/api/kpi-history", async (req, res) => {
   const limit = req.query.limit ? Number(req.query.limit) : 6;
   const repo = await getRepository();
   const dateFilter = extractDateFilter(req);
-  const history = await repo.getSalesHistory(limit, dateFilter, DEFAULT_USER.userId);
+  const history = await repo.getSalesHistory(limit, dateFilter, getUserId(req));
   res.json(history);
 });
 
@@ -208,7 +316,7 @@ app.get("/api/dashboard/computed-metrics", async (req, res) => {
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
-    const metrics = await computeMetrics(DEFAULT_USER.userId, startDate, endDate);
+    const metrics = await computeMetrics(getUserId(req), startDate, endDate);
     if (!metrics) return res.status(404).json({ error: "No active dataset found" });
     res.json(metrics);
   } catch (err: unknown) {
@@ -220,7 +328,7 @@ app.get("/api/dashboard/computed-metrics", async (req, res) => {
 // Finance Default Charts
 // ─────────────────────────────────────────────────────────────
 app.get("/api/finance-charts", async (req, res) => {
-  const userId = DEFAULT_USER.userId;
+  const userId = getUserId(req);
   const pool = getPool();
 
   try {
@@ -627,7 +735,7 @@ app.get("/api/finance-charts", async (req, res) => {
 // Finance Audit — row-level classification breakdown for transparency
 // ─────────────────────────────────────────────────────────────
 app.get("/api/finance-audit", async (req, res) => {
-  const userId = DEFAULT_USER.userId;
+  const userId = getUserId(req);
 
   try {
     const pool = getPool();
@@ -690,7 +798,7 @@ app.get("/api/finance-audit", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 app.get("/api/table-passport", async (req, res) => {
   try {
-    const entry = await getActiveCatalogEntry(DEFAULT_USER.userId);
+    const entry = await getActiveCatalogEntry(getUserId(req));
     if (!entry) return res.json({ available: false });
 
     const tableName = entry.table_name;
@@ -717,7 +825,7 @@ app.get("/api/table-passport", async (req, res) => {
 // Finance Detailed Reports — Income Statement, Expense Breakdown, Cash Flow
 // ─────────────────────────────────────────────────────────────
 app.get("/api/finance-reports", async (req, res) => {
-  const userId = DEFAULT_USER.userId;
+  const userId = getUserId(req);
   const pool = getPool();
 
   try {
@@ -931,7 +1039,7 @@ app.post("/api/report/export-pdf", async (req, res) => {
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
-    const pdfBuffer = await generateReportPdf(DEFAULT_USER.userId, startDate, endDate);
+    const pdfBuffer = await generateReportPdf(getUserId(req), startDate, endDate);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.pdf"`);
     res.send(pdfBuffer);
@@ -944,7 +1052,7 @@ app.post("/api/report/export-xlsx", async (req, res) => {
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
-    const xlsxBuffer = await generateReportXlsx(DEFAULT_USER.userId, startDate, endDate);
+    const xlsxBuffer = await generateReportXlsx(getUserId(req), startDate, endDate);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="report-${new Date().toISOString().split("T")[0]}.xlsx"`);
     res.send(xlsxBuffer);
@@ -1237,7 +1345,15 @@ async function processUploadedTable(
 // Admin: Upload CSV Dataset
 // ─────────────────────────────────────────────────────────────
 app.post("/api/admin/upload-csv", async (req, res) => {
-  const { userId, role } = DEFAULT_USER;
+  const userId = getUserId(req);
+  const role = getRole(req);
+
+  // Rate limit uploads per user
+  const uploadLimit = await uploadLimiter.check(userId);
+  if (!uploadLimit.allowed) {
+    return res.status(429).json({ error: uploadLimit.message, resetInMs: uploadLimit.resetInMs });
+  }
+
   const { filename, csvContent, tableName, description } = req.body;
   if (!filename || !csvContent || !tableName || !description) {
     return res.status(400).json({ error: "filename, csvContent, tableName, and description are required" });
@@ -1276,7 +1392,15 @@ app.post("/api/admin/upload-csv", async (req, res) => {
 // Admin: Upload Excel (XLSX/XLS)
 // ─────────────────────────────────────────────────────────────
 app.post("/api/admin/upload-excel", upload.single("file"), async (req, res) => {
-  const { userId, role } = DEFAULT_USER;
+  const userId = getUserId(req);
+  const role = getRole(req);
+
+  // Rate limit uploads per user
+  const uploadLimit = await uploadLimiter.check(userId);
+  if (!uploadLimit.allowed) {
+    return res.status(429).json({ error: uploadLimit.message, resetInMs: uploadLimit.resetInMs });
+  }
+
   const { tableName, description } = req.body;
 
   if (!req.file || !tableName || !description) {
@@ -1375,6 +1499,13 @@ if (!fs.existsSync(DOCUMENTS_DIR)) {
 app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
+  // Rate limit uploads per user
+  const userId = getUserId(req);
+  const uploadLimit = await uploadLimiter.check(userId);
+  if (!uploadLimit.allowed) {
+    return res.status(429).json({ error: uploadLimit.message, resetInMs: uploadLimit.resetInMs });
+  }
+
   const { description, category, department } = req.body;
   const tempPath = req.file.path;
   const originalName = req.file.originalname;
@@ -1408,7 +1539,7 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     await addDocumentToCatalog(
         docId,
         `Document: ${originalName}\nDescription: ${description}\n\nContent:\n${extractedText}`,
-        { category: (category === "manual" ? "business_policy" : "data_catalog") as "business_policy" | "data_catalog", department: department || "general", author: DEFAULT_USER.userId },
+        { category: (category === "manual" ? "business_policy" : "data_catalog") as "business_policy" | "data_catalog", department: department || "general", author: getUserId(req) },
         [originalName.toLowerCase(), "document"]
     );
 
@@ -1416,7 +1547,7 @@ app.post("/api/admin/upload-doc", upload.single("file"), async (req, res) => {
     await getPool().query(
         `INSERT INTO uploaded_files (id, filename, type, description, semantic_groups, generated_at, owner_id, visibility) VALUES ($1, $2, $3, $4, $5, $6, $7, 'private')
          ON CONFLICT (id) DO UPDATE SET filename=EXCLUDED.filename, type=EXCLUDED.type, description=EXCLUDED.description, generated_at=EXCLUDED.generated_at, owner_id=EXCLUDED.owner_id, visibility=EXCLUDED.visibility`,
-        [docId, originalName, "document", description, null, new Date().toISOString(), DEFAULT_USER.userId]
+        [docId, originalName, "document", description, null, new Date().toISOString(), getUserId(req)]
     );
 
     res.json({ success: true, message: `Document '${originalName}' indexed.` });
@@ -1458,7 +1589,7 @@ app.post("/api/feedback", async (req, res) => {
 
   const entry = {
     id: `feedback_${Date.now()}`,
-    userId: DEFAULT_USER.userId,
+    userId: getUserId(req),
     message,
     response: response || "",
     rating,
@@ -1475,7 +1606,7 @@ app.post("/api/feedback", async (req, res) => {
 
     // Do NOT add to RAG automatically. It must be approved by admin.
 
-    console.log(`[Feedback] ${rating} feedback from ${DEFAULT_USER.userId}: "${message.slice(0, 80)}..."`);
+    console.log(`[Feedback] ${rating} feedback from ${getUserId(req)}: "${message.slice(0, 80)}..."`);
     const suggestions = rating === "negative"
         ? "Таны санал бүртгэгдлээ. Дараах зүйлсийг санал болгож байна:\n- **Файл оруулах**: Хэрэв өгөгдөл дутуу байвал CSV файлаа upload хийгээрэй\n- **Тодорхой асуулт**: Баганын нэр, огноогоо дурдаж асууна уу\n- **Агент солих**: 'SQL query бич' эсвэл 'борлуулалтын тайлан' гэх мэт чиглэл өгнө үү"
         : "Санал өгсөнд баярлалаа!";
@@ -1570,6 +1701,80 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// Conversation Persistence — CRUD for chat history
+// ─────────────────────────────────────────────────────────────
+app.get("/api/conversations", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const offset = Number(req.query.offset) || 0;
+    const conversations = await getConversations(userId, limit, offset);
+    res.json({ success: true, data: conversations });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.get("/api/conversations/search", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const q = req.query.q as string;
+    if (!q || q.trim().length === 0) {
+      return res.status(400).json({ error: "Search query 'q' is required" });
+    }
+    const conversations = await searchConversations(userId, q, 20);
+    res.json({ success: true, data: conversations });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.get("/api/conversations/:id", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const conversation = await getConversationById(req.params.id, userId);
+    if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+    res.json({ success: true, data: conversation });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.get("/api/conversations/:id/messages", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const offset = Number(req.query.offset) || 0;
+    const messages = await getMessages(req.params.id, userId, limit, offset);
+    res.json({ success: true, data: messages });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.post("/api/conversations", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { title, agentType } = req.body;
+    const conversation = await createConversation(userId, title, agentType);
+    res.status(201).json({ success: true, data: conversation });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.delete("/api/conversations/:id", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const deleted = await deleteConversation(req.params.id, userId);
+    if (!deleted) return res.status(404).json({ error: "Conversation not found" });
+    res.json({ success: true, message: "Conversation deleted" });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 // Centralized error handler middleware
 // ─────────────────────────────────────────────────────────────
 app.use((err: Error & { code?: string; statusCode?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -1598,9 +1803,49 @@ async function start() {
   }
   await setupKnowledgeBase();
 
-  app.listen(PORT, () => {
+  // Initialize conversation persistence schema
+  await initConversationSchema();
+
+  const server = app.listen(PORT, () => {
     console.log(`\nAPI Server running at http://localhost:${PORT}`);
   });
+
+  // ── Graceful Shutdown ──────────────────────────────────────
+  const SHUTDOWN_TIMEOUT_MS = 10_000;
+  let isShuttingDown = false;
+
+  async function gracefulShutdown(signal: string) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`\n[API] ${signal} received — starting graceful shutdown...`);
+
+    // Stop accepting new connections
+    server.close(() => {
+      console.log("[API] HTTP server closed");
+    });
+
+    // Force shutdown after timeout
+    const forceTimer = setTimeout(() => {
+      console.error("[API] Forced shutdown — timeout exceeded");
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+
+    try {
+      // Close PostgreSQL pool
+      const pool = getPool();
+      await pool.end();
+      console.log("[API] PostgreSQL pool closed");
+    } catch (err) {
+      console.error("[API] Error closing PostgreSQL pool:", (err as Error).message);
+    }
+
+    clearTimeout(forceTimer);
+    console.log("[API] Graceful shutdown complete");
+    process.exit(0);
+  }
+
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 }
 if (process.env.NODE_ENV !== "test") {
   start().catch((err) => {

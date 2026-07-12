@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import type { Request, Response, NextFunction } from "express";
 import type { UserRole } from "./multi-agent.js";
 
 export interface TokenPayload {
@@ -40,14 +41,42 @@ export function sign(data: string, secret: string): string {
     .replace(/\//g, "_");
 }
 
-const DEV_JWT_SECRET_FALLBACK = "dev-secret-change-in-production-min-32-chars!!";
-const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET_FALLBACK;
 if (!process.env.JWT_SECRET) {
   if (process.env.NODE_ENV === "production") {
     console.error("[FATAL] JWT_SECRET is required in production. Exiting.");
     process.exit(1);
   }
   console.warn("[WARN] JWT_SECRET not set — using insecure dev fallback. Set JWT_SECRET in .env for production.");
+}
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production-min-32-chars!!";
+
+/** Default userId when no JWT is provided (dev fallback only) */
+export const DEFAULT_USER_ID = "user-admin-001";
+export const DEFAULT_ROLE: UserRole = "admin";
+
+/**
+ * Express middleware: extracts userId and role from JWT Bearer token.
+ * If no valid token is present, falls back to DEFAULT_USER_ID (dev mode).
+ */
+export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    // Dev fallback — allow unauthenticated requests with default user
+    (req as Request & { userId: string; role: UserRole }).userId = DEFAULT_USER_ID;
+    (req as Request & { userId: string; role: UserRole }).role = DEFAULT_ROLE;
+    return next();
+  }
+  const token = authHeader.slice(7);
+  const result = verifyToken(token);
+  if (result.success && result.payload) {
+    (req as Request & { userId: string; role: UserRole }).userId = result.payload.userId;
+    (req as Request & { userId: string; role: UserRole }).role = result.payload.role;
+    return next();
+  }
+  // Invalid token — fall back to default (dev mode)
+  (req as Request & { userId: string; role: UserRole }).userId = DEFAULT_USER_ID;
+  (req as Request & { userId: string; role: UserRole }).role = DEFAULT_ROLE;
+  next();
 }
 
 export function createToken(userId: string, role: UserRole): string {

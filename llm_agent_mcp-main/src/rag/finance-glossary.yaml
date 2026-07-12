@@ -1,4 +1,274 @@
 terms:
+  # ── Актив, Пассив, Эцэг Хөрөнгө ──────────────────────────
+  - term: "Актив"
+    definition: >
+      Assets — resources owned by the company with economic value.
+      Компанийн эзэмшиж буй эдийн засгийн үнэ цэнэтэй нөөц.
+      Жишээ: мөнгөн хөрөнгө, бараа материал, эд хөрөнгө, үл хөдлөх хөрөнгө.
+    category: finance
+    subcategory: balance_sheet
+    tags: [assets, актив, хөрөнгө]
+
+  - term: "Пассив"
+    definition: >
+      Liabilities — obligations the company owes to external parties.
+      Компанийн гадагш төлөх ёстой өр төлбөр, хариуцлага.
+      Жишээ: зээл, нийлүүлэгчийн өр, цалингийн өр.
+    category: finance
+    subcategory: balance_sheet
+    tags: [liabilities, пассив, өр төлбөр]
+
+  - term: "Эцэг хөрөнгө"
+    definition: >
+      Equity — the owner's residual interest in assets after deducting liabilities.
+      Активын үнэ цэнээс пассивыг хассан дүн — эзэмшигчийн хувь.
+      Нийт актив = Пассив + Эцэг хөрөнгө.
+    category: finance
+    subcategory: balance_sheet
+    tags: [equity, эцэг хөрөнгө, хувь]
+
+  # ── Орлого, Зардал, Ашиг ──────────────────────────────────
+  - term: "Орлого"
+    definition: >
+      Revenue — income earned from primary business operations.
+      Үндсэн үйл ажиллагаанаас олсон орлого.
+      Жишээ: бараа борлуулалтын орлого, үйлчилгээний орлого.
+    category: finance
+    subcategory: income
+    tags: [revenue, орлого, борлуулалт]
+
+  - term: "Борлуулалтын орлого"
+    definition: >
+      Sales revenue — total income from sold goods or services.
+      Борлуулсан бараа, үйлчилгээний нийт орлого.
+      Data Lake dataset-ийн орлого эсвэл дүн хэмжээс колонмын өгөгдлөөс тооцогддог.
+    category: finance
+    subcategory: income
+    tags: [sales, revenue, борлуулалт, орлого]
+
+  - term: "Өртөг"
+    definition: >
+      Cost of Goods Sold (COGS) — direct costs attributable to production.
+      Бүтээгдэхүүн үйлдвэрлэлийн шууд зардал.
+      Жишээ: түүхий эд, ажиллах хүчний шууд зардал.
+    category: finance
+    subcategory: expense
+    tags: [COGS, өртөг, зардал]
+
+  - term: "Үйл ажиллагааны зардал"
+    definition: >
+      Operating expenses — costs not directly tied to production.
+      Үйлдвэрлэлтэй шууд холбоогүй зардал.
+      Жишээ: түрээсийн зардал, цалин, маркетингийн зардал.
+    category: finance
+    subcategory: expense
+    tags: [operating expense, OPEX, үйл ажиллагааны зардал]
+
+  - term: "Цэвэр ашиг"
+    definition: >
+      Net profit — total revenue minus all expenses, taxes, and interest.
+      Нийт орлогоос бүх зардал, татвар, хүүгийг хассан цэвэр дүн.
+      Компанийн үйл ажиллагааны эцсийн үр дүн.
+    category: finance
+    subcategory: profit
+    tags: [net profit, цэвэр ашиг, ашиг]
+
+  - term: "Ашгийн хувь"
+    definition: >
+      Profit margin — percentage of revenue that becomes profit.
+      Орлогоос ашиг нь хувь хэд байгааг илэрхийлнэ.
+      Жишээ: 20% ашгийн хувь = ₮100 орлогоос ₮20 ашиг.
+    category: finance
+    subcategory: profit
+    tags: [profit margin, ашгийн хувь, маржин]
+
+  # ── Татвар, НӨАТ ──────────────────────────────────────────
+  - term: "НӨАТ"
+    definition: >
+      Value Added Tax (VAT) — Нэмэлт Өртгийн Албан Татвар.
+      Бараа, үйлчилгээний нэмэлт өртөгт ногдуулсан татвар.
+      Монголд 10% байна. НӨАТ-тай гүйлгээнд хоёр удаа татвар тооцогддог.
+    category: finance
+    subcategory: tax
+    tags: [VAT, НӨАТ, татвар, нэмэлт өртөг]
+
+  - term: "Татвар"
+    definition: >
+      Tax — mandatory financial charge imposed by the government.
+      Засгийн газрын тогтоосон албан татвар.
+      Жишээ: орлогын татвар, НӨАТ, ашгийн татвар.
+    category: finance
+    subcategory: tax
+    tags: [tax, татвар, албан татвар]
+
+  # ── Мөнгөн урсгал ────────────────────────────────────────
+  - term: "Мөнгөн урсгал"
+    definition: >
+      Cash flow — movement of money in and out of the business.
+      Бизнесийн мөнгөн орлого болон зарлагын урсгал.
+      Эерэг мөнгөн урсгал = орлого > зарлага.
+    category: finance
+    subcategory: cash_flow
+    tags: [cash flow, мөнгөн урсгал, урсгал]
+
+  # ── Данс, Бүртгэл, Баримт ────────────────────────────────
+  - term: "Данс"
+    definition: >
+      Account/Ledger — record-keeping unit for financial transactions.
+      Санхүүгийн гүйлгээг бүртгэх нэгж.
+      Жишээ: бэлэн мөнгөний данс, харилцах данс, орлогын данс.
+    category: finance
+    subcategory: accounting
+    tags: [account, ledger, данс, бүртгэл]
+
+  - term: "Бүртгэл"
+    definition: >
+      Journal entry — recording a financial transaction in the accounting system.
+      Санхүүгийн гүйлгээг нягтлан бодох бүртгэлд оруулах.
+      Дебит, кредит хоёр талтай байна.
+    category: finance
+    subcategory: accounting
+    tags: [journal entry, бүртгэл, дебит, кредит]
+
+  - term: "Баримт"
+    definition: >
+      Invoice/Receipt — official document recording a transaction.
+      Гүйлгээг баталгаажуулсан албан ёсны баримт.
+      Жишээ: нэхэмжлэх, төлбөрийн баримт, тооцооны хуудас.
+    category: finance
+    subcategory: accounting
+    tags: [invoice, receipt, баримт, нэхэмжлэх]
+
+  # ── Баланс (Нягтлан Бодох Бүртгэл) ────────────────────────
+  - term: "Баланс"
+    definition: >
+      Balance Sheet — financial statement showing assets, liabilities, and equity at a point in time.
+      Тодорхой цаг хугацааны актив, пассив, эцэг хөрөнгийн тайлан.
+      Нийт актив = Пассив + Эцэг хөрөнгө гэж тэнцүү байна.
+    category: finance
+    subcategory: financial_statement
+    tags: [balance sheet, баланс, тайлан]
+
+  - term: "Ашгийн тооцоо"
+    definition: >
+      Income Statement (P&L) — shows revenue, expenses, and profit over a period.
+      Орлого, зардал, ашгийг тодорхой хугацаанд харуулсан тайлан.
+      Компанийн ашигтай эсэхийг харуулна.
+    category: finance
+    subcategory: financial_statement
+    tags: [income statement, P&L, ашгийн тооцоо, тайлан]
+
+  # ── Хүү, Зээл ────────────────────────────────────────────
+  - term: "Хүүгийн орлого"
+    definition: >
+      Interest income — earnings from deposits or lending.
+      Банкны хадгаламж эсвэл зээлдүүлсний орлого.
+    category: finance
+    subcategory: income
+    tags: [interest income, хүүгийн орлого]
+
+  - term: "Хүүгийн зардал"
+    definition: >
+      Interest expense — cost of borrowing money.
+      Зээл авсаны төлбөр — хүүгийн зардал.
+    category: finance
+    subcategory: expense
+    tags: [interest expense, хүүгийн зардал]
+
+  - term: "Өрийн хүндэтгэл"
+    definition: >
+      Debt ratio — measure of a company's financial leverage.
+      Нийт пассив / Нийт актив = Өрийн хүндэтгэл.
+      50%-аас дээш бол эрсдэлтэй.
+    category: finance
+    subcategory: ratio
+    tags: [debt ratio, өрийн хүндэтгэл, харьцаа]
+
+  # ── Хөрөнгө төрөл ────────────────────────────────────────
+  - term: "Биет хөрөнгө"
+    definition: >
+      Fixed assets — long-term tangible assets used in operations.
+      Урт хугацааны биет хөрөнгө.
+      Жишээ: барилга, тоног төхөөрөмж, автомашин.
+    category: finance
+    subcategory: assets
+    tags: [fixed assets, биет хөрөнгө, урт хугацааны]
+
+  - term: "Эргэлтийн хөрөнгө"
+    definition: >
+      Current assets — assets expected to be converted to cash within one year.
+      Нэг жилийн дотор мөнгө болох хөрөнгө.
+      Жишээ: бэлэн мөнгө, нөөц, богино хугацааны зээл.
+    category: finance
+    subcategory: assets
+    tags: [current assets, эргэлтийн хөрөнгө, богино хугацааны]
+
+  - term: "Богино хугацааны өр төлбөр"
+    definition: >
+      Current liabilities — obligations due within one year.
+      Нэг жилийн дотор төлөх ёстой өр төлбөр.
+      Жишээ: нийлүүлэгчийн өр, богино хугацааны зээл.
+    category: finance
+    subcategory: liabilities
+    tags: [current liabilities, богино хугацааны өр]
+
+  - term: "Урт хугацааны өр төлбөр"
+    definition: >
+      Long-term liabilities — obligations due after one year.
+      Нэг жилээс дээш хугацаанд төлөх ёстой өр төлбөр.
+      Жишээ: урт хугацааны зээл, облигаци.
+    category: finance
+    subcategory: liabilities
+    tags: [long-term liabilities, урт хугацааны өр]
+
+  # ── Үзүүлэлт, харьцаа ────────────────────────────────────
+  - term: "Ликвид байдал"
+    definition: >
+      Liquidity — ability to meet short-term obligations.
+      Богино хугацааны өр төлбөрөө төлж чадах чадвар.
+      Ликвид байдал сайтай бол богино хугацааны өрөө төлж чадна.
+    category: finance
+    subcategory: ratio
+    tags: [liquidity, ликвид, чадвар]
+
+  - term: "Рентабельность"
+    definition: >
+      Return on Investment (ROI) — profitability relative to investment.
+      Хөрөнгө оруулалтын өгөөж.
+      ROI = (Ашиг / Хөрөнгө оруулалт) × 100%.
+    category: finance
+    subcategory: ratio
+    tags: [ROI, рентабельность, өгөөж]
+
+  # ── Төсөв, KPI ───────────────────────────────────────────
+  - term: "Төсөв"
+    definition: >
+      Budget — planned financial outline for a specific period.
+      Тодорхой хугацааны санхүүгийн төлөвлөгөө.
+      Бодитой зардал, орлогыг төсөвтэй харьцуулж хянах.
+    category: finance
+    subcategory: planning
+    tags: [budget, төсөв, төлөвлөгөө]
+
+  - term: "Гүйцэтгэлийн үзүүлэлт"
+    definition: >
+      Key Performance Indicator (KPI) — measurable value showing effectiveness.
+      Байгууллагын үр ашгийг хэмжих чухал үзүүлэлт.
+      Жишээ: борлуулалтын өсөлт, хэрэглэгчийн сэтгэл ханамж.
+    category: finance
+    subcategory: planning
+    tags: [KPI, үзүүлэлт, гүйцэтгэл]
+
+  - term: "Зах зээлийн эзэх хувь"
+    definition: >
+      Market share — portion of a market controlled by a company.
+      Зах зээл дээрх компанийн эзлэх хувь.
+      Зах зээлийн эзэх хувь өсөх нь өрсөлдөх чадварыг илэрхийлнэ.
+    category: finance
+    subcategory: planning
+    tags: [market share, зах зээл, эзэх хувь]
+
+  # ── Бусад ─────────────────────────────────────────────────
   - term: "Дотоод шилжүүлэг"
     definition: >
       Internal transfer between company accounts.
@@ -61,3 +331,111 @@ terms:
     category: finance
     subcategory: party
     tags: [counterparty, partner, харилцагч, байгууллага, хүн]
+
+  - term: "Ажиллах хүчний зардал"
+    definition: >
+      Labor cost — wages and benefits paid to employees.
+      Ажилчдад олгосон цалин, хангамжийн зардал.
+      Үйл ажиллагааны зардлын томоохон хэсэг.
+    category: finance
+    subcategory: expense
+    tags: [labor cost, цалин, ажиллах хүч, зардал]
+
+  - term: "Нийлүүлэгчийн өр"
+    definition: >
+      Accounts payable — money owed to suppliers for goods/services received.
+      Нийлүүлэгчээс авсан бараа, үйлчилгээний төлбөр.
+      Богино хугацааны пассивын хэсэг.
+    category: finance
+    subcategory: liabilities
+    tags: [accounts payable, нийлүүлэгчийн өр]
+
+  - term: "Хүлээн авагчийн өр"
+    definition: >
+      Accounts receivable — money owed by customers for goods/services delivered.
+      Харилцагчаас бараа, үйлчилгээний төлбөрөөр авах мөнгө.
+      Эргэлтийн хөрөнгийн хэсэг.
+    category: finance
+    subcategory: assets
+    tags: [accounts receivable, хүлээн авагчийн өр]
+
+  - term: "Нөөц"
+    definition: >
+      Inventory — goods held for sale or raw materials for production.
+      Борлуулах зорилготой бараа эсвэл түүхий эд.
+      Эргэлтийн хөрөнгийн хамгийн том хэсэг байж болно.
+    category: finance
+    subcategory: assets
+    tags: [inventory, нөөц, бараа]
+
+  - term: "Элэгдэл"
+    definition: >
+      Depreciation — allocation of fixed asset cost over useful life.
+      Биет хөрөнгийн өртгийг хэрэглэх хугацаанд хуваарилсан зардал.
+      Баланс дээр хөрөнгийн үнэ цэнийг бууруулна.
+    category: finance
+    subcategory: expense
+    tags: [depreciation, элэгдэл]
+
+  - term: "Амортизаци"
+    definition: >
+      Amortization — spreading intangible asset cost over time.
+      Биет бус хөрөнгийн өртгийг хугацаанд хуваарилсан зардал.
+      Жишээ: патентын эрх, программ хангамжийн лиценз.
+    category: finance
+    subcategory: expense
+    tags: [amortization, амортизаци]
+
+  - term: "Хөрөнгө оруулалт"
+    definition: >
+      Investment — allocation of resources with expectation of future return.
+      Ирээдүйн орлого, ашгийг хүлээн хөрөнгө зарцуулах.
+      Жишээ: шинэ тоног төхөөрөмж худалдан авах, хувьцаа худалдан авах.
+    category: finance
+    subcategory: planning
+    tags: [investment, хөрөнгө оруулалт]
+
+  - term: "Ашигтай байдал"
+    definition: >
+      Profitability — ability to generate profit relative to revenue or assets.
+      Орлого, хөрөнгөтэй харьцуулан ашиг олох чадвар.
+      Өндөр ашигтай байдал = сайн санхүүгийн байдал.
+    category: finance
+    subcategory: ratio
+    tags: [profitability, ашигтай байдал]
+
+  - term: "Эргэлт хурдан байдал"
+    definition: >
+      Turnover rate — how quickly assets are used to generate revenue.
+      Хөрөнгө хэр хурдан эргэлдэж орлого үүсгэж байгааг хэмжинэ.
+      Эргэлт хурдан = мөнгө хурдан орж ирнэ.
+    category: finance
+    subcategory: ratio
+    tags: [turnover, эргэлт, хурдан]
+
+  - term: "Бүтээгдэхүүний өртөг"
+    definition: >
+      Product cost — total cost to produce one unit of a product.
+      Нэг бүтээгдэхүүнийг үйлдвэрлэх нийт зардал.
+      Шууд зардал + ерөнхий үйлдвэрлэлийн зардал = Бүтээгдэхүүний өртөг.
+    category: finance
+    subcategory: cost
+    tags: [product cost, бүтээгдэхүүний өртөг, өртөг]
+
+  - term: "Ерөнхий үйлдвэрлэлийн зардал"
+    definition: >
+      Manufacturing overhead — indirect costs of production.
+      Үйлдвэрлэлтэй холбоотой шууд бус зардал.
+      Жишээ: цахилгааны зардал, үйлдвэрийн түрээс, засвар үйлчилгээ.
+    category: finance
+    subcategory: cost
+    tags: [overhead, ерөнхий зардал, үйлдвэрлэл]
+
+  - term: "Тооцооны хүндэтгэл"
+    definition: >
+      Break-even point — where total revenue equals total costs.
+      Орлого = Зардал байх цэг — ашиг ч алдагдалгүй.
+      Тооцооны хүндэтгэлээс дээшээ ашигтай болно.
+    category: finance
+    subcategory: analysis
+    tags: [break-even, тооцооны хүндэтгэл]
