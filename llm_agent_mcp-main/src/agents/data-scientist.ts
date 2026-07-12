@@ -50,10 +50,10 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
         if (llm) {
             try {
                 filter = await selfQueryTransform(query, (prompt: string) =>
-                    llm.invoke([
+                    invokeWithFallback([
                         { role: "system", content: prompt },
                         { role: "user", content: query }
-                    ]).then((r: any) => r.content as string)
+                    ], { temperature: 0, timeout: 30000 }).then((r) => r.content)
                 );
                 log.info("Self-query filter applied", { filter: JSON.stringify(filter) });            } catch (sqErr) {
                 log.warn("Self-query failed:", { error: (sqErr as Error).message });

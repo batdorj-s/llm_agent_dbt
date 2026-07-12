@@ -1,4 +1,4 @@
-import { createLLM, createLLMWithOrder } from "../llm-provider.js";
+import { createLLM, invokeWithFallback, streamWithFallback } from "../llm-provider.js";
 import { selfQueryTransform, searchKnowledgeBase, searchKnowledgeBaseWithFilter } from "../rag.js";
 import { buildFinanceKpiContext } from "../tools/enterprise-tools.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
@@ -23,17 +23,13 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
         let filter;
         if (llm) {
             try {
-                const structuredLlm = (llm as any).withStructuredOutput
-                    ? llm
-                    : await createLLMWithOrder({ temperature: 0, providerOrder: ["groq", "gemini"] });
-                if (structuredLlm) {
-                    filter = await selfQueryTransform(query, (prompt: string) =>
-                        structuredLlm.invoke([
-                            { role: "system", content: prompt },
-                            { role: "user", content: query }
-                        ]).then((r: any) => r.content as string)
-                    );
-                    log.info("Self-query filter applied", { filter: JSON.stringify(filter) });                }
+                filter = await selfQueryTransform(query, (prompt: string) =>
+                    invokeWithFallback([
+                        { role: "system", content: prompt },
+                        { role: "user", content: query }
+                    ], { temperature: 0, timeout: 30000 }).then((r) => r.content)
+                );
+                log.info("Self-query filter applied", { filter: JSON.stringify(filter) });
             } catch (sqErr) {
                 log.warn("Self-query failed, using plain search:", { error: (sqErr as Error).message });
             }
@@ -111,22 +107,7 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
     ]);
 
     try {
-        let stream: any;
-        try {
-            stream = await withTimeout(llm.stream(executeMessages), "Finance agent response");
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            log.warn("Primary LLM failed, attempting fallback to GROQ:", { error: msg });
-            const fallbackLLM = await createLLMWithOrder({
-                temperature: 0,
-                providerOrder: ["groq", "openai"]
-            });
-            if (fallbackLLM) {
-                stream = await withTimeout(fallbackLLM.stream(executeMessages), "Finance agent fallback response");
-            } else {
-                throw err;
-            }
-        }
+        const { stream } = await streamWithFallback(executeMessages, { temperature: 0, timeout: 60000 });
 
         let fullText = prefix;
         for await (const chunk of stream) {

@@ -256,6 +256,59 @@ export async function invokeWithFallback(
 }
 
 /**
+ * Like invokeWithFallback but returns a stream. Used for streaming responses.
+ */
+export async function streamWithFallback(
+    messages: { role: string; content: string }[],
+    options?: {
+        temperature?: number;
+        providerOrder?: LLMProvider[];
+        timeout?: number;
+    }
+): Promise<{ stream: any; provider: LLMProvider }> {
+    const temp = options?.temperature ?? 0;
+    const orderedProviders = getOrderedProviders(options?.providerOrder);
+
+    if (orderedProviders.length === 0) {
+        throw new AllProvidersExhaustedError(null, []);
+    }
+
+    let lastError: Error | null = null;
+    const attempted: LLMProvider[] = [];
+    for (const p of orderedProviders) {
+        let lastProviderError: Error | null = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                console.log(`[LLM] Streaming ${p.provider.toUpperCase()} — ${p.model} (attempt ${attempt + 1})...`);
+                const model = await createProviderModel(p, { temperature: temp, streaming: true });
+
+                const stream = options?.timeout
+                    ? await withTimeout(model.stream(messages), `${p.provider} stream`, options.timeout)
+                    : await model.stream(messages);
+
+                return { stream, provider: p.provider };
+            } catch (err: unknown) {
+                lastProviderError = err instanceof Error ? err : new Error(String(err));
+                const isRateLimit = isRateLimitError(err);
+                console.warn(`[LLM] ${p.provider.toUpperCase()} stream failed: ${isRateLimit ? "RATE LIMIT" : lastProviderError.message}`);
+                if (isRateLimit && attempt === 0) {
+                    const delayMs = 5000 * (attempt + 1);
+                    console.log(`[LLM] Rate limited on ${p.provider}, retrying in ${delayMs / 1000}s...`);
+                    await new Promise((resolve) => setTimeout(resolve, delayMs));
+                } else {
+                    break;
+                }
+            }
+        }
+        lastError = lastProviderError;
+        attempted.push(p.provider);
+        console.log(`[LLM] Falling back to next provider after ${p.provider} failure...`);
+    }
+
+    throw new AllProvidersExhaustedError(lastError, attempted);
+}
+
+/**
  * Print available provider status to the console (useful for debugging).
  */
 export function printProviderStatus(): void {

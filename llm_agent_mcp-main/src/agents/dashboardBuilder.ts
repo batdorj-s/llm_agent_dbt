@@ -1,4 +1,4 @@
-import { createLLM } from "../llm-provider.js";
+import { invokeWithFallback } from "../llm-provider.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition, type DataLakeCatalogEntry } from "../db/data-lake.js";
 import { handleExecuteSql } from "../tools/enterprise-tools.js";
 import { safeJsonParse, buildSemanticGroups, formatSemanticGroups, queryMentionsTable } from "../utils.js";
@@ -40,12 +40,12 @@ export async function buildDashboard(
         .replace("{schema}", schema);
 
     try {
-        const dashResponse: any = await withTimeout(llm.invoke([
+        const dashResponse = await invokeWithFallback([
             { role: "system", content: dashboardPrompt },
             { role: "user", content: `Generate a dashboard for the table: ${activeEntry.table_name}` }
-        ]), "Dashboard design");
+        ], { temperature: 0, timeout: 60000 });
 
-        const raw = dashResponse.content as string;
+        const raw = dashResponse.content;
         let widgets: any[];
         try {
             const { data, cleaned } = safeJsonParse<any[]>(raw, []);

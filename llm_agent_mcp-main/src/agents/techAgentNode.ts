@@ -1,4 +1,4 @@
-import { createLLM, createLLMWithOrder } from "../llm-provider.js";
+import { createLLM, invokeWithFallback, streamWithFallback } from "../llm-provider.js";
 import { getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
 import { searchKnowledgeBase } from "../rag.js";
 import { handleExecuteSql, isPythonQuery } from "../tools/enterprise-tools.js";
@@ -116,28 +116,12 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
         }
 
         try {
-            const executeCodeGen = async (model: any) => {
-                return await withTimeout(model.invoke([
-                    { role: "system", content: sqlGenPrompt },
-                    { role: "user", content: userContent }
-                ]), "Tech agent SQL generation", SQL_GEN_TIMEOUT_MS);
-            };
+            const codeGenResponse = await invokeWithFallback([
+                { role: "system", content: sqlGenPrompt },
+                { role: "user", content: userContent }
+            ], { temperature: 0, timeout: SQL_GEN_TIMEOUT_MS });
 
-            let codeGenResponse: any;
-            try {
-                codeGenResponse = await executeCodeGen(llm);
-            } catch (err: unknown) {
-                const msg = err instanceof Error ? err.message : String(err);
-                log.warn("Primary LLM for SQL failed, attempting fallback:", { error: msg });
-                const fallbackLLM = await createLLMWithOrder({ temperature: 0, providerOrder: ["groq", "gemini", "openai"] });
-                if (fallbackLLM) {
-                    codeGenResponse = await executeCodeGen(fallbackLLM);
-                } else {
-                    throw err;
-                }
-            }
-
-            const rawCode = (codeGenResponse as any).content as string;
+            const rawCode = codeGenResponse.content;
             let currentSql = extractCodeBlock(rawCode, "sql");
 
             if (currentSql === sqlCode && attempts > 1) {
@@ -253,26 +237,8 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
         ...state.messages.map((m) => ({ role: m.role, content: m.content }))
     ]);
 
-    async function executeExplainWithFallback(messages: any[]) {
-        try {
-            return await withTimeout(llm!.stream(messages), "Tech agent explanation");
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            log.warn("Primary explanation LLM failed, attempting fallback:", { error: msg });
-            const fallbackLLM = await createLLMWithOrder({ 
-                temperature: 0, 
-                providerOrder: ["groq", "anthropic", "openai"] 
-            });
-            if (fallbackLLM) {
-                log.info("Fallback to GROQ for explanation successful.");
-                return await withTimeout(fallbackLLM.stream(messages), "Tech agent fallback explanation");
-            }
-            throw err;
-        }
-    }
-
     try {
-        const stream: any = await executeExplainWithFallback(explainMessages);
+        const { stream } = await streamWithFallback(explainMessages, { temperature: 0, timeout: 60000 });
 
         if (onChunk) onChunk("\n\n");
         accumulatedText += "\n\n";
