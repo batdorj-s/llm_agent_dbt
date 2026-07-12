@@ -5,6 +5,7 @@ import { LayoutDashboard } from "lucide-react";
 import { KpiGrid } from "../KpiGrid";
 import { AdminPanel } from "../AdminPanel";
 import { Footer } from "../Footer";
+import { AnomalyBadge } from "../AnomalyBadge";
 import AvatarList from "../AvatarList";
 import { SalesCard, TopSearch, ProportionSales, ActiveChart, IntroduceRow, OfflineData, Gauge, Radar, PageLoading, Liquid, EditableLinkGroup, PageHeaderContent, ExtraContent } from "../dashboard";
 import { FinanceDashboard } from "../FinanceDashboard";
@@ -15,6 +16,7 @@ import type { FinanceAudit } from "../../hooks/useDashboard";
 
 interface DashboardTabProps {
   user: AuthUser;
+  token: string;
   hasDataset: boolean;
   isDashboardLoading: boolean;
   dashboard: {
@@ -86,6 +88,7 @@ interface DashboardTabProps {
 
 const DashboardTabInner: React.FC<DashboardTabProps> = ({
   user,
+  token,
   hasDataset,
   isDashboardLoading,
   dashboard,
@@ -178,17 +181,20 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
               <ExtraContent />
             </div>
 
-            {/* Period selector */}
-            <div className="flex items-center gap-2 animate-fade-in-up">
-              <span className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider">Хугацаа:</span>
-              <div className="flex items-center border border-border rounded overflow-hidden text-[10px] font-bold">
-                {(["7d", "1m", "3m", "6m", "12m", "all"] as Period[]).map((p) => (
-                  <button key={p} onClick={() => dashboard.setPeriod(p)}
-                    className={`px-2 py-1 uppercase tracking-wider transition-colors cursor-pointer ${dashboard.period === p ? "bg-foreground text-background" : "text-foreground/60 hover:text-foreground"}`}>
-                    {p === "all" ? "Бүгд" : p}
-                  </button>
-                ))}
+            {/* Period selector + Anomaly Badge */}
+            <div className="flex items-center gap-3 animate-fade-in-up flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-foreground/50 uppercase font-semibold tracking-wider">Хугацаа:</span>
+                <div className="flex items-center border border-border rounded overflow-hidden text-[10px] font-bold">
+                  {(["7d", "1m", "3m", "6m", "12m", "all"] as Period[]).map((p) => (
+                    <button key={p} onClick={() => dashboard.setPeriod(p)}
+                      className={`px-2 py-1 uppercase tracking-wider transition-colors cursor-pointer ${dashboard.period === p ? "bg-foreground text-background" : "text-foreground/60 hover:text-foreground"}`}>
+                      {p === "all" ? "Бүгд" : p}
+                    </button>
+                  ))}
+                </div>
               </div>
+              {hasDataset && <AnomalyBadge token={token} />}
             </div>
 
             <div className="animate-fade-in-up" style={{ animationDelay: "50ms" }}>

@@ -267,6 +267,7 @@ export default function Home() {
           <div id="panel-dashboard" role="tabpanel" aria-label="Dashboard">
             <DashboardTab
               user={auth.user!}
+              token={auth.token}
               hasDataset={hasDataset}
               isDashboardLoading={dashboard.isDashboardLoading}
               dashboard={{

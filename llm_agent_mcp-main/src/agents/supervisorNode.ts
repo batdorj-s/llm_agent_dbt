@@ -64,11 +64,15 @@ export const DATA_SCIENCE_SIGNALS = [
     "корреляци", "correlation", "хамаарал", "нөлөөлөл",
     "regression", "регресс", "linear model", "machine learning",
     "anova", "t-test", "chi-square", "hypothesis", "статистик тест",
-    "outlier detection", "гажуудал илрүүлэх", "anomaly",
+    "outlier detection", "гажуудал илрүүлэх", "anomaly", "аномали",
     "prophet", "arima", "time series", "хугацааны цуваа",
     "k-means", "kmeans", "pca", "dimension reduction",
     "feature importance", "coefficient", "р square", "r-squared",
     "deep learning", "нейрон", "neural",
+    // Anomaly detection signals
+    "хэвийн бус", "гажуудал", "хэт их", "хэт бага", "үл хамаарах",
+    "unexpected", "abnormal", "outlier", "unusual", "spike", "drop",
+    "алдаа", "error", "зөрүү", "deviation", "төөрөгдөл", "stand out",
 ];
 export const FINANCE_SIGNALS = [
     "sales target", "revenue target", "profit target", "margin target", "kpi", "kpi target",

@@ -367,6 +367,92 @@ app.get("/api/kpi-history", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// Anomaly Detection — Z-score & IQR based
+// ─────────────────────────────────────────────────────────────
+app.get("/api/kpi/anomalies", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const pool = getPool();
+    const entry = await getActiveCatalogEntry(userId);
+    if (!entry) return res.json({ anomalies: [], columns: [], totalRows: 0 });
+
+    const tableName = entry.table_name;
+    let columnList: string[] = [];
+    try { columnList = JSON.parse(entry.columns_info) as string[]; } catch {}
+
+    const numericKeywords = [/age/i, /amount/i, /balance/i, /price/i, /cost/i, /revenue/i, /sales/i,
+      /income/i, /profit/i, /spend/i, /value/i, /quantity/i, /count/i, /rate/i, /score/i,
+      /total/i, /sum/i, /avg/i, /num/i, /rating/i, /зардал/i, /орлого/i];
+    const numericCols = columnList.filter(col => numericKeywords.some(p => p.test(col)));
+    if (numericCols.length === 0) return res.json({ anomalies: [], columns: numericCols, totalRows: 0 });
+
+    const limitRows = Number(req.query.limit) || 2000;
+    const safeCols = columnList.map(c => `"${c}"`).join(", ");
+    const { rows } = await pool.query(`SELECT ${safeCols} FROM "${tableName}" LIMIT $1`, [limitRows]);
+
+    const anomalies: Array<{
+      rowIndex: number;
+      columnName: string;
+      value: number;
+      zScore: number;
+      method: "z-score" | "iqr";
+      row: Record<string, unknown>;
+    }> = [];
+
+    for (const col of numericCols) {
+      const values = rows.map(r => Number(r[col])).filter(v => !isNaN(v));
+      if (values.length < 10) continue;
+
+      const mean = values.reduce((a, b) => a + b, 0) / values.length;
+      const std = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
+      if (std === 0) continue;
+
+      const sorted = [...values].sort((a, b) => a - b);
+      const q1 = sorted[Math.floor(sorted.length * 0.25)];
+      const q3 = sorted[Math.floor(sorted.length * 0.75)];
+      const iqr = q3 - q1;
+      const iqrLow = q1 - 1.5 * iqr;
+      const iqrHigh = q3 + 1.5 * iqr;
+
+      rows.forEach((row, idx) => {
+        const val = Number(row[col]);
+        if (isNaN(val)) return;
+        const z = Math.abs((val - mean) / std);
+        const isZAnomaly = z > 3;
+        const isIqrAnomaly = val < iqrLow || val > iqrHigh;
+        if (isZAnomaly || isIqrAnomaly) {
+          anomalies.push({
+            rowIndex: idx,
+            columnName: col,
+            value: val,
+            zScore: Math.round(z * 100) / 100,
+            method: isZAnomaly ? "z-score" : "iqr",
+            row: row as Record<string, unknown>,
+          });
+        }
+      });
+    }
+
+    anomalies.sort((a, b) => b.zScore - a.zScore);
+
+    res.json({
+      anomalies: anomalies.slice(0, 100),
+      columns: numericCols,
+      totalRows: rows.length,
+      summary: {
+        totalAnomalies: anomalies.length,
+        byColumn: numericCols.reduce((acc, col) => {
+          acc[col] = anomalies.filter(a => a.columnName === col).length;
+          return acc;
+        }, {} as Record<string, number>),
+      },
+    });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 // Dashboard — Computed Metrics (AOV, Growth Rate, Top Category)
 // ─────────────────────────────────────────────────────────────
 app.get("/api/dashboard/computed-metrics", async (req, res) => {

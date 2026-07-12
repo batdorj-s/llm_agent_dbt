@@ -81,9 +81,11 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
     const isCluster = /бүлэгл|cluster|segment|сегментчил/i.test(lowerQuery);
     const isCorrelation = /корреляци|correlation|хамаарал|нөлөөл/i.test(lowerQuery);
     const isRegression = /regression|регресс/i.test(lowerQuery);
+    const isAnomaly = /аномали|anomaly|хэвийн бус|гажуудал|outlier|хэт их|хэт бага|unexpected|abnormal|unusual|spike|drop|зөрүү|deviation/i.test(lowerQuery);
 
     let analysisType = "general";
-    if (isForecast) analysisType = "forecast";
+    if (isAnomaly) analysisType = "anomaly";
+    else if (isForecast) analysisType = "forecast";
     else if (isCluster) analysisType = "cluster";
     else if (isCorrelation) analysisType = "correlation";
     else if (isRegression) analysisType = "regression";
@@ -97,6 +99,9 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
 
     let sampleData: any[] = [];
     let exportCsvSql: string | null = null;
+
+    // Anomaly detection needs more data rows for reliable z-score/IQR calculation
+    const isAnomalyMode = analysisType === "anomaly";
 
     let forecastDimension: string | null = null;
     try {
@@ -131,7 +136,9 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
         }
 
         if (sampleData.length === 0) {
-            const samplingSql = buildSamplingSql(tableName, columnList);
+            // Anomaly detection needs more rows for reliable statistical detection
+            const limitRows = isAnomalyMode ? 2000 : 500;
+            const samplingSql = buildSamplingSql(tableName, columnList, limitRows);
             const sampleResult = await handleExecuteSql({ query: samplingSql, userId });
             if (sampleResult.ok && sampleResult.results) {
                 sampleData = Array.isArray(sampleResult.results) ? sampleResult.results : [sampleResult.results];
@@ -234,9 +241,9 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
     }
 }
 
-function buildSamplingSql(tableName: string, columns: string[]): string {
+function buildSamplingSql(tableName: string, columns: string[], limit: number = 500): string {
     const safeCols = columns.map(c => `"${c}"`).join(", ");
-    return `SELECT ${safeCols} FROM "${tableName}" LIMIT 500;`;
+    return `SELECT ${safeCols} FROM "${tableName}" LIMIT ${limit};`;
 }
 
 function buildExportSql(tableName: string, columns: string[]): string {
@@ -307,6 +314,7 @@ function buildPythonPrompt(
         cluster: { chart: "bar", reason: "Cluster sizes and characteristics — bar chart for easy comparison" },
         correlation: { chart: "scatter", reason: "Relationship between two variables — scatter plot with trend line" },
         regression: { chart: "scatter", reason: "Predicted vs actual values — scatter plot with regression line" },
+        anomaly: { chart: "line", reason: "Anomaly detection — line chart with highlighted outliers" },
         general: { chart: "bar", reason: "Categorical comparison or histogram for distribution" },
     };
     const chartInfo = chartRules[analysisType] || chartRules.general;
@@ -338,6 +346,15 @@ ${dimensionHint}`,
 - Identify target and feature columns from numeric columns: ${numericCols.join(", ") || "auto-detect"}
 - Print R² score, coefficients, and p-values if available
 - Interpret the results in business terms`,
+        anomaly: `## Anomaly Detection
+- Use Z-score method (scipy.stats.zscore) for each numeric column
+- Use IQR method (Q1 - 1.5*IQR, Q3 + 1.5*IQR) as secondary check
+- Flag rows where ANY numeric column has |z-score| > 3 or falls outside IQR bounds
+- Print a table of detected anomalies with: row index, column name, value, z-score, detection method
+- Count total anomalies per column and provide summary
+- If "${dateCol}" exists, show which time periods have anomalies
+- Highlight any patterns: are anomalies clustered in time? Are certain columns more prone?
+- Generate a line chart of the time series with anomaly points highlighted in RED`,
         general: `## General Statistical Analysis
 - Provide descriptive statistics (mean, median, std, min, max) for numeric columns
 - If ${categoryCols.length > 0 ? "categorical columns exist (" + categoryCols.join(", ") + ")" : "no categorical columns"}, show distribution counts
