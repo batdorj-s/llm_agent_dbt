@@ -9,7 +9,7 @@ export const chatRouter = Router();
 
 const ChatRequestSchema = z.object({
   message: z.string().min(1, "message required").max(10_000, "message too long (max 10000 chars)"),
-  threadId: z.string().uuid("threadId must be a valid UUID").optional(),
+  threadId: z.string().optional(),
   visualRequest: z.boolean().optional(),
 });
 
