@@ -3,6 +3,7 @@ import { z } from "zod";
 import { agentLimiter } from "../rate-limiter.js";
 import { runMultiAgent, runMultiAgentStream, type UserRole } from "../multi-agent.js";
 import { verifyToken, DEFAULT_USER_ID, DEFAULT_ROLE } from "../auth.js";
+import { addMessage } from "../services/conversation.js";
 
 export const chatRouter = Router();
 
@@ -82,6 +83,17 @@ chatRouter.post("/", async (req, res) => {
   try {
     const threadIdFinal = threadId ?? `thread_${Date.now()}`;
     const response = await runMultiAgent(message, role, threadIdFinal, visualRequest, userId);
+
+    // Persist conversation messages
+    try {
+      if (threadIdFinal.startsWith("thread_")) {
+        const { createConversation } = await import("../services/conversation.js");
+        const conv = await createConversation(userId, message.slice(0, 100), "multi-agent");
+        await addMessage(conv.id, "user", message);
+        await addMessage(conv.id, "assistant", response);
+      }
+    } catch { /* conversation persistence is best-effort */ }
+
     res.json({ response, threadId: threadIdFinal, role, remaining: limit.remaining });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
@@ -119,6 +131,14 @@ chatRouter.post("/stream", async (req, res) => {
       res.write(`data: ${JSON.stringify({ chunk, type: "delta" })}\n\n`);
     }, visualRequest, userId);
     res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);
+
+    // Persist conversation messages
+    try {
+      const { createConversation } = await import("../services/conversation.js");
+      const conv = await createConversation(userId, message.slice(0, 100), "multi-agent");
+      await addMessage(conv.id, "user", message);
+      await addMessage(conv.id, "assistant", fullResponse);
+    } catch { /* conversation persistence is best-effort */ }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown streaming error";
     res.write(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`);

@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, Sparkles } from "lucide-react";
+import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, Sparkles, PanelLeftClose, PanelLeft } from "lucide-react";
 
 import { Header } from "../components/Header";
 import { PreviewDrawer } from "../components/PreviewDrawer";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { AskTab, DashboardTab, ReportTab } from "../components/tabs";
+import { ConversationSidebar } from "../components/ConversationSidebar";
+import { LoginPage } from "../components/LoginPage";
 
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
@@ -14,8 +16,7 @@ import { useChat } from "../hooks/useChat";
 import { useDashboard, type Period } from "../hooks/useDashboard";
 import { useAdmin } from "../hooks/useAdmin";
 import { usePreview } from "../hooks/usePreview";
-
-// ─── Suggestion constants ─────────────────────────────────────────────────────
+import { useConversation } from "../hooks/useConversation";
 
 const SUGGESTIONS_INITIAL = [
   { label: "Нийт зарлага",     query: "Нийт зарлага хэд вэ?",                     icon: <TrendingDown className="w-3 h-3" /> },
@@ -43,8 +44,6 @@ const FOLLOW_UP_SUGGESTIONS: Record<string, { label: string; query: string }[]> 
     { label: "Корреляцийн матриц", query: "Корреляцийн матриц харуул" },
   ],
 };
-
-// ─── Finance data helpers ─────────────────────────────────────────────────────
 
 import type { KpiData, ComputedMetrics } from "../components/types";
 
@@ -124,16 +123,14 @@ function useFinanceChartData(financeCharts: Record<string, unknown> | null, sale
   return { financeSummary, financePeriod, financeMonthlyIncome, financeMonthlyExpense, financeExpenseCategories, financeExpensePieData, financeCounterparties, financeCashData, financeRadarData };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Root component
-// ─────────────────────────────────────────────────────────────────────────────
-
 export default function Home() {
   const [activeTab, setActiveTab]             = useState<"ask" | "dashboard" | "report">("ask");
   const [sidebarOpen, setSidebarOpen]         = useState(false);
   const [reportMode, setReportMode]           = useState<"finance" | "sales">("finance");
   const [isGraphicModeEnabled, setIsGraphicModeEnabled] = useState(false);
   const [dashPeriod, setDashPeriod]           = useState<Period>("all");
+  const [convoSidebarOpen, setConvoSidebarOpen] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -142,14 +139,12 @@ export default function Home() {
   const preview                 = usePreview();
 
   const dashboard = useDashboard(dashPeriod, setDashPeriod);
-
   const admin = useAdmin(dashboard.fetchDashboardData, preview.openRaw);
-
+  const conversation = useConversation(auth.token);
   const chat = useChat(auth.threadId, isGraphicModeEnabled, dashboard.fetchDashboardData);
-
   const financeData = useFinanceChartData(dashboard.financeCharts, dashboard.salesKpi);
 
-  // Dynamic suggestion cards — use DataPassport questions when available, fall back to hardcoded
+  // Dynamic suggestion cards
   const activeSuggestions = (dashboard.tablePassport?.available && dashboard.tablePassport.questions?.length)
     ? dashboard.tablePassport.questions.map((q: string) => ({
         label: q.length > 16 ? q.slice(0, 15) + "…" : q,
@@ -161,19 +156,59 @@ export default function Home() {
   const handleLogout = () => {
     chat.clearMessages();
     dashboard.resetDashboard();
+    setConvoSidebarOpen(false);
+    setActiveConversationId(null);
+    auth.logout();
   };
 
-  // ── Auto-scroll ──
+  const handleNewChat = async () => {
+    chat.clearMessages();
+    setActiveConversationId(null);
+  };
+
+  const handleSelectConversation = async (id: string) => {
+    setActiveConversationId(id);
+    const messages = await conversation.loadMessages(id);
+    if (messages.length > 0) {
+      chat.clearMessages();
+      messages.forEach(m => {
+        chat.addSystemMessage(m.content, m.agentType ?? undefined);
+      });
+    }
+  };
+
+  const handleDeleteConversation = async (id: string) => {
+    await conversation.deleteConversation(id);
+    if (activeConversationId === id) {
+      setActiveConversationId(null);
+      chat.clearMessages();
+    }
+  };
+
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat.messages]);
 
-  // ── Fetch files on mount ──
+  // Fetch files on mount
   useEffect(() => {
     admin.fetchUploadedFiles();
   }, []);
 
   const hasDataset = admin.uploadedFiles.length > 0;
+
+  // Show login page if not logged in
+  if (!auth.isAuthLoading && !auth.isLoggedIn) {
+    return <LoginPage onLogin={auth.login} onRegister={auth.register} />;
+  }
+
+  if (auth.isAuthLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-foreground/40 text-xs">Ачаалж байна...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen overflow-hidden bg-background text-foreground/80 font-sans antialiased text-xs flex flex-col transition-colors duration-200">
@@ -186,8 +221,35 @@ export default function Home() {
       <OfflineBanner />
 
       <div className="relative flex-1 flex flex-col min-h-0">
-          {activeTab === "ask" && (
-            <div id="panel-ask" role="tabpanel" aria-label="Асуулт">
+        {activeTab === "ask" && (
+          <div id="panel-ask" role="tabpanel" aria-label="Асуулт" className="flex-1 flex min-h-0">
+            {/* Conversation Sidebar */}
+            <ConversationSidebar
+              conversations={conversation.conversations}
+              isLoading={conversation.isLoading}
+              searchQuery={conversation.searchQuery}
+              activeConversationId={activeConversationId}
+              onSearchChange={conversation.setSearchQuery}
+              onSearch={conversation.searchConversationsList}
+              onSelect={handleSelectConversation}
+              onDelete={handleDeleteConversation}
+              onNewChat={handleNewChat}
+              isOpen={convoSidebarOpen}
+              onClose={() => setConvoSidebarOpen(false)}
+            />
+
+            {/* Main chat area */}
+            <div className="flex-1 flex flex-col min-h-0">
+              {/* Sidebar toggle */}
+              <div className="flex items-center px-3 py-1.5 border-b border-border">
+                <button onClick={() => setConvoSidebarOpen(!convoSidebarOpen)}
+                  className="flex items-center gap-1.5 px-2 py-1 text-foreground/50 hover:text-foreground/80 hover:bg-foreground/5 rounded-md transition-all cursor-pointer"
+                  title={convoSidebarOpen ? "Чат түүх нуух" : "Чат түүх харах"}>
+                  {convoSidebarOpen ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
+                  <span className="text-[10px]">Түүх</span>
+                </button>
+              </div>
+
               <AskTab
                 chat={chat}
                 isGraphicModeEnabled={isGraphicModeEnabled}
@@ -198,48 +260,49 @@ export default function Home() {
                 messagesEndRef={messagesEndRef}
               />
             </div>
-          )}
+          </div>
+        )}
 
-          {activeTab === "dashboard" && (
-            <div id="panel-dashboard" role="tabpanel" aria-label="Dashboard">
-              <DashboardTab
-                user={auth.user}
-                hasDataset={hasDataset}
-                isDashboardLoading={dashboard.isDashboardLoading}
-                dashboard={{
-                  period: dashPeriod,
-                  setPeriod: setDashPeriod,
-                  salesKpi: dashboard.salesKpi,
-                  usersKpi: dashboard.usersKpi,
-                  churnKpi: dashboard.churnKpi,
-                  computedMetrics: dashboard.computedMetrics,
-                  salesHistory: dashboard.salesHistory,
-                  financeAudit: dashboard.financeAudit,
-                  financeCharts: dashboard.financeCharts,
-                  fetchDashboardData: dashboard.fetchDashboardData,
-                }}
-                financeData={financeData}
-                admin={admin}
-                sidebarOpen={sidebarOpen}
-                setSidebarOpen={setSidebarOpen}
-                preview={{ open: preview.open }}
-              />
-            </div>
-          )}
+        {activeTab === "dashboard" && (
+          <div id="panel-dashboard" role="tabpanel" aria-label="Dashboard">
+            <DashboardTab
+              user={auth.user!}
+              hasDataset={hasDataset}
+              isDashboardLoading={dashboard.isDashboardLoading}
+              dashboard={{
+                period: dashPeriod,
+                setPeriod: setDashPeriod,
+                salesKpi: dashboard.salesKpi,
+                usersKpi: dashboard.usersKpi,
+                churnKpi: dashboard.churnKpi,
+                computedMetrics: dashboard.computedMetrics,
+                salesHistory: dashboard.salesHistory,
+                financeAudit: dashboard.financeAudit,
+                financeCharts: dashboard.financeCharts,
+                fetchDashboardData: dashboard.fetchDashboardData,
+              }}
+              financeData={financeData}
+              admin={admin}
+              sidebarOpen={sidebarOpen}
+              setSidebarOpen={setSidebarOpen}
+              preview={{ open: preview.open }}
+            />
+          </div>
+        )}
 
-          {activeTab === "report" && (
-            <div id="panel-report" role="tabpanel" aria-label="Тайлан">
-              <ReportTab reportMode={reportMode} setReportMode={setReportMode} />
-            </div>
-          )}
+        {activeTab === "report" && (
+          <div id="panel-report" role="tabpanel" aria-label="Тайлан">
+            <ReportTab reportMode={reportMode} setReportMode={setReportMode} />
+          </div>
+        )}
 
-          <PreviewDrawer
-            previewData={preview.preview.data} previewColumns={preview.preview.columns}
-            previewTableName={preview.preview.tableName} previewDescription={preview.preview.description}
-            previewContent={preview.preview.content} previewHasDownload={preview.preview.hasDownload}
-            previewFileId={preview.preview.fileId} onClose={preview.close}
-          />
-        </div>
+        <PreviewDrawer
+          previewData={preview.preview.data} previewColumns={preview.preview.columns}
+          previewTableName={preview.preview.tableName} previewDescription={preview.preview.description}
+          previewContent={preview.preview.content} previewHasDownload={preview.preview.hasDownload}
+          previewFileId={preview.preview.fileId} onClose={preview.close}
+        />
+      </div>
     </div>
   );
 }

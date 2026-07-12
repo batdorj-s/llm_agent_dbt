@@ -140,10 +140,20 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
     } catch { setFeedbackState(p => ({ ...p, [msgId]: null })); }
   };
 
+  const addSystemMessage = (text: string, agentName?: string) => {
+    setMessages(p => [...p, {
+      id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      sender: "agent",
+      text,
+      timestamp: new Date(),
+      agentName: agentName || "Шинжээч.ai",
+    }]);
+  };
+
   return {
     messages, input, setInput, isChatLoading, streamEnabled, setStreamEnabled,
     lastAgentType, activeRoutingState, feedbackState, feedbackSentMsgs,
     handleSendMessage, handleCancelMessage, handleFeedback,
-    addWelcomeMessage, clearMessages,
+    addWelcomeMessage, clearMessages, addSystemMessage,
   };
 }

@@ -18,12 +18,13 @@ import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
 import { setupKnowledgeBase } from "./rag.js";
 import { ensureProjectReady, runDbtForTable, runDbtTest, runDbtFinanceModels } from "./setup/init.js";
-import { requireAuth } from "./auth.js";
+import { requireAuth, createToken, verifyToken } from "./auth.js";
+import { authenticateUser, createUser } from "./db/data-lake.js";
 import type { UserRole } from "./multi-agent.js";
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, quoteIdent, mergeIntoCombined, buildNoiseSubcategoryFilter } from "./db/data-lake.js";
-import { initConversationSchema, createConversation, getConversations, getConversationById, deleteConversation, addMessage, getMessages, searchConversations } from "./services/conversation.js";
+import { initConversationSchema, createConversation, getConversations, getConversationById, deleteConversation, addMessage, getMessages, searchConversations, updateConversationTitle } from "./services/conversation.js";
 import { findConceptColumn } from "./agents/columnSynonyms.js";
 import { buildMntAmountExpr } from "./utils/sqlHelpers.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix, getPassportByTableName, parsePassportQuestions } from "./rag.js";
@@ -1757,6 +1758,59 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// Authentication — Login / Register / Me
+// ─────────────────────────────────────────────────────────────
+app.post("/api/auth/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+  try {
+    const user = await authenticateUser(email, password);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+    const token = createToken(user.id, user.role as UserRole);
+    res.json({ success: true, token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Login failed" });
+  }
+});
+
+app.post("/api/auth/register", async (req, res) => {
+  const { email, password, name } = req.body;
+  if (!email || !password || !name) {
+    return res.status(400).json({ error: "Email, password, and name are required" });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters" });
+  }
+  try {
+    const userId = await createUser(email, password, name);
+    if (!userId) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+    const token = createToken(userId, "viewer");
+    res.status(201).json({ success: true, token, user: { id: userId, name, email, role: "viewer" } });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Registration failed" });
+  }
+});
+
+app.get("/api/auth/me", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  const token = authHeader.slice(7);
+  const result = verifyToken(token);
+  if (!result.success || !result.payload) {
+    return res.status(401).json({ error: result.error || "Invalid token" });
+  }
+  res.json({ success: true, user: { id: result.payload.userId, role: result.payload.role } });
+});
+
+// ─────────────────────────────────────────────────────────────
 // Conversation Persistence — CRUD for chat history
 // ─────────────────────────────────────────────────────────────
 /**
@@ -1848,6 +1902,20 @@ app.delete("/api/conversations/:id", async (req, res) => {
     const deleted = await deleteConversation(req.params.id, userId);
     if (!deleted) return res.status(404).json({ error: "Conversation not found" });
     res.json({ success: true, message: "Conversation deleted" });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.patch("/api/conversations/:id", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { title } = req.body;
+    if (!title || typeof title !== "string") {
+      return res.status(400).json({ error: "Title is required" });
+    }
+    await updateConversationTitle(req.params.id, userId, title);
+    res.json({ success: true });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
