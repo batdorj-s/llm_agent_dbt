@@ -5,7 +5,7 @@
  * Each conversation is scoped to a userId (from JWT).
  */
 
-import { getPool } from "../db/data-lake.js";
+import { getPool, isPgAvailable } from "../db/data-lake.js";
 
 export interface Conversation {
   id: string;
@@ -34,11 +34,11 @@ let _schemaInitialized = false;
 
 export async function initConversationSchema(): Promise<void> {
   if (_schemaInitialized) return;
-  const pool = getPool();
-  if (!pool) {
+  if (!isPgAvailable()) {
     console.warn("[Conversation] PostgreSQL unavailable — conversation persistence disabled.");
     return;
   }
+  const pool = getPool();
 
   try {
     await pool.query(`
