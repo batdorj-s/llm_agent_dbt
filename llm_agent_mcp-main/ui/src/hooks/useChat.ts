@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import type { Message } from "../components/types";
 
-export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone: () => void) {
+export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone: () => void, token?: string) {
   const [messages, setMessages]         = useState<Message[]>([]);
   const [input, setInput]               = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -45,7 +45,10 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
       if (streamEnabled) {
         const response = await fetch("/api/chat/stream", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ message: query, threadId, visualRequest: isGraphicModeEnabled }),
           signal: controller.signal,
         });
@@ -89,7 +92,10 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
       } else {
         const res = await fetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ message: query, threadId, visualRequest: isGraphicModeEnabled }),
           signal: controller.signal,
         });
@@ -130,7 +136,10 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ message: userMsg?.text || agentMsg?.text || "", response: agentMsg?.text || "", rating, threadId }),
       });
       if (!res.ok) { setFeedbackState(p => ({ ...p, [msgId]: null })); return; }

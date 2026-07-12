@@ -1,7 +1,7 @@
 import { createLLM, createLLMWithOrder } from "../llm-provider.js";
 import { selfQueryTransform, searchKnowledgeBase, searchKnowledgeBaseWithFilter } from "../rag.js";
 import { buildFinanceKpiContext } from "../tools/enterprise-tools.js";
-import { getCatalog } from "../db/data-lake.js";
+import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, type AgentConfig, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
 import { techAgentNode } from "./techAgentNode.js";
@@ -62,6 +62,15 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
     if (catalog && catalog.length > 0) {
         const tableList = catalog.map((e) => `- ${e.table_name} (${e.description || "N/A"})`).join("\n");
         context = `${context}\n\n--- Available Tables in Data Lake ---\n${tableList}`;
+    }
+
+    // Add user's uploaded data schema and sample for better SQL generation
+    const activeEntry = state.cachedActiveEntry || await getActiveCatalogEntry(userId);
+    if (activeEntry) {
+        const schema = state.cachedSchema || await buildSchemaDefinition(activeEntry).catch(() => "");
+        if (schema) {
+            context = `${context}\n\n--- Active Dataset Schema (${activeEntry.table_name}) ---\n${schema}`;
+        }
     }
 
     if (context === "No context available." || !context) {

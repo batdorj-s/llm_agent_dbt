@@ -141,7 +141,7 @@ export default function Home() {
   const dashboard = useDashboard(dashPeriod, setDashPeriod);
   const admin = useAdmin(dashboard.fetchDashboardData, preview.openRaw);
   const conversation = useConversation(auth.token);
-  const chat = useChat(auth.threadId, isGraphicModeEnabled, dashboard.fetchDashboardData);
+  const chat = useChat(auth.threadId, isGraphicModeEnabled, dashboard.fetchDashboardData, auth.token);
   const financeData = useFinanceChartData(dashboard.financeCharts, dashboard.salesKpi);
 
   // Dynamic suggestion cards

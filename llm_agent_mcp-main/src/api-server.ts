@@ -1489,12 +1489,13 @@ async function processUploadedTable(
             const vals = samples[c];
             return vals && vals.length > 0 ? `"${c}" (${typeLabel}${rangeInfo}, e.g. ${vals.join(", ")})` : `"${c}" (${typeLabel}${rangeInfo})`;
         }).join(", ");
-        const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}.`;
+        const ragText = `Data Lake Catalog: The table '${sanitizedTableName}' is loaded into a PostgreSQL database. Columns: ${sampleText}. Description: ${description}. Use this table for SQL queries. Table name: "${sanitizedTableName}".`;
         await addDocumentToCatalog(`uploaded_${sanitizedTableName}_${Date.now()}`, ragText, {
             category: "data_catalog",
             department: "analytics",
             author: userId || "unknown",
             source_name: `Upload: ${sanitizedTableName}`,
+            shared: true,
         }, [sanitizedTableName]);
 
         const kpiLines = await computeTableKpis(sanitizedTableName, cols, profile);
