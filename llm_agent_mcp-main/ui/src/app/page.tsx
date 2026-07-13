@@ -196,10 +196,10 @@ export default function Home() {
     }
   }, [chat.messages]);
 
-  // Fetch files on mount
+  // Fetch files on mount — only after auth is ready
   useEffect(() => {
-    admin.fetchUploadedFiles();
-  }, []);
+    if (auth.isLoggedIn) admin.fetchUploadedFiles();
+  }, [auth.isLoggedIn]);
 
   // Fetch chat history on mount
   useEffect(() => {

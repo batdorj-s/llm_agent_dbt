@@ -55,7 +55,6 @@ function install401Interceptor(logout: () => void) {
     if (res.status === 401) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       logout();
-      window.location.href = "/";
     }
     return res;
   };
