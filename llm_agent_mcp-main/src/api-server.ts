@@ -12,7 +12,7 @@ import dotenv from "dotenv";
 
 import { chatRouter } from "./routes/chat.router.js";
 import { requestContext } from "./context.js";
-import { agentLimiter, uploadLimiter } from "./rate-limiter.js";
+import { agentLimiter, uploadLimiter, authLimiter, registerLimiter } from "./rate-limiter.js";
 import helmet from "helmet";
 import { detectProvider } from "./llm-provider.js";
 import { getRepository } from "./db/kpi-repository.js";
@@ -94,11 +94,15 @@ interface DbFileRow {
 
 /** Helper: extract userId from request (set by requireAuth middleware) */
 function getUserId(req: express.Request): string {
-  return (req as express.Request & { userId: string }).userId || "user-admin-001";
+  const userId = (req as any).userId as string | undefined;
+  if (!userId) throw new Error("Unauthorized: userId not set by requireAuth middleware");
+  return userId;
 }
 /** Helper: extract role from request (set by requireAuth middleware) */
 function getRole(req: express.Request): UserRole {
-  return (req as express.Request & { role: UserRole }).role || "admin";
+  const role = (req as any).role as UserRole | undefined;
+  if (!role) throw new Error("Unauthorized: role not set by requireAuth middleware");
+  return role;
 }
 
 const app = express();
@@ -1330,7 +1334,7 @@ app.post("/api/report/export-xlsx", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // File Management
 // ─────────────────────────────────────────────────────────────
-app.get("/api/admin/files", async (req, res) => {
+app.get("/api/admin/files", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   await initDataLake();
   const result = await getPool().query(`SELECT * FROM uploaded_files ORDER BY created_at DESC`);
   res.json(result.rows);
@@ -1367,7 +1371,7 @@ app.delete("/api/admin/files/:id", requireAuth, requirePermission("admin:upload"
   }
 });
 
-app.get("/api/admin/files/:id/preview", async (req, res) => {
+app.get("/api/admin/files/:id/preview", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   const { id } = req.params;
   await initDataLake();
 
@@ -1418,7 +1422,7 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
   }
 });
 
-app.get("/api/admin/files/:id/download", async (req, res) => {
+app.get("/api/admin/files/:id/download", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   const { id } = req.params;
   await initDataLake();
 
@@ -1884,7 +1888,7 @@ app.post("/api/feedback", async (req, res) => {
 });
 
 // GET /api/admin/feedback/pending - get pending feedback items
-app.get("/api/admin/feedback/pending", async (req, res) => {
+app.get("/api/admin/feedback/pending", requireAuth, requirePermission("admin:users"), async (req, res) => {
   try {
     const all = await readFailedQueries();
     const pending = all.filter((f: any) => f.status === "pending");
@@ -1975,6 +1979,12 @@ app.post("/api/auth/login", async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password are required" });
   }
+  // Rate limit by email (or IP fallback)
+  const limiterKey = `login:${email || req.ip}`;
+  const limit = await authLimiter.check(limiterKey);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: limit.message, resetInMs: limit.resetInMs });
+  }
   try {
     const user = await authenticateUser(email, password);
     if (!user) {
@@ -1994,6 +2004,11 @@ app.post("/api/auth/register", async (req, res) => {
   }
   if (password.length < 6) {
     return res.status(400).json({ error: "Password must be at least 6 characters" });
+  }
+  // Rate limit registration by IP to prevent abuse
+  const limit = await registerLimiter.check(`register:${req.ip}`);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: "Too many registration attempts. Try again later.", resetInMs: limit.resetInMs });
   }
   try {
     const userId = await createUser(email, password, name);

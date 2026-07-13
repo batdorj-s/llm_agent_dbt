@@ -177,4 +177,5 @@ export const agentLimiter   = new RateLimiter({ maxRequests: 10,  windowMs: 60_0
 export const sandboxLimiter = new RateLimiter({ maxRequests: 5,   windowMs: 60_000 });
 export const mcpLimiter     = new RateLimiter({ maxRequests: 30,  windowMs: 60_000 });
 export const authLimiter    = new RateLimiter({ maxRequests: 5,   windowMs: 60_000 });
+export const registerLimiter = new RateLimiter({ maxRequests: 3,  windowMs: 3600_000 });
 export const uploadLimiter  = new RateLimiter({ maxRequests: 10,  windowMs: 60_000 });

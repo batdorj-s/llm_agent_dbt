@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { agentLimiter } from "../rate-limiter.js";
 import { runMultiAgent, runMultiAgentStream, type UserRole } from "../multi-agent.js";
-import { verifyToken, DEFAULT_USER_ID, DEFAULT_ROLE } from "../auth.js";
+import { DEFAULT_USER_ID, DEFAULT_ROLE } from "../auth.js";
 import { addMessage, getConversationByThreadId, createConversation, updateConversationTitle } from "../services/conversation.js";
 
 // #7: Auto-generate a short title from the first user message
@@ -54,16 +54,12 @@ const ChatRequestSchema = z.object({
  *         description: Rate limit exceeded
  */
 
+/** Extract userId/role set by requireAuth middleware (api-server.ts global middleware). */
 function extractAuth(req: Request): { userId: string; role: UserRole } {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    return { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
-  }
-  const token = authHeader.slice(7);
-  const result = verifyToken(token);
-  if (result.success && result.payload) {
-    return { userId: result.payload.userId, role: result.payload.role };
-  }
+  const userId = (req as any).userId as string | undefined;
+  const role = (req as any).role as UserRole | undefined;
+  if (userId && role) return { userId, role };
+  // Fallback for when chatRouter is used without requireAuth middleware (tests, standalone)
   return { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
 }
 

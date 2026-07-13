@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { Sun, Moon, MessageSquare, LayoutDashboard, FileText } from "lucide-react";
+import React, { useState } from "react";
+import { Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu, X } from "lucide-react";
 import { ServerStatus } from "./types";
 import { AvatarDropdown, DocLink } from "./RightContent";
 
@@ -25,15 +25,18 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 ];
 
 export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, onLogout, activeTab, onTabChange }: HeaderProps) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
-    <header className="border-b border-border bg-background px-6 py-3 flex items-center justify-between transition-colors duration-200">
+    <header className="border-b border-border bg-background px-4 sm:px-6 py-3 flex items-center justify-between transition-colors duration-200">
       <div className="flex items-center gap-2">
         <span className="font-bold text-foreground text-sm tracking-tight">Шинжээч.ai</span>
-        <span className="text-[10px] text-foreground/50 font-mono">v1.3</span>
+        <span className="text-[10px] text-foreground/50 font-mono hidden sm:inline">v1.3</span>
       </div>
 
+      {/* Desktop nav */}
       {isLoggedIn && (
-        <nav className="flex items-center gap-1" role="tablist" aria-label="Үндсэн цэс">
+        <nav className="hidden sm:flex items-center gap-1" role="tablist" aria-label="Үндсэн цэс">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -54,9 +57,43 @@ export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, o
         </nav>
       )}
 
-      <div className="flex items-center gap-4">
+      {/* Mobile hamburger */}
+      {isLoggedIn && (
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="sm:hidden p-1.5 text-foreground/50 hover:text-foreground transition-colors cursor-pointer"
+          aria-label={mobileMenuOpen ? "Цэс хаах" : "Цэс нээх"}
+          aria-expanded={mobileMenuOpen}
+        >
+          {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+        </button>
+      )}
+
+      {/* Mobile dropdown menu */}
+      {isLoggedIn && mobileMenuOpen && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-background border-b border-border shadow-lg sm:hidden">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => { onTabChange(t.id); setMobileMenuOpen(false); }}
+              role="tab"
+              aria-selected={activeTab === t.id}
+              className={`flex items-center gap-2 w-full px-4 py-3 text-xs font-medium transition-colors cursor-pointer ${
+                activeTab === t.id
+                  ? "text-foreground bg-foreground/10"
+                  : "text-foreground/60 hover:bg-foreground/5"
+              }`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 sm:gap-4">
         {serverStatus && (
-          <div className="flex items-center gap-1.5 text-[10px] text-foreground/50 font-mono">
+          <div className="hidden md:flex items-center gap-1.5 text-[10px] text-foreground/50 font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span>{serverStatus.llm.model}</span>
           </div>

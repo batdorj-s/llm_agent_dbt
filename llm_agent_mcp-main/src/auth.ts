@@ -56,16 +56,21 @@ export const DEFAULT_ROLE: UserRole = "admin";
 
 /**
  * Express middleware: extracts userId and role from JWT Bearer token.
- * If no valid token is present, falls back to DEFAULT_USER_ID (dev mode).
+ * Returns 401 if no valid token is present (production).
+ * Dev fallback: allows unauthenticated requests with DEFAULT_USER_ID when NODE_ENV !== "production".
  */
-export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const isDev = process.env.NODE_ENV !== "production";
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
-    // Dev fallback — allow unauthenticated requests with default user
-    (req as Request & { userId: string; role: UserRole }).userId = DEFAULT_USER_ID;
-    (req as Request & { userId: string; role: UserRole }).role = DEFAULT_ROLE;
-    (req as any).user = { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
-    return next();
+    if (isDev) {
+      (req as Request & { userId: string; role: UserRole }).userId = DEFAULT_USER_ID;
+      (req as Request & { userId: string; role: UserRole }).role = DEFAULT_ROLE;
+      (req as any).user = { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
+      return next();
+    }
+    res.status(401).json({ error: "Authorization token required" });
+    return;
   }
   const token = authHeader.slice(7);
   const result = verifyToken(token);
@@ -75,11 +80,13 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
     (req as any).user = { userId: result.payload.userId, role: result.payload.role };
     return next();
   }
-  // Invalid token — fall back to default (dev mode)
-  (req as Request & { userId: string; role: UserRole }).userId = DEFAULT_USER_ID;
-  (req as Request & { userId: string; role: UserRole }).role = DEFAULT_ROLE;
-  (req as any).user = { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
-  next();
+  if (isDev) {
+    (req as Request & { userId: string; role: UserRole }).userId = DEFAULT_USER_ID;
+    (req as Request & { userId: string; role: UserRole }).role = DEFAULT_ROLE;
+    (req as any).user = { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
+    return next();
+  }
+  res.status(401).json({ error: result.error || "Invalid or expired token" });
 }
 
 export function createToken(userId: string, role: UserRole): string {
