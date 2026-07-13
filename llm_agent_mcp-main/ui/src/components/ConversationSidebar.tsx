@@ -97,7 +97,20 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
     if (renamingId) renameInputRef.current?.focus();
   }, [renamingId]);
 
+  // #9: Group conversations by date — MUST be before conditional return (Rules of Hooks)
+  const grouped = useMemo(() => {
+    const groups: Record<string, Conversation[]> = {};
+    for (const conv of conversations) {
+      const g = getDateGroup(conv.updatedAt);
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(conv);
+    }
+    return groups;
+  }, [conversations]);
+
   if (!isOpen) return null;
+
+  const groupOrder = ["Өнөөдөр", "Өчигдөр", "Энэ 7 хоног", "Энэ сар", "Өмнөх"];
 
   const handleRenameStart = (conv: Conversation, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -112,16 +125,7 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
     setRenamingId(null);
   };
 
-  // #9: Group conversations by date
-  const grouped = useMemo(() => {
-    const groups: Record<string, Conversation[]> = {};
-    for (const conv of conversations) {
-      const g = getDateGroup(conv.updatedAt);
-      if (!groups[g]) groups[g] = [];
-      groups[g].push(conv);
-    }
-    return groups;
-  }, [conversations]);
+  // #9: Group conversations by date — moved before conditional return
 
   const groupOrder = ["Өнөөдөр", "Өчигдөр", "Энэ 7 хоног", "Энэ сар", "Өмнөх"];
 
