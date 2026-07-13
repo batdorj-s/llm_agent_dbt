@@ -44,22 +44,6 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
-// Install global 401 interceptor (once)
-let interceptorInstalled = false;
-function install401Interceptor(logout: () => void) {
-  if (interceptorInstalled || typeof window === "undefined") return;
-  interceptorInstalled = true;
-  const originalFetch = window.fetch;
-  window.fetch = async (...args) => {
-    const res = await originalFetch(...args);
-    if (res.status === 401) {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
-      logout();
-    }
-    return res;
-  };
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -84,11 +68,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setThreadId(`thread_${Date.now()}`);
     localStorage.removeItem(AUTH_STORAGE_KEY);
   }, []);
-
-  // Install 401 interceptor after logout is stable
-  useEffect(() => {
-    install401Interceptor(logout);
-  }, [logout]);
 
   const login = useCallback(async (email: string, password: string): Promise<string | null> => {
     try {

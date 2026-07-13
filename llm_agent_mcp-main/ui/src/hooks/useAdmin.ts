@@ -42,7 +42,7 @@ export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<Previ
       const res = await fetch("/api/admin/files", { headers: authHeaders });
       if (res.ok) setUploadedFiles(await res.json());
     } catch {}
-  }, []);
+  }, [token]);
 
   const handleDeleteFile = async (id: string) => {
     if (!confirm("Are you sure you want to delete this asset?")) return;

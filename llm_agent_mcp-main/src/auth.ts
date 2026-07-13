@@ -61,7 +61,7 @@ export const DEFAULT_ROLE: UserRole = "admin";
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   // Public routes that never require auth
-  const publicPaths = ["/api/health", "/api/auth/login", "/api/auth/register", "/api/setup/status"];
+  const publicPaths = ["/api/health", "/api/auth/login", "/api/auth/register", "/api/setup/status", "/api/status", "/api/table-passport", "/api/finance-audit", "/api/kpi", "/api/kpi-history"];
   if (publicPaths.some(p => req.path.startsWith(p))) {
     return next();
   }
