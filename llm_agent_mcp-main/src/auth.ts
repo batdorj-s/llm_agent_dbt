@@ -60,6 +60,12 @@ export const DEFAULT_ROLE: UserRole = "admin";
  * Dev fallback: allows unauthenticated requests with DEFAULT_USER_ID when NODE_ENV !== "production".
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  // Public routes that never require auth
+  const publicPaths = ["/api/health", "/api/auth/login", "/api/auth/register", "/api/setup/status"];
+  if (publicPaths.some(p => req.path.startsWith(p))) {
+    return next();
+  }
+
   const isDev = process.env.NODE_ENV !== "production";
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
