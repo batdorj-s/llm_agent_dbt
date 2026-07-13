@@ -6,6 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ci": "vitest run --exclude='src/tests/*integration*' --exclude='src/tests/*stress*'",
     "start": "tsx src/index.ts",
     "test:phase1": "tsx src/test-client.ts",
     "test:phase2": "tsx src/test-phase2.ts",
@@ -72,6 +74,7 @@
     "@types/swagger-ui-express": "^4.1.8",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "concurrently": "^10.0.3",
     "eslint": "^10.5.0",
     "supertest": "^7.2.2",

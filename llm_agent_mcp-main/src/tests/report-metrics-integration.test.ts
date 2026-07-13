@@ -28,8 +28,8 @@ describe("computeMetrics — cross-tenant integration", () => {
                 `CREATE TABLE "${tableB}" (id INT, amount NUMERIC, quantity INT, category TEXT, date TEXT)`
             );
 
-            const catA = 'Operating Expense';
-            const catB = 'Rent Expense';
+            const catA = 'үйлдвэрлэлийн зарлага';
+            const catB = 'түрээсийн зарлага';
 
             await getPool().query(
                 `INSERT INTO "${tableA}" (id, amount, quantity, category, date) VALUES
@@ -90,8 +90,9 @@ describe("computeMetrics — cross-tenant integration", () => {
             const tailanA = xlsxMod.utils.sheet_to_json(wbA.Sheets["Tailan"], { header: 1 }) as string[][];
             const tailanB = xlsxMod.utils.sheet_to_json(wbB.Sheets["Tailan"], { header: 1 }) as string[][];
 
-            const topCatA = tailanA.find((r: string[]) => r[0] === "Top Category")?.[1] ?? "";
-            const topCatB = tailanB.find((r: string[]) => r[0] === "Top Category")?.[1] ?? "";
+            // Finance tables use Mongolian label "Тэргүүлэх зардал"; non-finance use "Top Category"
+            const topCatA = tailanA.find((r: string[]) => r[0] === "Тэргүүлэх зардал" || r[0] === "Top Category")?.[1] ?? "";
+            const topCatB = tailanB.find((r: string[]) => r[0] === "Тэргүүлэх зардал" || r[0] === "Top Category")?.[1] ?? "";
 
             expect(topCatA).toBe(catA);
             expect(topCatB).toBe(catB);
@@ -123,8 +124,8 @@ describe("computeMetrics — cross-tenant integration", () => {
                 `CREATE TABLE "${tableB}" (id INT, amount NUMERIC, quantity INT, category TEXT, date TEXT)`
             );
 
-            const catA = 'Operating Expense';
-            const catB = 'Rent Expense';
+            const catA = 'үйлдвэрлэлийн зарлага';
+            const catB = 'түрээсийн зарлага';
 
             // User A data: AOV = 100/2 = 50, top expense category = catA
             await getPool().query(
