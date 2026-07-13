@@ -1,5 +1,5 @@
 import { getRepository } from "../db/kpi-repository.js";
-import { getCatalog, executeSql } from "../db/data-lake.js";
+import { getCatalog, executeSql, quoteIdent } from "../db/data-lake.js";
 
 export type KpiMetricName = "sales" | "users" | "churn_rate";
 
@@ -87,28 +87,33 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
 
   if (isFinanceQuery) {
     try {
+      const qNiitOrlogo    = quoteIdent("нийт_орлого");
+      const qNiitZarlag    = quoteIdent("нийт_зарлага");
+      const qNiitGuilgee   = quoteIdent("ийт_гүйлгээ");
+      const qEhlekhOgnoo   = quoteIdent("эхлэх_огноо");
+      const qDuusakhOgnoo  = quoteIdent("дуусах_огноо");
       const summaryResult = await executeSql(`
         SELECT
-          COALESCE(SUM(CASE WHEN category = 'орлого' THEN amount ELSE 0 END), 0) AS нийт_орлого,
-          COALESCE(SUM(CASE WHEN category = 'зарлага' THEN amount ELSE 0 END), 0) AS нийт_зарлага,
-          COUNT(*) AS нийт_гүйлгээ,
-          MIN(date) AS эхлэх_огноо,
-          MAX(date) AS дуусах_огноо
+          COALESCE(SUM(CASE WHEN category = 'орлого' THEN amount ELSE 0 END), 0) AS ${qNiitOrlogo},
+          COALESCE(SUM(CASE WHEN category = 'зарлага' THEN amount ELSE 0 END), 0) AS ${qNiitZarlag},
+          COUNT(*) AS ${qNiitGuilgee},
+          MIN(date) AS ${qEhlekhOgnoo},
+          MAX(date) AS ${qDuusakhOgnoo}
         FROM finance_combined
         WHERE category IN ('орлого', 'зарлага')
       `, true, "system");
       if (summaryResult && summaryResult.length > 0) {
         const s = summaryResult[0] as any;
-        const totalIncome = Number(s.нийт_орлого || 0);
-        const totalExpense = Number(s.нийт_зарлага || 0);
+        const totalIncome = Number(s[qNiitOrlogo] || 0);
+        const totalExpense = Number(s[qNiitZarlag] || 0);
         const profit = totalIncome - totalExpense;
         sections.push(
           `Санхүүгийн хураангуй (finance_combined хүснэгтээс):\n` +
           `  Нийт орлого: ${totalIncome.toLocaleString()} ₮\n` +
           `  Нийт зарлага: ${totalExpense.toLocaleString()} ₮\n` +
           `  Үйл ажиллагааны ашиг: ${profit.toLocaleString()} ₮\n` +
-          `  Нийт гүйлгээ: ${Number(s.нийт_гүйлгээ || 0).toLocaleString()}\n` +
-          `  Хугацаа: ${s.эхлэх_огноо || "N/A"} → ${s.дуусах_огноо || "N/A"}`
+          `  Нийт гүйлгээ: ${Number(s[qNiitGuilgee] || 0).toLocaleString()}\n` +
+          `  Хугацаа: ${s[qEhlekhOgnoo] || "N/A"} → ${s[qDuusakhOgnoo] || "N/A"}`
         );
       }
     } catch (e) {
@@ -116,17 +121,19 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
     }
 
     try {
+      const qNiit = quoteIdent("нийт");
+      const qXuvi = quoteIdent("хувь");
       const expenseByCategory = await executeSql(`
-        SELECT subcategory, SUM(amount) AS нийт,
-          ROUND(SUM(amount) * 100.0 / NULLIF((SELECT SUM(amount) FROM finance_combined WHERE category = 'зарлага'), 0), 1) AS хувь
+        SELECT subcategory, SUM(amount) AS ${qNiit},
+          ROUND(SUM(amount) * 100.0 / NULLIF((SELECT SUM(amount) FROM finance_combined WHERE category = 'зарлага'), 0), 1) AS ${qXuvi}
         FROM finance_combined
         WHERE category = 'зарлага'
         GROUP BY subcategory
-        ORDER BY нийт DESC
+        ORDER BY ${qNiit} DESC
       `, true, "system");
       if (expenseByCategory && expenseByCategory.length > 0) {
         const lines = (expenseByCategory as any[]).map((r: any) =>
-          `  ${r.subcategory || "(тодорхойгүй)"}: ${Number(r.нийт || 0).toLocaleString()} ₮ (${r.хувь || 0}%)`
+          `  ${r.subcategory || "(тодорхойгүй)"}: ${Number(r[qNiit] || 0).toLocaleString()} ₮ (${r[qXuvi] || 0}%)`
         );
         sections.push(`Зардлын задаргаа (дэд ангилалаар):\n${lines.join("\n")}`);
       }
@@ -135,16 +142,17 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
     }
 
     try {
+      const qNiitIncome = quoteIdent("нийт");
       const incomeByCategory = await executeSql(`
-        SELECT subcategory, SUM(amount) AS нийт
+        SELECT subcategory, SUM(amount) AS ${qNiitIncome}
         FROM finance_combined
         WHERE category = 'орлого'
         GROUP BY subcategory
-        ORDER BY нийт DESC
+        ORDER BY ${qNiitIncome} DESC
       `, true, "system");
       if (incomeByCategory && incomeByCategory.length > 0) {
         const lines = (incomeByCategory as any[]).map((r: any) =>
-          `  ${r.subcategory || "(тодорхойгүй)"}: ${Number(r.нийт || 0).toLocaleString()} ₮`
+          `  ${r.subcategory || "(тодорхойгүй)"}: ${Number(r[qNiitIncome] || 0).toLocaleString()} ₮`
         );
         sections.push(`Орлогын задаргаа (дэд ангилалаар):\n${lines.join("\n")}`);
       }

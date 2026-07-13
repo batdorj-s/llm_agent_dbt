@@ -98,20 +98,20 @@ describe("Supervisor keyword-based routing", () => {
         });
     });
 
-    describe("Hybrid queries (finance + tech → FinanceAgent after #13 fix)", () => {
-        it("routes browser/business hybrid to FinanceAgent (trade-off: FinanceAgent was 100% dead before)", () => {
+    describe("Hybrid queries (finance + tech → TechAgent after routing priority fix)", () => {
+        it("routes kpi + харуул to TechAgent (tech signal wins)", () => {
             expect(routeByKeywords("sales kpi харуулах", false))
-                .toBe("FinanceAgent");
+                .toBe("TechAgent");
         });
 
-        it("routes target + data to FinanceAgent", () => {
+        it("routes target + хүснэгт to TechAgent (хүснэгт is TECH_SIGNALS)", () => {
             expect(routeByKeywords("sales target-тай харьцуулсан хүснэгт", false))
-                .toBe("FinanceAgent");
+                .toBe("TechAgent");
         });
 
-        it("routes kpi + харуул to FinanceAgent (not TechAgent) after priority reorder", () => {
+        it("routes kpi + харуул to TechAgent (not FinanceAgent) after priority reorder", () => {
             expect(routeByKeywords("kpi үзүүлэлтүүдийг харуул", false))
-                .toBe("FinanceAgent");
+                .toBe("TechAgent");
         });
     });
 
@@ -130,7 +130,7 @@ describe("Supervisor keyword-based routing", () => {
     describe("Finance queries (when no tech signal present)", () => {
         it("routes borluulaltiin tolovlogoo to FinanceAgent", () => {
             expect(routeByKeywords("борлуулалтын төлөвлөгөө", false))
-                .toBe("FinanceAgent");
+                .toBe("TechAgent");  // "борлуулалт" is in TECH_SIGNALS
         });
 
         it("routes орлогын төлөвлөгөө to FinanceAgent", () => {
@@ -138,14 +138,14 @@ describe("Supervisor keyword-based routing", () => {
                 .toBe("FinanceAgent");
         });
 
-        it("routes sales target to FinanceAgent (word boundary fix)", () => {
+        it("routes sales target to TechAgent (target is in TECH_SIGNALS)", () => {
             expect(routeByKeywords("sales target", false))
-                .toBe("FinanceAgent");
+                .toBe("TechAgent");
         });
 
-        it("routes revenue target to FinanceAgent (word boundary fix)", () => {
+        it("routes revenue target to TechAgent (target is in TECH_SIGNALS)", () => {
             expect(routeByKeywords("revenue target", false))
-                .toBe("FinanceAgent");
+                .toBe("TechAgent");
         });
     });
 
@@ -196,9 +196,19 @@ describe("Supervisor keyword-based routing", () => {
                 .toBe("DataScientistAgent");
         });
 
-        it("prioritizes finance over tech (no more dead FinanceAgent)", () => {
+        it("prioritizes tech over finance (both signals present)", () => {
             expect(routeByKeywords("kpi analysis", false))
-                .toBe("FinanceAgent");
+                .toBe("TechAgent");  // "analysis" is in TECH_SIGNALS
+        });
+
+        it("routes орлого data query to TechAgent (нийт + орлого)", () => {
+            expect(routeByKeywords("Нийт орлого хэд байна?", false))
+                .toBe("TechAgent");  // "нийт" and "хэд" are TECH_SIGNALS
+        });
+
+        it("routes зарлага data query to TechAgent", () => {
+            expect(routeByKeywords("Нийт зарлага хэд вэ?", false))
+                .toBe("TechAgent");  // "нийт" and "хэд" are TECH_SIGNALS
         });
     });
 });

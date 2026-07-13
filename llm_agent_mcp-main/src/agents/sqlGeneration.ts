@@ -1,4 +1,4 @@
-import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition, getPool } from "../db/data-lake.js";
+import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition, getPool, quoteIdent } from "../db/data-lake.js";
 import { safeJsonParse, queryMentionsTable, findClosestColumn } from "../utils.js";
 import type { DataLakeCatalogEntry } from "../db/data-lake.js";
 import { findConceptColumn } from "./columnSynonyms.js";
@@ -155,9 +155,9 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
         const loanExclude = subCatCol ? `\n  AND "${subCatCol}" NOT ILIKE '%зээл%'` : "";
         return [
           `SELECT`,
-          `  "${groupCol}" AS ангилал,`,
-          `  SUM("${amountCol}") AS нийт_дүн,`,
-          `  COUNT(*) AS тоо`,
+          `  "${groupCol}" AS ${quoteIdent("ангилал")},`,
+          `  SUM("${amountCol}") AS ${quoteIdent("нийт_дүн")},`,
+          `  COUNT(*) AS ${quoteIdent("тоо")}`,
           `FROM "${tableName}"`,
           `WHERE ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%')${loanExclude}`,
           `GROUP BY 1`,
@@ -168,9 +168,9 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
       if (/нийт.орлого|total.income|орлого.нийт/i.test(lowerQuery)) {
         return [
           `SELECT`,
-          `  "${groupCol}" AS ангилал,`,
-          `  SUM("${amountCol}") AS нийт_дүн,`,
-          `  COUNT(*) AS тоо`,
+          `  "${groupCol}" AS ${quoteIdent("ангилал")},`,
+          `  SUM("${amountCol}") AS ${quoteIdent("нийт_дүн")},`,
+          `  COUNT(*) AS ${quoteIdent("тоо")}`,
           `FROM "${tableName}"`,
           `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
           `  AND "${categoryCol}" NOT ILIKE '%зээл%'`,
@@ -182,9 +182,9 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
       if (/харилцагчаар|by.partner|by.counterparty|харилцагч.тус.бүрээр/i.test(lowerQuery) && partyCol) {
         return [
           `SELECT`,
-          `  "${partyCol}" AS харилцагч,`,
-          `  COUNT(*) AS гүйлгээний_тоо,`,
-          `  SUM("${amountCol}") AS нийт_дүн`,
+          `  "${partyCol}" AS ${quoteIdent("харилцагч")},`,
+          `  COUNT(*) AS ${quoteIdent("гүйлгээний_тоо")},`,
+          `  SUM("${amountCol}") AS ${quoteIdent("нийт_дүн")}`,
           `FROM "${tableName}"`,
           `GROUP BY 1`,
           `ORDER BY 3 DESC`,
@@ -203,9 +203,9 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
       if (/сараар|by.month|monthly|сар.тус.бүрээр/i.test(lowerQuery) && dateCol2) {
         return [
           `SELECT`,
-          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS сар,`,
-          `  SUM("${amountCol}") AS нийт_дүн,`,
-          `  COUNT(*) AS гүйлгээний_тоо`,
+          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS ${quoteIdent("сар")},`,
+          `  SUM("${amountCol}") AS ${quoteIdent("нийт_дүн")},`,
+          `  COUNT(*) AS ${quoteIdent("гүйлгээний_тоо")}`,
           `FROM "${tableName}"`,
           `GROUP BY 1`,
           `ORDER BY 1 DESC;`,
@@ -237,10 +237,10 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
           : `CASE WHEN ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%') THEN "${amountCol}" ELSE 0 END`;
         return [
           `SELECT`,
-          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS сар,`,
-          `  SUM(${isOpIncomeExpr}) AS орлого,`,
-          `  SUM(${isOpExpenseExpr}) AS зарлага,`,
-          `  SUM(${isOpIncomeExpr}) - SUM(${isOpExpenseExpr}) AS ашиг`,
+          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS ${quoteIdent("сар")},`,
+          `  SUM(${isOpIncomeExpr}) AS ${quoteIdent("орлого")},`,
+          `  SUM(${isOpExpenseExpr}) AS ${quoteIdent("зарлага")},`,
+          `  SUM(${isOpIncomeExpr}) - SUM(${isOpExpenseExpr}) AS ${quoteIdent("ашиг")}`,
           `FROM "${tableName}"`,
           `WHERE "${dateCol2}" IS NOT NULL AND "${categoryCol}" NOT ILIKE '%шилжүүлэг%' AND "${categoryCol}" NOT ILIKE '%эздийн зээл%'`,
           `GROUP BY 1`,
@@ -252,10 +252,10 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
     if (/дундаж.гүйлгээ|average.transaction|avg.transaction|avg.amount/i.test(lowerQuery)) {
         return [
           `SELECT`,
-          `  COUNT(*) AS гүйлгээний_тоо,`,
-          `  AVG("${amountCol}") AS дундаж_дүн,`,
-          `  MIN("${amountCol}") AS хамгийн_бага,`,
-          `  MAX("${amountCol}") AS хамгийн_их`,
+          `  COUNT(*) AS ${quoteIdent("гүйлгээний_тоо")},`,
+          `  AVG("${amountCol}") AS ${quoteIdent("дундаж_дүн")},`,
+          `  MIN("${amountCol}") AS ${quoteIdent("хамгийн_бага")},`,
+          `  MAX("${amountCol}") AS ${quoteIdent("хамгийн_их")}`,
           `FROM "${tableName}";`,
         ].join("\n");
       }
@@ -264,9 +264,9 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
       if (/рүүр|rank|зэрэглэл|цол|албан тушаал|түвшин|жагсаалт| ranking/i.test(lowerQuery) && dateCol2) {
         return [
           `SELECT`,
-          `  "${partyCol || groupCol}" AS нэр,`,
-          `  SUM("${amountCol}") AS нийт_дүн,`,
-          `  RANK() OVER (ORDER BY SUM("${amountCol}") DESC) AS зэрэглэл`,
+          `  "${partyCol || groupCol}" AS ${quoteIdent("нэр")},`,
+          `  SUM("${amountCol}") AS ${quoteIdent("нийт_дүн")},`,
+          `  RANK() OVER (ORDER BY SUM("${amountCol}") DESC) AS ${quoteIdent("зэрэглэл")}`,
           `FROM "${tableName}"`,
           `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
           `GROUP BY 1`,
@@ -279,9 +279,9 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
       if (/нийт.нэмэлт|running.total|cumulative|цуврал.нийлбэр|ytd|year.to.date|оны.эхнээс/i.test(lowerQuery) && dateCol2) {
         return [
           `SELECT`,
-          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS сар,`,
-          `  SUM("${amountCol}") AS сарын_дүн,`,
-          `  SUM(SUM("${amountCol}")) OVER (ORDER BY TO_CHAR(${dateExpr}, 'YYYY-MM')) AS цуврал_нийлбэр`,
+          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS ${quoteIdent("сар")},`,
+          `  SUM("${amountCol}") AS ${quoteIdent("сарын_дүн")},`,
+          `  SUM(SUM("${amountCol}")) OVER (ORDER BY TO_CHAR(${dateExpr}, 'YYYY-MM')) AS ${quoteIdent("цуврал_нийлбэр")}`,
           `FROM "${tableName}"`,
           `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
           `GROUP BY 1`,
@@ -293,9 +293,9 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
       if (/хөдөлгөөнт.дундаж|moving.average|rolling.average|rolling.avg|гүйлгээний.дундаж|gaap/i.test(lowerQuery) && dateCol2) {
         return [
           `SELECT`,
-          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS сар,`,
-          `  SUM("${amountCol}") AS сарын_дүн,`,
-          `  AVG(SUM("${amountCol}")) OVER (ORDER BY TO_CHAR(${dateExpr}, 'YYYY-MM') ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS 3_сарын_дундаж`,
+          `  TO_CHAR(${dateExpr}, 'YYYY-MM') AS ${quoteIdent("сар")},`,
+          `  SUM("${amountCol}") AS ${quoteIdent("сарын_дүн")},`,
+          `  AVG(SUM("${amountCol}")) OVER (ORDER BY TO_CHAR(${dateExpr}, 'YYYY-MM') ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS ${quoteIdent("3_сарын_дундаж")}`,
           `FROM "${tableName}"`,
           `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
           `GROUP BY 1`,
@@ -308,18 +308,18 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
         return [
           `WITH monthly AS (`,
           `  SELECT`,
-          `    TO_CHAR(${dateExpr}, 'YYYY') AS жил,`,
-          `    TO_CHAR(${dateExpr}, 'MM') AS сар,`,
-          `    SUM("${amountCol}") AS дүн`,
+          `    TO_CHAR(${dateExpr}, 'YYYY') AS ${quoteIdent("жил")},`,
+          `    TO_CHAR(${dateExpr}, 'MM') AS ${quoteIdent("сар")},`,
+          `    SUM("${amountCol}") AS ${quoteIdent("дүн")}`,
           `  FROM "${tableName}"`,
           `  WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
           `  GROUP BY 1, 2`,
           `)`,
           `SELECT`,
-          `  жил, сар, дүн,`,
-          `  LAG(дүн) OVER (PARTITION BY сар ORDER BY жил) AS өмнөх_жилийн_дүн`,
+          `  ${quoteIdent("жил")}, ${quoteIdent("сар")}, ${quoteIdent("дүн")},`,
+          `  LAG(${quoteIdent("дүн")}) OVER (PARTITION BY ${quoteIdent("сар")} ORDER BY ${quoteIdent("жил")}) AS ${quoteIdent("өмнөх_жилийн_дүн")}`,
           `FROM monthly`,
-          `ORDER BY жил, сар;`,
+          `ORDER BY ${quoteIdent("жил")}, ${quoteIdent("сар")};`,
         ].join("\n");
       }
 
@@ -327,9 +327,9 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
       if (/нийтийн.хувь|percent.of.total|percentage|хувь.нь|пропорц|proportion/i.test(lowerQuery)) {
         return [
           `SELECT`,
-          `  "${groupCol}" AS ангилал,`,
-          `  SUM("${amountCol}") AS нийт_дүн,`,
-          `  ROUND(SUM("${amountCol}") * 100.0 / SUM(SUM("${amountCol}")) OVER (), 2) AS хувь_нь`,
+          `  "${groupCol}" AS ${quoteIdent("ангилал")},`,
+          `  SUM("${amountCol}") AS ${quoteIdent("нийт_дүн")},`,
+          `  ROUND(SUM("${amountCol}") * 100.0 / SUM(SUM("${amountCol}")) OVER (), 2) AS ${quoteIdent("хувь_нь")}`,
           `FROM "${tableName}"`,
           `WHERE ("${categoryCol}" ILIKE '%орлого%' OR "${categoryCol}" ILIKE '%income%')`,
           `GROUP BY 1`,
@@ -342,8 +342,8 @@ export async function buildDeterministicTechSql(query: string, entry?: DataLakeC
         const loanExclude = subCatCol ? ` AND "${subCatCol}" NOT ILIKE '%зээл%'` : "";
         return [
           `SELECT`,
-          `  "${groupCol}" AS ангилал,`,
-          `  SUM("${amountCol}") AS нийт_дүн`,
+          `  "${groupCol}" AS ${quoteIdent("ангилал")},`,
+          `  SUM("${amountCol}") AS ${quoteIdent("нийт_дүн")}`,
           `FROM "${tableName}"`,
           `WHERE ("${categoryCol}" ILIKE '%зарлага%' OR "${categoryCol}" ILIKE '%expense%')${loanExclude}`,
           `GROUP BY 1`,
@@ -388,26 +388,33 @@ export function formatDeterministicTechResponse(query: string, sql: string, resu
     }
 
     if (lowerQuery.includes("count") || lowerQuery.includes("how many") || lowerQuery.includes("нийт хэдэн") || lowerQuery.includes("гүйлгээ") || lowerQuery.includes("хэдэн") || lowerQuery.includes("хэд")) {
+        const totalRows = Number(results[0]?.total_rows ?? 0);
+
         if (lowerQuery.includes("дундаж") || lowerQuery.includes("average") || lowerQuery.includes("avg")) {
-            const totalRows = Number(results[0]?.total_rows ?? 0);
-            const avgVal = Number(results[0]?.average_value ?? 0);
+            if (totalRows > 0) {
+                const avgVal = Number(results[0]?.average_value ?? 0);
+                return [
+                    "```sql",
+                    sql,
+                    "```",
+                    "",
+                    `Нийт мөрийн тоо: ${totalRows.toLocaleString()}`,
+                    `Дундаж утга: ${avgVal.toLocaleString()}`,
+                ].join("\n");
+            }
+        }
+
+        if (totalRows > 0) {
             return [
                 "```sql",
                 sql,
                 "```",
                 "",
                 `Нийт мөрийн тоо: ${totalRows.toLocaleString()}`,
-                `Дундаж утга: ${avgVal.toLocaleString()}`,
             ].join("\n");
         }
-        const totalRows = Number(results[0]?.total_rows ?? 0);
-        return [
-            "```sql",
-            sql,
-            "```",
-            "",
-            `Нийт мөрийн тоо: ${totalRows.toLocaleString()}`,
-        ].join("\n");
+
+        // GROUP BY or other query with non-total_rows columns — fall through to generic format
     }
 
     return [

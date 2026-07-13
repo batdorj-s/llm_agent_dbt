@@ -16,6 +16,16 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
     const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
     const userId = state.userId || "system";
 
+    // ── 1-рт: Data query эсэхийг шалгах (RAG context-аас хамаарахгүй) ──
+    const isDataQuery = /\b(sql|query|select|хүснэгт|багана|өгөгдөл|дата|row|мөр|column)\b/i.test(query)
+        || /\b(how many|хэд|нийт|total|count|sum|average|дундаж|нийлбэр|орлого|зарлага)\b/i.test(query);
+
+    if (isDataQuery) {
+        log.info("Data query detected — delegating to TechAgent (bypassing RAG).");
+        if (onChunk) onChunk("(Finance Agent → Tech Agent)\nМэдээллийн сангаас дата шүүж байна...\n\n");
+        return techAgentNode(state, config);
+    }
+
     const llm = await createLLM({ temperature: 0 });
 
     log.info(`Fetching RAG context for query: "${query}"`);    let context = "No context available.";
@@ -70,18 +80,6 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
     }
 
     if (context === "No context available." || !context) {
-        // Асуулт нь санхүүгийн ойлголтын талаар асууж байна уу, эсвэл SQL query хийх шаардлагатай юу?
-        const isDataQuery = /\b(sql|query|select|хүснэгт|багана|өгөгдөл|дата|row|мөр|column)\b/i.test(query)
-            || /\b(how many|хэд|нийт|total|count|sum|average|дундаж|нийлбэр)\b/i.test(query);
-
-        if (isDataQuery) {
-            // SQL query хийх шаардлагатай → TechAgent руу шилжүүлэх
-            log.info("No RAG context + data query detected — falling through to TechAgent.");
-            if (onChunk) onChunk("(Finance Agent → Tech Agent)\nМэдээллийн сангаас дата шүүж байна...\n\n");
-            return techAgentNode(state, config);
-        }
-
-        // Ойлголтын асуулт → LLM-ийн мэдлэгээр хариулна (RAG contextгүй ч гэсэн)
         log.info("No RAG context — answering from LLM knowledge (conceptual finance question).");
     }
 

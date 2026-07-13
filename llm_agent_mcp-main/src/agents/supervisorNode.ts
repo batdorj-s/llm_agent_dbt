@@ -150,8 +150,8 @@ export function routeByKeywords(query: string, hasActiveDataset: boolean, mentio
     const hasFinance = FINANCE_SIGNALS.some((word) => hasSignal(lower, word));
 
     if (hasDataScience) return "DataScientistAgent";
-    if (hasFinance) return "FinanceAgent";
     if (hasTech) return "TechAgent";
+    if (hasFinance) return "FinanceAgent";
     if (hasActiveDataset) return "TechAgent";
     return "END";
 }
