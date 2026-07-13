@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import type { Message } from "../components/types";
 
 export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone: () => void, token?: string) {
@@ -12,8 +12,25 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
   const [activeRoutingState, setActiveRoutingState] = useState<"idle" | "routing" | "finance" | "tech" | "done">("idle");
   const [feedbackState, setFeedbackState] = useState<Record<string, "positive" | "negative" | null>>({});
   const [feedbackSentMsgs, setFeedbackSentMsgs] = useState<Record<string, string>>({});
+  const [isOffline, setIsOffline] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // #17: Monitor online/offline status
+  const checkOnline = useCallback(() => {
+    if (typeof navigator !== "undefined") {
+      setIsOffline(!navigator.onLine);
+    }
+  }, []);
+
+  // Register online/offline listeners once
+  const listenersRegistered = useRef(false);
+  if (typeof window !== "undefined" && !listenersRegistered.current) {
+    listenersRegistered.current = true;
+    window.addEventListener("online", checkOnline);
+    window.addEventListener("offline", checkOnline);
+    checkOnline();
+  }
 
   const addWelcomeMessage = () => {
     setMessages([{
@@ -30,12 +47,12 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
     if (!query.trim() || isChatLoading) return;
     if (!customInput) setInput("");
 
-    const userMsg: Message = { id: `user_${Date.now()}`, sender: "user", text: query, timestamp: new Date() };
+    const userMsg: Message = { id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, sender: "user", text: query, timestamp: new Date() };
     setMessages(p => [...p, userMsg]);
     setIsChatLoading(true);
     setActiveRoutingState("routing");
 
-    const agentMsgId = `agent_${Date.now()}`;
+    const agentMsgId = `agent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     setMessages(p => [...p, { id: agentMsgId, sender: "agent", text: "", timestamp: new Date(), agentName: "Шинжээч.ai" }]);
 
     const controller = new AbortController();
@@ -68,28 +85,57 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
           for (const line of lines) {
             if (!line.trim().startsWith("data: ")) continue;
             const jsonStr = line.replace("data: ", "").trim();
+            // #12: Skip SSE heartbeat comments
+            if (!jsonStr || jsonStr.startsWith(":")) continue;
             try {
               const data = JSON.parse(jsonStr);
               if (data.type === "delta") {
                 fullResponse += data.chunk;
-                let detectedAgent = "Шинжээч.ai";
+                // #13: Use server-sent agent metadata when available
+                let detectedAgent = data.agent || "Шинжээч.ai";
                 let nodeState: typeof activeRoutingState = "routing";
-                if (fullResponse.includes("(Finance Agent)"))     { detectedAgent = "Finance Agent";      nodeState = "finance"; }
-                else if (fullResponse.includes("(Tech Agent)"))   { detectedAgent = "Tech Agent";         nodeState = "tech"; }
-                else if (fullResponse.includes("Security Alert")) { detectedAgent = "Security Manager";   nodeState = "idle"; }
+                if (data.agent) {
+                  if (data.agent === "FinanceAgent")      { detectedAgent = "Finance Agent";      nodeState = "finance"; }
+                  else if (data.agent === "TechAgent")    { detectedAgent = "Tech Agent";         nodeState = "tech"; }
+                  else if (data.agent === "DataScientist") { detectedAgent = "DataScientistAgent"; nodeState = "tech"; }
+                  else if (data.agent === "Security")      { detectedAgent = "Security Manager";   nodeState = "idle"; }
+                } else {
+                  // Fallback to string matching
+                  if (fullResponse.includes("(Finance Agent)"))     { detectedAgent = "Finance Agent";      nodeState = "finance"; }
+                  else if (fullResponse.includes("(Tech Agent)"))   { detectedAgent = "Tech Agent";         nodeState = "tech"; }
+                  else if (fullResponse.includes("Security Alert")) { detectedAgent = "Security Manager";   nodeState = "idle"; }
+                }
                 setActiveRoutingState(nodeState);
                 setLastAgentType(detectedAgent);
                 setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: fullResponse, agentName: detectedAgent } : m));
+              } else if (data.type === "agent") {
+                // #13: Dedicated agent metadata event
+                const agentMap: Record<string, { name: string; state: typeof activeRoutingState }> = {
+                  "FinanceAgent": { name: "Finance Agent", state: "finance" },
+                  "TechAgent": { name: "Tech Agent", state: "tech" },
+                  "DataScientist": { name: "DataScientistAgent", state: "tech" },
+                  "Security": { name: "Security Manager", state: "idle" },
+                };
+                const info = agentMap[data.agent] || { name: data.agent, state: "routing" as const };
+                setActiveRoutingState(info.state);
+                setLastAgentType(info.name);
+                setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, agentName: info.name } : m));
               } else if (data.type === "done") {
                 setActiveRoutingState("done");
                 onDone();
               } else if (data.type === "error") {
                 throw new Error(data.error || "Streaming error occurred");
               }
-            } catch {}
+            } catch (parseErr) {
+              // #17: Don't silently swallow parse errors
+              if (parseErr instanceof SyntaxError) {
+                console.warn("[Chat] SSE parse error, skipping line:", jsonStr.slice(0, 100));
+              }
+            }
           }
         }
       } else {
+        // #15: Fix non-streaming path to show actual response
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {
@@ -100,8 +146,9 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
           signal: controller.signal,
         });
         if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to get agent response"); }
-        await res.json();
-        setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: "Execution complete.", agentName: "Agent System" } : m));
+        const data = await res.json();
+        const responseText = data.response || "Хариу байхгүй.";
+        setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: responseText, agentName: "Шинжээч.ai" } : m));
         setActiveRoutingState("done");
         onDone();
       }
@@ -116,7 +163,7 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
         });
         return;
       }
-      const errorMessage = e instanceof Error ? e.message : "An error occurred.";
+      const errorMessage = e instanceof Error ? e.message : "Алдаа гарлаа.";
       setActiveRoutingState("idle");
       setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: errorMessage, agentName: "System Error Handler", isError: true } : m));
     } finally {
@@ -124,6 +171,25 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
       abortControllerRef.current = null;
     }
   };
+
+  // #1: Retry failed message
+  const handleRetry = useCallback((messageId: string) => {
+    setMessages(p => {
+      const msgIndex = p.findIndex(m => m.id === messageId);
+      if (msgIndex < 0) return p;
+      // Find the user message before this agent message
+      let userMsgText = "";
+      for (let i = msgIndex - 1; i >= 0; i--) {
+        if (p[i].sender === "user") { userMsgText = p[i].text; break; }
+      }
+      if (!userMsgText) return p;
+      // Remove the failed message and resend
+      const newMessages = p.filter(m => m.id !== messageId);
+      // Trigger send after state update
+      setTimeout(() => handleSendMessage(undefined, userMsgText), 0);
+      return newMessages;
+    });
+  }, [isChatLoading]);
 
   const handleCancelMessage = () => { abortControllerRef.current?.abort(); };
 
@@ -170,8 +236,8 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
 
   return {
     messages, input, setInput, isChatLoading, streamEnabled, setStreamEnabled,
-    lastAgentType, activeRoutingState, feedbackState, feedbackSentMsgs,
-    handleSendMessage, handleCancelMessage, handleFeedback,
+    lastAgentType, activeRoutingState, feedbackState, feedbackSentMsgs, isOffline,
+    handleSendMessage, handleCancelMessage, handleFeedback, handleRetry,
     addWelcomeMessage, clearMessages, addSystemMessage, addUserMessage,
   };
 }

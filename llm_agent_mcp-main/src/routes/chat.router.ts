@@ -3,7 +3,14 @@ import { z } from "zod";
 import { agentLimiter } from "../rate-limiter.js";
 import { runMultiAgent, runMultiAgentStream, type UserRole } from "../multi-agent.js";
 import { verifyToken, DEFAULT_USER_ID, DEFAULT_ROLE } from "../auth.js";
-import { addMessage, getConversationByThreadId, createConversation } from "../services/conversation.js";
+import { addMessage, getConversationByThreadId, createConversation, updateConversationTitle } from "../services/conversation.js";
+
+// #7: Auto-generate a short title from the first user message
+function autoTitle(text: string): string {
+  const cleaned = text.replace(/[^a-zA-Z0-9\u0400-\u04FF\s]/g, " ").trim();
+  const words = cleaned.split(/\s+/).slice(0, 6);
+  return words.length > 0 ? words.join(" ") : "Шинэ чат";
+}
 
 export const chatRouter = Router();
 
@@ -125,26 +132,50 @@ chatRouter.post("/stream", async (req, res) => {
   const threadIdFinal = threadId ?? `thread_${Date.now()}`;
   let fullResponse = "";
 
+  // #14: Partial persistence — persist user message BEFORE streaming starts
+  let conversationId: string | null = null;
+  try {
+    let conv = await getConversationByThreadId(threadIdFinal, userId);
+    if (!conv) {
+      conv = await createConversation(userId, threadIdFinal, "multi-agent");
+    }
+    conversationId = conv.id;
+    await addMessage(conv.id, "user", message);
+  } catch { /* best-effort */ }
+
+  // #12: SSE heartbeat — send `: comment` every 15s to keep connection alive through proxies
+  const heartbeatTimer = setInterval(() => {
+    try { res.write(": heartbeat\n\n"); } catch { /* connection closed */ }
+  }, 15_000);
+
+  // #13: Agent metadata event — send agent name as first SSE event
+  res.write(`data: ${JSON.stringify({ type: "agent", agent: "Шинжээч" })}\n\n`);
+
   try {
     await runMultiAgentStream(message, role, threadIdFinal, (chunk) => {
       fullResponse += chunk;
       res.write(`data: ${JSON.stringify({ chunk, type: "delta" })}\n\n`);
     }, visualRequest, userId);
+
+    clearInterval(heartbeatTimer);
     res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);
 
-    // Persist conversation messages — reuse existing conversation by threadId
+    // #14: Partial persistence — persist assistant response AFTER streaming completes
+    // #7: Auto-naming — update title from first message
     try {
-      let conv = await getConversationByThreadId(threadIdFinal, userId);
-      if (!conv) {
-        conv = await createConversation(userId, threadIdFinal, "multi-agent");
+      if (conversationId) {
+        await addMessage(conversationId, "assistant", fullResponse);
+        // Auto-name: derive title from the first user message (only on first message)
+        const title = autoTitle(message);
+        await updateConversationTitle(conversationId, userId, title);
       }
-      await addMessage(conv.id, "user", message);
-      await addMessage(conv.id, "assistant", fullResponse);
-    } catch { /* conversation persistence is best-effort */ }
+    } catch { /* best-effort */ }
   } catch (err: unknown) {
+    clearInterval(heartbeatTimer);
     const msg = err instanceof Error ? err.message : "Unknown streaming error";
     res.write(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`);
   } finally {
+    clearInterval(heartbeatTimer);
     res.end();
   }
 });

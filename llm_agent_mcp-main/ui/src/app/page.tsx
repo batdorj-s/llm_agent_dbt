@@ -189,6 +189,10 @@ export default function Home() {
     }
   };
 
+  const handleRenameConversation = async (id: string, title: string) => {
+    await conversation.renameConversation(id, title);
+  };
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -252,6 +256,7 @@ export default function Home() {
               onSelect={handleSelectConversation}
               onDelete={handleDeleteConversation}
               onNewChat={handleNewChat}
+              onRename={handleRenameConversation}
               isOpen={convoSidebarOpen}
               onClose={() => setConvoSidebarOpen(false)}
             />
