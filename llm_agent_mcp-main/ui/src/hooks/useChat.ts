@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import type { Message } from "../components/types";
+import { generateFollowUpSuggestions } from "../lib/generateFollowUpSuggestions";
 
 export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone: () => void, token?: string) {
   const [messages, setMessages]         = useState<Message[]>([]);
@@ -13,6 +14,9 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
   const [feedbackState, setFeedbackState] = useState<Record<string, "positive" | "negative" | null>>({});
   const [feedbackSentMsgs, setFeedbackSentMsgs] = useState<Record<string, string>>({});
   const [isOffline, setIsOffline] = useState(false);
+  // #6: Dynamic follow-up suggestions
+  const [dynamicSuggestions, setDynamicSuggestions] = useState<{ label: string; query: string }[]>([]);
+  const lastQueryRef = useRef<string>("");
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -46,6 +50,7 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
     const query = customInput || input;
     if (!query.trim() || isChatLoading) return;
     if (!customInput) setInput("");
+    lastQueryRef.current = query;
 
     const userMsg: Message = { id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, sender: "user", text: query, timestamp: new Date() };
     setMessages(p => [...p, userMsg]);
@@ -122,6 +127,9 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
                 setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, agentName: info.name } : m));
               } else if (data.type === "done") {
                 setActiveRoutingState("done");
+                // #6: Generate dynamic follow-up suggestions from last query + full response
+                const suggestions = generateFollowUpSuggestions(lastQueryRef.current, fullResponse, lastAgentType);
+                setDynamicSuggestions(suggestions);
                 onDone();
               } else if (data.type === "error") {
                 throw new Error(data.error || "Streaming error occurred");
@@ -150,6 +158,9 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
         const responseText = data.response || "Хариу байхгүй.";
         setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: responseText, agentName: "Шинжээч.ai" } : m));
         setActiveRoutingState("done");
+        // #6: Generate dynamic follow-up suggestions
+        const suggestions = generateFollowUpSuggestions(lastQueryRef.current, responseText, lastAgentType);
+        setDynamicSuggestions(suggestions);
         onDone();
       }
     } catch (e: unknown) {
@@ -237,6 +248,7 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
   return {
     messages, input, setInput, isChatLoading, streamEnabled, setStreamEnabled,
     lastAgentType, activeRoutingState, feedbackState, feedbackSentMsgs, isOffline,
+    dynamicSuggestions,
     handleSendMessage, handleCancelMessage, handleFeedback, handleRetry,
     addWelcomeMessage, clearMessages, addSystemMessage, addUserMessage,
   };

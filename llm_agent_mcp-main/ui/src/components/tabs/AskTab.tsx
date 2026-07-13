@@ -32,7 +32,7 @@ interface AskTabProps {
   setIsGraphicModeEnabled: (v: boolean) => void;
   threadId: string;
   activeSuggestions: Suggestion[];
-  followUpSuggestions: Record<string, Suggestion[]>;
+  followUpSuggestions: Suggestion[] | Record<string, Suggestion[]>;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -123,15 +123,21 @@ const AskTabInner: React.FC<AskTabProps> = ({
               </div>
             ))
           )}
-          {chat.messages.length > 0 && chat.lastAgentType && followUpSuggestions[chat.lastAgentType] && !chat.isChatLoading && (
-            <div className="flex flex-wrap gap-2 justify-start max-w-2xl pt-2">
-              {followUpSuggestions[chat.lastAgentType].map((s, i) => (
-                <button key={i} onClick={() => chat.handleSendMessage(undefined, s.query)}
-                  className="px-2.5 py-1 text-[10px] bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/50 transition-all cursor-pointer animate-fade-in-up"
-                  style={{ animationDelay: `${i * 50}ms` }}>{s.label}</button>
-              ))}
-            </div>
-          )}
+          {chat.messages.length > 0 && chat.lastAgentType && !chat.isChatLoading && (() => {
+            const suggestions = Array.isArray(followUpSuggestions)
+              ? followUpSuggestions
+              : followUpSuggestions[chat.lastAgentType];
+            if (!suggestions || suggestions.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-2 justify-start max-w-2xl pt-2">
+                {suggestions.map((s, i) => (
+                  <button key={i} onClick={() => chat.handleSendMessage(undefined, s.query)}
+                    className="px-2.5 py-1 text-[10px] bg-sidebar border border-border rounded hover:bg-foreground/5 hover:border-foreground/30 text-foreground/50 transition-all cursor-pointer animate-fade-in-up"
+                    style={{ animationDelay: `${i * 50}ms` }}>{s.label}</button>
+                ))}
+              </div>
+            );
+          })()}
           <div ref={messagesEndRef} />
         </div>
 

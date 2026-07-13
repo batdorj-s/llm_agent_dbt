@@ -27,24 +27,6 @@ const SUGGESTIONS_INITIAL = [
   { label: "Тайлан",           query: "Санхүүгийн тайлан гаргаж өгнө үү",         icon: <Activity     className="w-3 h-3" /> },
 ];
 
-const FOLLOW_UP_SUGGESTIONS: Record<string, { label: string; query: string }[]> = {
-  "Finance Agent": [
-    { label: "Дэлгэрэнгүй мэдээлэл", query: "Өмнөх хариултаа дэлгэрэнгүй тайлбарла" },
-    { label: "Өмнөх сартай харьцуулах", query: "Өмнөх сарын үзүүлэлттэй харьцуул" },
-    { label: "Графикаар харуул", query: "Энэ өгөгдлийг графикаар харуул" },
-  ],
-  "Tech Agent": [
-    { label: "Top 5 харуул",  query: "Хамгийн их борлуулалттай эхний 5-ыг харуул" },
-    { label: "График зур",    query: "Өгөгдлийн график зурж харуул" },
-    { label: "Dashboard",     query: "Энэ өгөгдлийг dashboard болгож харуул" },
-  ],
-  "DataScientistAgent": [
-    { label: "Forecast шинэчлэх",  query: "Шинэ өгөгдлөөр таамаглалаа шинэчил" },
-    { label: "Cluster дэлгэрэнгүй", query: "Бүлэглэлтийн дэлгэрэнгүй шинжилгээ харуул" },
-    { label: "Корреляцийн матриц", query: "Корреляцийн матриц харуул" },
-  ],
-};
-
 import type { KpiData, ComputedMetrics } from "../components/types";
 
 function useFinanceChartData(financeCharts: Record<string, unknown> | null, salesKpi: KpiData | null) {
@@ -279,7 +261,7 @@ export default function Home() {
                 setIsGraphicModeEnabled={setIsGraphicModeEnabled}
                 threadId={auth.threadId}
                 activeSuggestions={activeSuggestions}
-                followUpSuggestions={FOLLOW_UP_SUGGESTIONS}
+                followUpSuggestions={chat.dynamicSuggestions}
                 messagesEndRef={messagesEndRef}
               />
             </div>
