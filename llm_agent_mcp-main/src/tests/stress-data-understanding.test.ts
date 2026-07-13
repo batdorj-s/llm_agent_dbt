@@ -226,10 +226,10 @@ describe("Phase 2 — Schema Context: getRelationships interface", () => {
 // ────────────────────────────────────────────────────────────────────────────
 describe("Phase 3 — Semantic RAG: Business Glossary", () => {
     beforeAll(async () => {
-        const rag = await import("../rag.js");
+        const { setKnowledgeDocuments, setupKnowledgeBase } = await import("../rag.js");
         // Reset and load full KB so search tests are self-contained
-        rag.knowledgeDocuments.length = 0;
-        await rag.setupKnowledgeBase();
+        setKnowledgeDocuments([]);
+        await setupKnowledgeBase();
     }, 30000);
     it("STRESS: 'Цэвэр ашиг' returns net profit content", async () => {
         const { searchKnowledgeBase } = await import("../rag.js");

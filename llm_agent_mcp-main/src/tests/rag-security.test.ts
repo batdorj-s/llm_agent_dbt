@@ -5,6 +5,7 @@ import {
   addDocumentToCatalog,
   searchKnowledgeBaseWithFilter,
   setupKnowledgeBase,
+  getKnowledgeDocuments,
 } from "../rag.js";
 
 const FAILED_QUERIES_PATH = path.join(process.cwd(), "logs", "failed_queries.json");
@@ -22,8 +23,7 @@ describe("RAG Security & Multi-Tenant Isolation", () => {
     }
 
     // Backup current knowledge base documents list
-    const ragModule = await import("../rag.js");
-    originalKnowledgeDocuments = [...ragModule.knowledgeDocuments];
+    originalKnowledgeDocuments = [...getKnowledgeDocuments()];
   });
 
   afterAll(async () => {
@@ -35,10 +35,8 @@ describe("RAG Security & Multi-Tenant Isolation", () => {
     }
 
     // Restore knowledge base documents
-    const ragModule = await import("../rag.js");
-    // Clear and restore
-    ragModule.knowledgeDocuments.length = 0;
-    ragModule.knowledgeDocuments.push(...originalKnowledgeDocuments);
+    const { setKnowledgeDocuments } = await import("../rag.js");
+    setKnowledgeDocuments([...originalKnowledgeDocuments]);
   });
 
   beforeEach(async () => {
@@ -46,9 +44,8 @@ describe("RAG Security & Multi-Tenant Isolation", () => {
     fs.writeFileSync(FAILED_QUERIES_PATH, "[]", "utf8");
 
     // Clear active catalog to system defaults for deterministic testing
-    const ragModule = await import("../rag.js");
-    ragModule.knowledgeDocuments.length = 0;
-    ragModule.knowledgeDocuments.push(
+    const { setKnowledgeDocuments } = await import("../rag.js");
+    setKnowledgeDocuments([
       {
         id: "sys_doc1",
         text: "System Business Target is to grow sales by 10% annually.",
@@ -61,7 +58,7 @@ describe("RAG Security & Multi-Tenant Isolation", () => {
         metadata: { category: "technical", department: "engineering", author: "system", created_at: "2026-01-01", source_name: "Style Guide" },
         keywords: ["sql", "ilike"]
       }
-    );
+    ]);
   });
 
   describe("R2 & R4: Multi-Tenant Isolation", () => {

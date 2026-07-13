@@ -7,7 +7,7 @@
  * Usage: npx tsx src/test-semantic-quality.ts
  */
 
-import { setupKnowledgeBase, searchKnowledgeBase, searchKnowledgeBaseWithFilter, knowledgeDocuments } from "./rag.js";
+import { setupKnowledgeBase, searchKnowledgeBase, searchKnowledgeBaseWithFilter, getKnowledgeDocuments } from "./rag.js";
 import { buildBM25Index, bm25Search, hybridSearch, getSemanticSearchStatus, type BM25Index } from "./rag/semantic-search.js";
 
 interface TestCase {
@@ -186,7 +186,7 @@ function checkResult(
     : matchedExpected.length > 0;
   const keywordHit = expectedKeywords.some(kw =>
     foundIds.some(id => {
-      const doc = knowledgeDocuments.find(d => d.id === id);
+      const doc = getKnowledgeDocuments().find(d => d.id === id);
       return doc && (
         doc.text.toLowerCase().includes(kw.toLowerCase()) ||
         doc.keywords.some(k => k.toLowerCase().includes(kw.toLowerCase()))
@@ -206,11 +206,11 @@ async function main() {
   // 1. Setup knowledge base
   console.log("[1/4] Loading knowledge base...");
   await setupKnowledgeBase();
-  console.log(`       ${knowledgeDocuments.length} documents loaded\n`);
+  console.log(`       ${getKnowledgeDocuments().length} documents loaded\n`);
 
   // 2. Build BM25 index
   console.log("[2/4] Building BM25 index...");
-  const bm25Index = buildBM25Index(knowledgeDocuments);
+  const bm25Index = buildBM25Index(getKnowledgeDocuments());
   console.log(`       BM25 index: ${bm25Index.docCount} docs, avg ${Math.round(bm25Index.avgDocLength)} tokens\n`);
 
   // 3. Check embedding status
@@ -243,11 +243,11 @@ async function main() {
     const categories = tc.category ? [tc.category] : undefined;
 
     // Run BM25-only search
-    const bm25Results = bm25Search(tc.query, knowledgeDocuments, bm25Index, 5, categories);
+    const bm25Results = bm25Search(tc.query, getKnowledgeDocuments(), bm25Index, 5, categories);
     const bm25Ids = bm25Results.map(r => r.doc.id);
 
     // Run hybrid search (BM25 + Gemini if available)
-    const hybridResults = await hybridSearch(tc.query, knowledgeDocuments, bm25Index, 5, categories);
+    const hybridResults = await hybridSearch(tc.query, getKnowledgeDocuments(), bm25Index, 5, categories);
     const hybridIds = hybridResults.map(r => r.doc.id);
 
     // Use hybrid results as primary; fall back to BM25 only for positive cases
@@ -328,8 +328,8 @@ async function main() {
     ];
 
     for (const sq of semanticQueries) {
-      const bm25R = bm25Search(sq.query, knowledgeDocuments, bm25Index, 5);
-      const hybridR = await hybridSearch(sq.query, knowledgeDocuments, bm25Index, 5);
+      const bm25R = bm25Search(sq.query, getKnowledgeDocuments(), bm25Index, 5);
+      const hybridR = await hybridSearch(sq.query, getKnowledgeDocuments(), bm25Index, 5);
 
       const bm25Rank = bm25R.findIndex(r => r.doc.id === sq.expectBetter) + 1;
       const hybridRank = hybridR.findIndex(r => r.doc.id === sq.expectBetter) + 1;
