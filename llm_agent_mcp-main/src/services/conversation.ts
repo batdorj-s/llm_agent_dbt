@@ -196,6 +196,23 @@ export async function getMessages(
   return result.rows.map(mapMessage);
 }
 
+export async function getConversationByThreadId(
+  threadId: string,
+  userId: string
+): Promise<Conversation | null> {
+  if (!isPgAvailable()) return null;
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT * FROM conversations WHERE title = $1 AND user_id = $2 LIMIT 1`,
+      [threadId, userId]
+    );
+    return result.rows.length > 0 ? mapConversation(result.rows[0]) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMessageCount(conversationId: string): Promise<number> {
   const pool = getPool();
   const result = await pool.query(

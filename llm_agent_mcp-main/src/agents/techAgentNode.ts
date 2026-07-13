@@ -23,6 +23,32 @@ const log = createLogger("TechAgent");
 import { executeTechPythonAgent } from "./pythonExecution.js";
 import { buildDashboard } from "./dashboardBuilder.js";
 
+function generateQuerySuggestion(query: string, entry: any): string {
+    const lower = query.toLowerCase();
+    const suggestions: string[] = [];
+
+    if (/нийт|total|хэд|how many/i.test(lower)) {
+        suggestions.push('"Нийт орлого хэд вэ?" — нийт орлого тооцно');
+        suggestions.push('"Нийт зарлага хэд вэ?" — нийт зарлага тооцно');
+    }
+    if (/сараар|monthly|by month/i.test(lower)) {
+        suggestions.push('"Сараар орлого харуул" — сар бүрийн орлого');
+        suggestions.push('"Сараар зарлага харуул" — сар бүрийн зарлага');
+    }
+    if (/ангилал|category|задал|breakdown/i.test(lower)) {
+        suggestions.push('"Ангилалаар задал" — ангилал бүрийн дүн');
+        suggestions.push('"Дэд ангилалаар харуул" — дэд ангилал бүрийн дүн');
+    }
+    if (/харилцагч|customer|partner/i.test(lower)) {
+        suggestions.push('"Харилцагчаар харуул" — харилцагч бүрийн дүн');
+    }
+
+    if (suggestions.length > 0) {
+        return "\n\n**Зөвлөмж:** " + suggestions.slice(0, 3).join(" | ");
+    }
+    return "\n\nТа илүү тодорхой асуулт асуугаарай. Жишээ нь: 'нийт орлого', 'сараар харуул', 'ангилалаар задал'.";
+}
+
 export async function techAgentNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
     const onChunk = config?.configurable?.onChunk;
 
@@ -211,8 +237,9 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
         }
         if (!isSuccess) {
             void logSqlOutcome({ userId, query, outcome: "total_failure", attempts, tableName: activeEntry?.table_name, error: "All SQL generation paths failed" });
-            const fallback = `${accumulatedText}\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу. Хэрэв та баганын нэр эсвэл хүснэгтийн нэр зааж өгвөл би илүү нарийвчлалтай хариулж чадна.`;
-            if (onChunk) onChunk("\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.");
+            const suggestion = generateQuerySuggestion(query, activeEntry);
+            const fallback = `${accumulatedText}\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.${suggestion}`;
+            if (onChunk) onChunk(`\n\n[АНХААР] Хариу бэлдэхэд саатал гарлаа. Дахин оролдоно уу.${suggestion}`);
             return {
                 messages: [{ role: "assistant", content: fallback }]
             };

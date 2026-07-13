@@ -77,21 +77,27 @@ export function trimMessages(messages: Message[]): Message[] {
 }
 
 export function buildContextSummary(messages: Message[]): string {
+    // Include last 3 user messages and last 2 assistant messages for full context
+    const userMsgs = messages.filter(m => m.role === "user").slice(-3);
     const assistantMsgs = messages.filter(m => m.role === "assistant").slice(-2);
-    if (assistantMsgs.length === 0) return "";
+    if (userMsgs.length === 0 && assistantMsgs.length === 0) return "";
+
     const parts: string[] = [];
+    for (const msg of userMsgs) {
+        parts.push(`User: ${msg.content.slice(0, 200)}`);
+    }
     for (const msg of assistantMsgs) {
         const text = msg.content.replace(/<visual>[\s\S]*?<\/visual>/g, "").replace(/<dashboard>[\s\S]*?<\/dashboard>/g, "").trim();
         if (text.length > 500) {
             const sentences = text.split(/[.?\n]/).filter(s => s.trim());
             const summary = sentences.slice(0, 3).join(". ") + ".";
-            parts.push(summary);
+            parts.push(`Assistant: ${summary}`);
         } else {
-            parts.push(text);
+            parts.push(`Assistant: ${text}`);
         }
     }
     return parts.length > 0
-        ? `\n\n## Context Summary (from previous assistant responses)\n${parts.join("\n---\n")}`
+        ? `\n\n## Conversation Context (previous messages)\n${parts.join("\n")}`
         : "";
 }
 
