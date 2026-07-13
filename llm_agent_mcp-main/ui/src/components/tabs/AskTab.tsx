@@ -34,6 +34,7 @@ interface AskTabProps {
   activeSuggestions: Suggestion[];
   followUpSuggestions: Suggestion[] | Record<string, Suggestion[]>;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const AskTabInner: React.FC<AskTabProps> = ({
@@ -44,6 +45,7 @@ const AskTabInner: React.FC<AskTabProps> = ({
   activeSuggestions,
   followUpSuggestions,
   messagesEndRef,
+  scrollContainerRef,
 }) => {
   return (
     <main key="tab-ask" className="flex-1 flex overflow-hidden min-h-0 animate-fade-in-up">
@@ -64,7 +66,7 @@ const AskTabInner: React.FC<AskTabProps> = ({
         </div>
 
         {/* Chat messages */}
-        <div className="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-6 flex flex-col justify-start">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-6 flex flex-col justify-start">
           {chat.messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center my-auto gap-6">
               <div className="text-center text-foreground/40">

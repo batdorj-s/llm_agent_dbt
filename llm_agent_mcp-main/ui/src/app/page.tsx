@@ -115,6 +115,8 @@ export default function Home() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isUserScrolledUp = useRef(false);
 
   const { theme, toggleTheme }  = useTheme();
   const auth                    = useAuth();
@@ -164,6 +166,7 @@ export default function Home() {
   };
 
   const handleDeleteConversation = async (id: string) => {
+    if (!window.confirm("Энэ чатыг устгах уу?")) return;
     await conversation.deleteConversation(id);
     if (activeConversationId === id) {
       setActiveConversationId(null);
@@ -175,9 +178,22 @@ export default function Home() {
     await conversation.renameConversation(id, title);
   };
 
-  // Auto-scroll
+  // Smart auto-scroll: only scroll if user hasn't manually scrolled up
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      isUserScrolledUp.current = !atBottom;
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!isUserScrolledUp.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [chat.messages]);
 
   // Fetch files on mount
@@ -263,6 +279,7 @@ export default function Home() {
                 activeSuggestions={activeSuggestions}
                 followUpSuggestions={chat.dynamicSuggestions}
                 messagesEndRef={messagesEndRef}
+                scrollContainerRef={scrollContainerRef}
               />
             </div>
           </div>

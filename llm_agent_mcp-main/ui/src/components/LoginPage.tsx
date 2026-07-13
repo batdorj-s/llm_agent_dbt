@@ -61,26 +61,26 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
             {mode === "register" && (
               <div>
                 <label className="block text-[10px] font-medium text-foreground/60 uppercase tracking-wider mb-1">Нэр</label>
                 <input type="text" value={name} onChange={e => setName(e.target.value)} required
-                  placeholder="Таны нэр"
+                  placeholder="Таны нэр" autoComplete="name"
                   className="w-full px-3 py-2 text-xs bg-background border border-border rounded-lg focus:outline-none focus:border-foreground/30 transition-colors" />
               </div>
             )}
             <div>
               <label className="block text-[10px] font-medium text-foreground/60 uppercase tracking-wider mb-1">Имэйл</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                placeholder="admin@company.mn"
+                placeholder="admin@company.mn" autoComplete="username"
                 className="w-full px-3 py-2 text-xs bg-background border border-border rounded-lg focus:outline-none focus:border-foreground/30 transition-colors" />
             </div>
             <div>
               <label className="block text-[10px] font-medium text-foreground/60 uppercase tracking-wider mb-1">Нууц үг</label>
               <div className="relative">
                 <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required
-                  placeholder="••••••••"
+                  placeholder="••••••••" autoComplete={mode === "login" ? "current-password" : "new-password"}
                   className="w-full px-3 py-2 pr-8 text-xs bg-background border border-border rounded-lg focus:outline-none focus:border-foreground/30 transition-colors" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/30 hover:text-foreground/60 cursor-pointer">

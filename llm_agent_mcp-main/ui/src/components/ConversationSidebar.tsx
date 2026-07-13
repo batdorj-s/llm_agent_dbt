@@ -199,8 +199,8 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
                       </>
                     )}
                   </div>
-                  {/* Actions: rename + delete */}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+                  {/* Actions: rename + delete — always visible on touch devices */}
+                  <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity mt-0.5">
                     {renamingId !== conv.id && onRename && (
                       <button onClick={e => handleRenameStart(conv, e)}
                         className="text-foreground/30 hover:text-foreground transition-colors cursor-pointer">

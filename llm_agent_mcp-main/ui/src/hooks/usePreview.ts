@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { UploadedFile } from "../components/types";
 
 export interface PreviewState {
@@ -19,10 +19,18 @@ const EMPTY: PreviewState = {
 
 export function usePreview() {
   const [preview, setPreview] = useState<PreviewState>(EMPTY);
+  const [isLoading, setIsLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const open = async (file: UploadedFile) => {
+    // Cancel any in-flight preview request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setIsLoading(true);
     try {
-      const res = await fetch(`/api/admin/files/${file.id}/preview`);
+      const res = await fetch(`/api/admin/files/${file.id}/preview`, { signal: controller.signal });
       if (!res.ok) {
         let msg = `Preview failed (${res.status})`;
         try { const b = await res.json(); if (b.error) msg += `: ${b.error}`; } catch {}
@@ -39,7 +47,10 @@ export function usePreview() {
         fileId: file.id,
       });
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
       console.error("Failed to view file", e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -47,7 +58,11 @@ export function usePreview() {
     setPreview({ ...EMPTY, ...partial });
   };
 
-  const close = () => setPreview(EMPTY);
+  const close = () => {
+    abortRef.current?.abort();
+    setPreview(EMPTY);
+    setIsLoading(false);
+  };
 
-  return { preview, open, openRaw, close };
+  return { preview, isLoading, open, openRaw, close };
 }

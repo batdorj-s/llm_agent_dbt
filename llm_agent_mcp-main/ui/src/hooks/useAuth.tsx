@@ -35,21 +35,61 @@ function loadStoredAuth(): { token: string; user: AuthUser } | null {
   return null;
 }
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return (payload.exp ?? 0) * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
+// Install global 401 interceptor (once)
+let interceptorInstalled = false;
+function install401Interceptor(logout: () => void) {
+  if (interceptorInstalled || typeof window === "undefined") return;
+  interceptorInstalled = true;
+  const originalFetch = window.fetch;
+  window.fetch = async (...args) => {
+    const res = await originalFetch(...args);
+    if (res.status === 401) {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      logout();
+      window.location.href = "/";
+    }
+    return res;
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [threadId, setThreadId] = useState(`thread_${Date.now()}`);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount — skip expired tokens
   useEffect(() => {
     const stored = loadStoredAuth();
-    if (stored) {
+    if (stored && !isTokenExpired(stored.token)) {
       setToken(stored.token);
       setUser(stored.user);
+    } else if (stored) {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
     }
     setIsAuthLoading(false);
   }, []);
+
+  const logout = useCallback(() => {
+    setToken("");
+    setUser(null);
+    setThreadId(`thread_${Date.now()}`);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+  }, []);
+
+  // Install 401 interceptor after logout is stable
+  useEffect(() => {
+    install401Interceptor(logout);
+  }, [logout]);
 
   const login = useCallback(async (email: string, password: string): Promise<string | null> => {
     try {
@@ -87,13 +127,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       return e instanceof Error ? e.message : "Registration failed";
     }
-  }, []);
-
-  const logout = useCallback(() => {
-    setToken("");
-    setUser(null);
-    setThreadId(`thread_${Date.now()}`);
-    localStorage.removeItem(AUTH_STORAGE_KEY);
   }, []);
 
   return (
