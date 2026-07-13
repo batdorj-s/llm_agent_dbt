@@ -125,10 +125,6 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
     setRenamingId(null);
   };
 
-  // #9: Group conversations by date — moved before conditional return
-
-  const groupOrder = ["Өнөөдөр", "Өчигдөр", "Энэ 7 хоног", "Энэ сар", "Өмнөх"];
-
   return (
     <div className="w-64 border-r border-border bg-sidebar/80 flex flex-col h-full animate-fade-in">
       {/* Header */}
