@@ -174,7 +174,11 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
         });
         return;
       }
-      const errorMessage = e instanceof Error ? e.message : "Алдаа гарлаа.";
+      // #10: User-friendly error messages
+      let errorMessage = e instanceof Error ? e.message : "Алдаа гарлаа.";
+      if (errorMessage.includes("429") || errorMessage.toLowerCase().includes("rate limit") || errorMessage.toLowerCase().includes("too many")) {
+        errorMessage = "Хэт олон хүсэлт илгээлээ. Түр хүлээгээд дахин оролдоно уу.";
+      }
       setActiveRoutingState("idle");
       setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: errorMessage, agentName: "System Error Handler", isError: true } : m));
     } finally {
@@ -183,33 +187,36 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
     }
   };
 
-  // #1: Retry failed message
+  // #1: Retry failed message — uses ref to avoid stale closure
   const handleRetry = useCallback((messageId: string) => {
     setMessages(p => {
       const msgIndex = p.findIndex(m => m.id === messageId);
       if (msgIndex < 0) return p;
-      // Find the user message before this agent message
       let userMsgText = "";
       for (let i = msgIndex - 1; i >= 0; i--) {
         if (p[i].sender === "user") { userMsgText = p[i].text; break; }
       }
       if (!userMsgText) return p;
-      // Remove the failed message and resend
       const newMessages = p.filter(m => m.id !== messageId);
-      // Trigger send after state update
-      setTimeout(() => handleSendMessage(undefined, userMsgText), 0);
+      // Use queueMicrotask to run after state update completes
+      queueMicrotask(() => handleSendMessage(undefined, userMsgText));
       return newMessages;
     });
   }, [isChatLoading]);
 
   const handleCancelMessage = () => { abortControllerRef.current?.abort(); };
 
+  // #7: Fix stale closure — use ref-based message lookup
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
   const handleFeedback = async (msgId: string, rating: "positive" | "negative") => {
     if (feedbackState[msgId]) return;
     setFeedbackState(p => ({ ...p, [msgId]: rating }));
-    const msgIndex = messages.findIndex(m => m.id === msgId);
-    const agentMsg = messages[msgIndex];
-    const userMsg  = msgIndex > 0 ? messages.slice(0, msgIndex).reverse().find(m => m.sender === "user") : null;
+    const msgs = messagesRef.current;
+    const msgIndex = msgs.findIndex(m => m.id === msgId);
+    const agentMsg = msgs[msgIndex];
+    const userMsg  = msgIndex > 0 ? msgs.slice(0, msgIndex).reverse().find(m => m.sender === "user") : null;
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
@@ -245,11 +252,67 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
     }]);
   };
 
+  // #3: Regenerate response — remove agent message and resend the user query
+  const handleRegenerate = useCallback((messageId: string) => {
+    setMessages(p => {
+      const msgIndex = p.findIndex(m => m.id === messageId);
+      if (msgIndex < 0) return p;
+      let userMsgText = "";
+      for (let i = msgIndex - 1; i >= 0; i--) {
+        if (p[i].sender === "user") { userMsgText = p[i].text; break; }
+      }
+      if (!userMsgText) return p;
+      const newMessages = p.filter(m => m.id !== messageId);
+      queueMicrotask(() => handleSendMessage(undefined, userMsgText));
+      return newMessages;
+    });
+  }, [isChatLoading]);
+
+  // #3: Stop & Regenerate — abort current stream, then resend last query
+  const handleStopAndRegenerate = useCallback(() => {
+    const lastQuery = lastQueryRef.current;
+    abortControllerRef.current?.abort();
+    if (lastQuery) {
+      queueMicrotask(() => handleSendMessage(undefined, lastQuery));
+    }
+  }, [isChatLoading]);
+
+  // #4: Export conversation as Markdown
+  const exportConversation = useCallback((format: "md" | "txt" = "md") => {
+    const lines: string[] = [];
+    const divider = format === "md" ? "---" : "========================";
+    for (const msg of messages) {
+      const time = msg.timestamp.toLocaleString("mn-MN");
+      const sender = msg.sender === "user" ? "Хэрэглэгч" : (msg.agentName || "Шинжээч.ai");
+      if (format === "md") {
+        lines.push(`### ${sender} (${time})`);
+        lines.push("");
+        lines.push(msg.text);
+        lines.push("");
+        lines.push(divider);
+        lines.push("");
+      } else {
+        lines.push(`[${time}] ${sender}:`);
+        lines.push(msg.text);
+        lines.push("");
+      }
+    }
+    const blob = new Blob([lines.join("\n")], { type: format === "md" ? "text/markdown" : "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shinjech-chat-${new Date().toISOString().slice(0, 10)}.${format}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [messages]);
+
   return {
     messages, input, setInput, isChatLoading, streamEnabled, setStreamEnabled,
     lastAgentType, activeRoutingState, feedbackState, feedbackSentMsgs, isOffline,
     dynamicSuggestions,
     handleSendMessage, handleCancelMessage, handleFeedback, handleRetry,
+    handleRegenerate, handleStopAndRegenerate,
     addWelcomeMessage, clearMessages, addSystemMessage, addUserMessage,
+    exportConversation,
   };
 }

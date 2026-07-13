@@ -1,13 +1,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { MessageSquare, Search, Plus, Trash2, X, Pencil, Check } from "lucide-react";
+import { MessageSquare, Search, Plus, Trash2, X, Pencil, Check, Pin, Tag } from "lucide-react";
 import type { Conversation } from "../hooks/useConversation";
-
-// #8: Optional lastMessage field
-interface ConversationWithPreview extends Conversation {
-  lastMessage?: string | null;
-}
 
 interface ConversationSidebarProps {
   conversations: Conversation[];
@@ -20,6 +15,9 @@ interface ConversationSidebarProps {
   onDelete: (id: string) => void;
   onNewChat: () => void;
   onRename?: (id: string, title: string) => void;
+  onPin?: (id: string) => void;
+  onAddTag?: (id: string, tag: string) => void;
+  onRemoveTag?: (id: string, tag: string) => void;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -74,6 +72,9 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
   onDelete,
   onNewChat,
   onRename,
+  onPin,
+  onAddTag,
+  onRemoveTag,
   isOpen,
   onClose,
 }) => {
@@ -82,6 +83,10 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+  // Tag input state
+  const [taggingId, setTaggingId] = useState<string | null>(null);
+  const [tagValue, setTagValue] = useState("");
+  const tagInputRef = useRef<HTMLInputElement>(null);
   // #18: Debounced search
   const debouncedQuery = useDebouncedValue(searchQuery, 300);
 
@@ -97,6 +102,10 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
     if (renamingId) renameInputRef.current?.focus();
   }, [renamingId]);
 
+  useEffect(() => {
+    if (taggingId) tagInputRef.current?.focus();
+  }, [taggingId]);
+
   // #9: Group conversations by date — MUST be before conditional return (Rules of Hooks)
   const grouped = useMemo(() => {
     const groups: Record<string, Conversation[]> = {};
@@ -104,6 +113,13 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
       const g = getDateGroup(conv.updatedAt);
       if (!groups[g]) groups[g] = [];
       groups[g].push(conv);
+    }
+    // Sort within each group: pinned first, then by updatedAt desc
+    for (const g of Object.keys(groups)) {
+      groups[g].sort((a, b) => {
+        if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      });
     }
     return groups;
   }, [conversations]);
@@ -123,6 +139,14 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
       onRename(id, renameValue.trim());
     }
     setRenamingId(null);
+  };
+
+  const handleTagSubmit = (id: string) => {
+    if (tagValue.trim() && onAddTag) {
+      onAddTag(id, tagValue.trim());
+    }
+    setTaggingId(null);
+    setTagValue("");
   };
 
   return (
@@ -188,19 +212,64 @@ const ConversationSidebarInner: React.FC<ConversationSidebarProps> = ({
                         <button type="submit" onClick={e => e.stopPropagation()}
                           className="text-foreground/40 hover:text-green-500 cursor-pointer"><Check className="w-3 h-3" /></button>
                       </form>
+                    ) : taggingId === conv.id ? (
+                      <form onSubmit={e => { e.preventDefault(); handleTagSubmit(conv.id); }}
+                        className="flex items-center gap-1">
+                        <input ref={tagInputRef} type="text" value={tagValue}
+                          onChange={e => setTagValue(e.target.value)}
+                          onBlur={() => { setTaggingId(null); setTagValue(""); }}
+                          onClick={e => e.stopPropagation()}
+                          placeholder="Таг нэмэх..."
+                          className="flex-1 text-xs bg-background border border-foreground/30 rounded px-1 py-0.5 focus:outline-none" />
+                        <button type="submit" onClick={e => e.stopPropagation()}
+                          className="text-foreground/40 hover:text-green-500 cursor-pointer"><Check className="w-3 h-3" /></button>
+                      </form>
                     ) : (
                       <>
-                        <p className="text-xs text-foreground/80 truncate">{conv.title || "Шинэ чат"}</p>
-                        {/* #8: lastMessage preview */}
-                        {"lastMessage" in conv && (conv as ConversationWithPreview).lastMessage && (
-                          <p className="text-[9px] text-foreground/40 truncate mt-0.5">{(conv as ConversationWithPreview).lastMessage}</p>
+                        <p className="text-xs text-foreground/80 truncate flex items-center gap-1">
+                          {conv.isPinned && <Pin className="w-2.5 h-2.5 text-foreground/40 flex-shrink-0" />}
+                          {conv.title || "Шинэ чат"}
+                        </p>
+                        {/* Tags */}
+                        {conv.tags && conv.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {conv.tags.map(tag => (
+                              <span key={tag} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8px] bg-foreground/10 text-foreground/50 rounded-full">
+                                {tag}
+                                {onRemoveTag && (
+                                  <button onClick={e => { e.stopPropagation(); onRemoveTag(conv.id, tag); }}
+                                    className="text-foreground/30 hover:text-foreground/70 cursor-pointer">
+                                    <X className="w-2 h-2" />
+                                  </button>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {/* #8: lastMessage preview — now from backend */}
+                        {conv.lastMessage && (
+                          <p className="text-[9px] text-foreground/40 truncate mt-0.5">{conv.lastMessage}</p>
                         )}
                         <p className="text-[9px] text-foreground/30 mt-0.5">{relativeTime(conv.updatedAt)}</p>
                       </>
                     )}
                   </div>
-                  {/* Actions: rename + delete — always visible on touch devices */}
+                  {/* Actions: pin + tag + rename + delete — always visible on touch devices */}
                   <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity mt-0.5">
+                    {renamingId !== conv.id && taggingId !== conv.id && onPin && (
+                      <button onClick={e => { e.stopPropagation(); onPin(conv.id); }}
+                        className={`transition-colors cursor-pointer ${conv.isPinned ? "text-foreground/60" : "text-foreground/30 hover:text-foreground"}`}
+                        title={conv.isPinned ? "Пин цуцлах" : "Пин хийх"}>
+                        <Pin className="w-3 h-3" />
+                      </button>
+                    )}
+                    {renamingId !== conv.id && taggingId !== conv.id && onAddTag && (
+                      <button onClick={e => { e.stopPropagation(); setTaggingId(conv.id); }}
+                        className="text-foreground/30 hover:text-foreground transition-colors cursor-pointer"
+                        title="Таг нэмэх">
+                        <Tag className="w-3 h-3" />
+                      </button>
+                    )}
                     {renamingId !== conv.id && onRename && (
                       <button onClick={e => handleRenameStart(conv, e)}
                         className="text-foreground/30 hover:text-foreground transition-colors cursor-pointer">

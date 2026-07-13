@@ -6,7 +6,11 @@ export interface Conversation {
   id: string;
   userId: string;
   title: string | null;
+  threadId: string | null;
   agentType: string | null;
+  lastMessage: string | null;
+  isPinned: boolean;
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -112,6 +116,84 @@ export function useConversation(token: string) {
     }
   }, [token]);
 
+  const pinConversation = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/conversations/${id}/pin`, {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConversations(prev => prev.map(c => c.id === id ? { ...c, isPinned: data.isPinned } : c));
+      }
+    } catch {
+      // best-effort
+    }
+  }, [token]);
+
+  const mergeConversations = useCallback(async (sourceId: string, targetId: string) => {
+    try {
+      const res = await fetch("/api/conversations/merge", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ sourceId, targetId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConversations(prev => prev.filter(c => c.id !== sourceId));
+      }
+    } catch {
+      // best-effort
+    }
+  }, [token]);
+
+  const setTags = useCallback(async (id: string, tags: string[]) => {
+    try {
+      const res = await fetch(`/api/conversations/${id}/tags`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ tags }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConversations(prev => prev.map(c => c.id === id ? { ...c, tags: data.data } : c));
+      }
+    } catch {
+      // best-effort
+    }
+  }, [token]);
+
+  const addTag = useCallback(async (id: string, tag: string) => {
+    try {
+      const res = await fetch(`/api/conversations/${id}/tags`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ tag }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConversations(prev => prev.map(c => c.id === id ? { ...c, tags: data.data } : c));
+      }
+    } catch {
+      // best-effort
+    }
+  }, [token]);
+
+  const removeTag = useCallback(async (id: string, tag: string) => {
+    try {
+      const res = await fetch(`/api/conversations/${id}/tags/${encodeURIComponent(tag)}`, {
+        method: "DELETE",
+        headers,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConversations(prev => prev.map(c => c.id === id ? { ...c, tags: data.data } : c));
+      }
+    } catch {
+      // best-effort
+    }
+  }, [token]);
+
   return {
     conversations,
     isLoading,
@@ -123,5 +205,10 @@ export function useConversation(token: string) {
     deleteConversation,
     loadMessages,
     renameConversation,
+    pinConversation,
+    mergeConversations,
+    setTags,
+    addTag,
+    removeTag,
   };
 }

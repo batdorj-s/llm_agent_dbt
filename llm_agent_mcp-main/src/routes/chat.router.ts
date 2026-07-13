@@ -91,7 +91,12 @@ chatRouter.post("/", async (req, res) => {
     try {
       let conv = await getConversationByThreadId(threadIdFinal, userId);
       if (!conv) {
-        conv = await createConversation(userId, threadIdFinal, "multi-agent");
+        conv = await createConversation(userId, undefined, "multi-agent", threadIdFinal);
+      }
+      // Auto-name: only update title if still using threadId placeholder (first message)
+      if (!conv.title || conv.title === conv.threadId) {
+        const title = autoTitle(message);
+        await updateConversationTitle(conv.id, userId, title);
       }
       await addMessage(conv.id, "user", message);
       await addMessage(conv.id, "assistant", response);
@@ -130,10 +135,12 @@ chatRouter.post("/stream", async (req, res) => {
 
   // #14: Partial persistence — persist user message BEFORE streaming starts
   let conversationId: string | null = null;
+  let isNewConversation = false;
   try {
     let conv = await getConversationByThreadId(threadIdFinal, userId);
     if (!conv) {
-      conv = await createConversation(userId, threadIdFinal, "multi-agent");
+      conv = await createConversation(userId, undefined, "multi-agent", threadIdFinal);
+      isNewConversation = true;
     }
     conversationId = conv.id;
     await addMessage(conv.id, "user", message);
@@ -157,13 +164,15 @@ chatRouter.post("/stream", async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);
 
     // #14: Partial persistence — persist assistant response AFTER streaming completes
-    // #7: Auto-naming — update title from first message
+    // #7: Auto-naming — update title only on first message
     try {
       if (conversationId) {
         await addMessage(conversationId, "assistant", fullResponse);
-        // Auto-name: derive title from the first user message (only on first message)
-        const title = autoTitle(message);
-        await updateConversationTitle(conversationId, userId, title);
+        // Auto-name: only set title on first message (when title is still null or threadId)
+        if (isNewConversation) {
+          const title = autoTitle(message);
+          await updateConversationTitle(conversationId, userId, title);
+        }
       }
     } catch { /* best-effort */ }
   } catch (err: unknown) {

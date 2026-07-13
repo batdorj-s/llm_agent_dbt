@@ -7,7 +7,7 @@ import { Message } from "./types";
 import { VisualMessage, DashboardMessage, VisualGrid } from "./VisualMessage";
 import { CodeBlock } from "./CodeBlock";
 import { ActionCard } from "./ActionCard";
-import { Copy, Check, RefreshCw } from "lucide-react";
+import { Copy, Check, RefreshCw, RotateCcw } from "lucide-react";
 
 // #16: ErrorBoundary for individual messages
 interface ErrorBoundaryState { hasError: boolean; error: Error | null }
@@ -316,7 +316,7 @@ export function formatMessageText(text: string) {
 }
 
 // #3, #4: Copy button and timestamp component
-function MessageActions({ text, timestamp, onRetry, isError }: { text: string; timestamp?: Date; onRetry?: () => void; isError?: boolean }) {
+function MessageActions({ text, timestamp, onRetry, onRegenerate, isError }: { text: string; timestamp?: Date; onRetry?: () => void; onRegenerate?: () => void; isError?: boolean }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -350,8 +350,16 @@ function MessageActions({ text, timestamp, onRetry, isError }: { text: string; t
       {isError && onRetry && (
         <button onClick={onRetry}
           className="flex items-center gap-1 text-[9px] text-foreground/30 hover:text-foreground/60 transition-colors cursor-pointer"
-          title="Дахин илгээх">
+          title="Дахин оролдох">
           <RefreshCw className="w-3 h-3" /> Дахин оролдох
+        </button>
+      )}
+      {/* #3: Regenerate button on non-error agent messages */}
+      {!isError && onRegenerate && (
+        <button onClick={onRegenerate}
+          className="flex items-center gap-1 text-[9px] text-foreground/30 hover:text-foreground/60 transition-colors cursor-pointer"
+          title="Дахин илгээх">
+          <RotateCcw className="w-3 h-3" />
         </button>
       )}
     </div>
@@ -359,12 +367,13 @@ function MessageActions({ text, timestamp, onRetry, isError }: { text: string; t
 }
 
 // Main export: ChatMessage with ErrorBoundary wrapper
-export function ChatMessageComponent({ message, feedbackState, feedbackSentMsgs, onFeedback, onRetry }: {
+export function ChatMessageComponent({ message, feedbackState, feedbackSentMsgs, onFeedback, onRetry, onRegenerate }: {
   message: Message;
   feedbackState?: Record<string, "positive" | "negative" | null>;
   feedbackSentMsgs?: Record<string, string>;
   onFeedback?: (msgId: string, rating: "positive" | "negative") => void;
   onRetry?: (messageId: string) => void;
+  onRegenerate?: (messageId: string) => void;
 }) {
   return (
     <MessageErrorBoundary onRetry={onRetry ? () => onRetry(message.id) : undefined}>
@@ -374,17 +383,19 @@ export function ChatMessageComponent({ message, feedbackState, feedbackSentMsgs,
         feedbackSentMsgs={feedbackSentMsgs}
         onFeedback={onFeedback}
         onRetry={onRetry}
+        onRegenerate={onRegenerate}
       />
     </MessageErrorBoundary>
   );
 }
 
-function ChatMessageInner({ message, feedbackState, feedbackSentMsgs, onFeedback, onRetry }: {
+function ChatMessageInner({ message, feedbackState, feedbackSentMsgs, onFeedback, onRetry, onRegenerate }: {
   message: Message;
   feedbackState?: Record<string, "positive" | "negative" | null>;
   feedbackSentMsgs?: Record<string, string>;
   onFeedback?: (msgId: string, rating: "positive" | "negative") => void;
   onRetry?: (messageId: string) => void;
+  onRegenerate?: (messageId: string) => void;
 }) {
   const isUser = message.sender === "user";
   const isAgent = message.sender === "agent";
@@ -411,13 +422,14 @@ function ChatMessageInner({ message, feedbackState, feedbackSentMsgs, onFeedback
         )}
       </div>
 
-      {/* #3, #4: Actions row (copy, timestamp, retry) */}
+      {/* #3, #4: Actions row (copy, timestamp, retry, regenerate) */}
       {isAgent && message.text && (
         <MessageActions
           text={message.text}
           timestamp={message.timestamp}
           isError={message.isError}
           onRetry={onRetry ? () => onRetry(message.id) : undefined}
+          onRegenerate={!message.isError && onRegenerate ? () => onRegenerate(message.id) : undefined}
         />
       )}
 

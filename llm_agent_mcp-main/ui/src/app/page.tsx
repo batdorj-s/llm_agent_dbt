@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, Sparkles, PanelLeftClose, PanelLeft } from "lucide-react";
+import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, Sparkles, PanelLeftClose, PanelLeft, Download } from "lucide-react";
 
 import { Header } from "../components/Header";
 import { PreviewDrawer } from "../components/PreviewDrawer";
@@ -148,6 +148,7 @@ export default function Home() {
   const handleNewChat = async () => {
     chat.clearMessages();
     setActiveConversationId(null);
+    auth.setThreadId(`thread_${Date.now()}`);
   };
 
   const handleSelectConversation = async (id: string) => {
@@ -215,6 +216,29 @@ export default function Home() {
     }
   }, [convoSidebarOpen]);
 
+  // #4: Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      // Ctrl+Shift+E — export conversation
+      if (mod && e.shiftKey && e.key === "E") {
+        e.preventDefault();
+        chat.exportConversation("md");
+      }
+      // Ctrl+F — open in-conversation search (dispatch custom event)
+      if (mod && e.key === "f" && activeTab === "ask") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("chat-search-open"));
+      }
+      // Escape — close sidebar
+      if (e.key === "Escape" && convoSidebarOpen) {
+        setConvoSidebarOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [convoSidebarOpen, chat, activeTab]);
+
   const hasDataset = admin.uploadedFiles.length > 0;
 
   // Show login page if not logged in
@@ -255,13 +279,16 @@ export default function Home() {
               onDelete={handleDeleteConversation}
               onNewChat={handleNewChat}
               onRename={handleRenameConversation}
+              onPin={conversation.pinConversation}
+              onAddTag={conversation.addTag}
+              onRemoveTag={conversation.removeTag}
               isOpen={convoSidebarOpen}
               onClose={() => setConvoSidebarOpen(false)}
             />
 
             {/* Main chat area */}
             <div className="flex-1 flex flex-col min-h-0">
-              {/* Sidebar toggle */}
+              {/* Sidebar toggle + Export */}
               <div className="flex items-center px-3 py-1.5 border-b border-border">
                 <button onClick={() => setConvoSidebarOpen(!convoSidebarOpen)}
                   className="flex items-center gap-1.5 px-2 py-1 text-foreground/50 hover:text-foreground/80 hover:bg-foreground/5 rounded-md transition-all cursor-pointer"
@@ -269,10 +296,23 @@ export default function Home() {
                   {convoSidebarOpen ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
                   <span className="text-[10px]">Түүх</span>
                 </button>
+                {chat.messages.length > 0 && (
+                  <button onClick={() => chat.exportConversation("md")}
+                    className="flex items-center gap-1.5 px-2 py-1 ml-auto text-foreground/50 hover:text-foreground/80 hover:bg-foreground/5 rounded-md transition-all cursor-pointer"
+                    title="Татаж авах (Markdown)">
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="text-[10px]">Татаж авах</span>
+                  </button>
+                )}
               </div>
 
               <AskTab
-                chat={chat}
+                chat={{
+                  ...chat,
+                  handleRegenerate: chat.handleRegenerate,
+                  handleStopAndRegenerate: chat.handleStopAndRegenerate,
+                  exportConversation: chat.exportConversation,
+                }}
                 isGraphicModeEnabled={isGraphicModeEnabled}
                 setIsGraphicModeEnabled={setIsGraphicModeEnabled}
                 threadId={auth.threadId}

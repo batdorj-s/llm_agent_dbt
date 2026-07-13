@@ -14,6 +14,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   isLoggedIn: boolean;
   threadId: string;
+  setThreadId: (id: string) => void;
   isAuthLoading: boolean;
   login: (email: string, password: string) => Promise<string | null>;
   register: (email: string, password: string, name: string) => Promise<string | null>;
@@ -108,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ token, user, isLoggedIn: !!user, threadId, isAuthLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ token, user, isLoggedIn: !!user, threadId, setThreadId, isAuthLoading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -123,6 +124,7 @@ export function useAuth(): AuthContextValue {
       user: { id: "user-admin-001", name: "Admin", email: "admin@local", role: "admin" },
       isLoggedIn: true,
       threadId: `thread_${Date.now()}`,
+      setThreadId: () => {},
       isAuthLoading: false,
       login: async () => null,
       register: async () => null,

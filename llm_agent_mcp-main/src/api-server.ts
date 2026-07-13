@@ -24,7 +24,7 @@ import type { UserRole } from "./multi-agent.js";
 import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getActiveCatalogEntry, getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys, quoteIdent, mergeIntoCombined, buildNoiseSubcategoryFilter } from "./db/data-lake.js";
-import { initConversationSchema, createConversation, getConversations, getConversationById, deleteConversation, addMessage, getMessages, searchConversations, updateConversationTitle } from "./services/conversation.js";
+import { initConversationSchema, createConversation, getConversations, getConversationById, deleteConversation, addMessage, getMessages, searchConversations, updateConversationTitle, togglePinConversation, mergeConversations, setConversationTags, addConversationTag, removeConversationTag, getAllUserTags } from "./services/conversation.js";
 import { findConceptColumn } from "./agents/columnSynonyms.js";
 import { buildMntAmountExpr } from "./utils/sqlHelpers.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix, getPassportByTableName, parsePassportQuestions } from "./rag.js";
@@ -2114,6 +2114,43 @@ app.get("/api/conversations/search", async (req, res) => {
   }
 });
 
+app.get("/api/conversations/tags", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const tags = await getAllUserTags(userId);
+    res.json({ success: true, data: tags });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.post("/api/conversations", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { title, agentType } = req.body;
+    const conversation = await createConversation(userId, title, agentType);
+    res.status(201).json({ success: true, data: conversation });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.post("/api/conversations/merge", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { sourceId, targetId } = req.body;
+    if (!sourceId || !targetId) {
+      return res.status(400).json({ error: "sourceId and targetId are required" });
+    }
+    const merged = await mergeConversations(sourceId, targetId, userId);
+    if (!merged) return res.status(404).json({ error: "Conversations not found" });
+    res.json({ success: true, message: "Conversations merged" });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+// Parameterized routes — must come after static paths
 app.get("/api/conversations/:id", async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -2132,17 +2169,6 @@ app.get("/api/conversations/:id/messages", async (req, res) => {
     const offset = Number(req.query.offset) || 0;
     const messages = await getMessages(req.params.id, userId, limit, offset);
     res.json({ success: true, data: messages });
-  } catch (err: unknown) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
-  }
-});
-
-app.post("/api/conversations", async (req, res) => {
-  try {
-    const userId = getUserId(req);
-    const { title, agentType } = req.body;
-    const conversation = await createConversation(userId, title, agentType);
-    res.status(201).json({ success: true, data: conversation });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
@@ -2168,6 +2194,54 @@ app.patch("/api/conversations/:id", async (req, res) => {
     }
     await updateConversationTitle(req.params.id, userId, title);
     res.json({ success: true });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.post("/api/conversations/:id/pin", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const isPinned = await togglePinConversation(req.params.id, userId);
+    res.json({ success: true, isPinned });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.put("/api/conversations/:id/tags", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { tags } = req.body;
+    if (!Array.isArray(tags)) {
+      return res.status(400).json({ error: "tags must be an array of strings" });
+    }
+    const updated = await setConversationTags(req.params.id, userId, tags);
+    res.json({ success: true, data: updated });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.post("/api/conversations/:id/tags", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { tag } = req.body;
+    if (!tag || typeof tag !== "string") {
+      return res.status(400).json({ error: "tag is required" });
+    }
+    const tags = await addConversationTag(req.params.id, userId, tag);
+    res.json({ success: true, data: tags });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+app.delete("/api/conversations/:id/tags/:tag", async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const tags = await removeConversationTag(req.params.id, userId, req.params.tag);
+    res.json({ success: true, data: tags });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }

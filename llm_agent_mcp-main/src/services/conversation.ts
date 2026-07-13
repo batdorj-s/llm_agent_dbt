@@ -11,7 +11,11 @@ export interface Conversation {
   id: string;
   userId: string;
   title: string | null;
+  threadId: string | null;
   agentType: string | null;
+  lastMessage: string | null;
+  isPinned: boolean;
+  tags: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,12 +50,14 @@ export async function initConversationSchema(): Promise<void> {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id VARCHAR(255) NOT NULL,
         title VARCHAR(255),
+        thread_id VARCHAR(255),
         agent_type VARCHAR(50),
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
 
       CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+      CREATE INDEX IF NOT EXISTS idx_conversations_thread_id ON conversations(thread_id);
       CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC);
 
       CREATE TABLE IF NOT EXISTS conversation_messages (
@@ -69,6 +75,21 @@ export async function initConversationSchema(): Promise<void> {
     `);
     _schemaInitialized = true;
     console.log("[Conversation] Schema initialized successfully.");
+
+    // Migration: add columns if missing
+    const migrations = [
+      `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255)`,
+      `CREATE INDEX IF NOT EXISTS idx_conversations_thread_id ON conversations(thread_id)`,
+      `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`,
+    ];
+    for (const sql of migrations) {
+      try {
+        await pool.query(sql);
+      } catch (e) {
+        console.warn("[Conversation] Migration step failed:", sql.slice(0, 60), (e as Error).message);
+      }
+    }
   } catch (err) {
     console.error("[Conversation] Schema initialization failed:", (err as Error).message);
   }
@@ -81,12 +102,13 @@ export async function initConversationSchema(): Promise<void> {
 export async function createConversation(
   userId: string,
   title?: string,
-  agentType?: string
+  agentType?: string,
+  threadId?: string
 ): Promise<Conversation> {
   const pool = getPool();
   const result = await pool.query(
-    `INSERT INTO conversations (user_id, title, agent_type) VALUES ($1, $2, $3) RETURNING *`,
-    [userId, title || null, agentType || null]
+    `INSERT INTO conversations (user_id, title, agent_type, thread_id) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [userId, title || null, agentType || null, threadId || null]
   );
   return mapConversation(result.rows[0]);
 }
@@ -98,7 +120,13 @@ export async function getConversations(
 ): Promise<Conversation[]> {
   const pool = getPool();
   const result = await pool.query(
-    `SELECT * FROM conversations WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3`,
+    `SELECT c.*,
+       (SELECT content FROM conversation_messages m
+        WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message
+     FROM conversations c
+     WHERE c.user_id = $1
+     ORDER BY c.is_pinned DESC, c.updated_at DESC
+     LIMIT $2 OFFSET $3`,
     [userId, limit, offset]
   );
   return result.rows.map(mapConversation);
@@ -204,7 +232,7 @@ export async function getConversationByThreadId(
   try {
     const pool = getPool();
     const result = await pool.query(
-      `SELECT * FROM conversations WHERE title = $1 AND user_id = $2 LIMIT 1`,
+      `SELECT * FROM conversations WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
       [threadId, userId]
     );
     return result.rows.length > 0 ? mapConversation(result.rows[0]) : null;
@@ -220,6 +248,112 @@ export async function getMessageCount(conversationId: string): Promise<number> {
     [conversationId]
   );
   return result.rows[0]?.count ?? 0;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Pin / Unpin
+// ─────────────────────────────────────────────────────────────
+
+export async function togglePinConversation(
+  conversationId: string,
+  userId: string
+): Promise<boolean> {
+  const pool = getPool();
+  const result = await pool.query(
+    `UPDATE conversations SET is_pinned = NOT is_pinned, updated_at = NOW()
+     WHERE id = $1 AND user_id = $2 RETURNING is_pinned`,
+    [conversationId, userId]
+  );
+  return result.rows[0]?.is_pinned ?? false;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Merge Conversations
+// ─────────────────────────────────────────────────────────────
+
+export async function mergeConversations(
+  sourceId: string,
+  targetId: string,
+  userId: string
+): Promise<boolean> {
+  const pool = getPool();
+  // Verify ownership of both
+  const check = await pool.query(
+    `SELECT id FROM conversations WHERE id IN ($1, $2) AND user_id = $3`,
+    [sourceId, targetId, userId]
+  );
+  if (check.rows.length !== 2) return false;
+
+  // Move messages from source to target
+  await pool.query(
+    `UPDATE conversation_messages SET conversation_id = $1 WHERE conversation_id = $2`,
+    [targetId, sourceId]
+  );
+  // Delete source conversation
+  await pool.query(`DELETE FROM conversations WHERE id = $1`, [sourceId]);
+  // Update target's updated_at
+  await pool.query(`UPDATE conversations SET updated_at = NOW() WHERE id = $1`, [targetId]);
+  return true;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Tags
+// ─────────────────────────────────────────────────────────────
+
+export async function setConversationTags(
+  conversationId: string,
+  userId: string,
+  tags: string[]
+): Promise<string[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    `UPDATE conversations SET tags = $1, updated_at = NOW()
+     WHERE id = $2 AND user_id = $3 RETURNING tags`,
+    [tags, conversationId, userId]
+  );
+  return result.rows[0]?.tags ?? [];
+}
+
+export async function addConversationTag(
+  conversationId: string,
+  userId: string,
+  tag: string
+): Promise<string[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    `UPDATE conversations SET tags = array_append(
+       (SELECT tags FROM conversations WHERE id = $2 AND user_id = $3), $1
+     ), updated_at = NOW()
+     WHERE id = $2 AND user_id = $3 RETURNING tags`,
+    [tag, conversationId, userId]
+  );
+  return result.rows[0]?.tags ?? [];
+}
+
+export async function removeConversationTag(
+  conversationId: string,
+  userId: string,
+  tag: string
+): Promise<string[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    `UPDATE conversations SET tags = array_remove(
+       (SELECT tags FROM conversations WHERE id = $2 AND user_id = $3), $1
+     ), updated_at = NOW()
+     WHERE id = $2 AND user_id = $3 RETURNING tags`,
+    [tag, conversationId, userId]
+  );
+  return result.rows[0]?.tags ?? [];
+}
+
+export async function getAllUserTags(userId: string): Promise<string[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    `SELECT DISTINCT unnest(tags) as tag FROM conversations
+     WHERE user_id = $1 AND array_length(tags, 1) > 0 ORDER BY tag`,
+    [userId]
+  );
+  return result.rows.map(r => r.tag as string);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -251,7 +385,11 @@ function mapConversation(row: Record<string, unknown>): Conversation {
     id: row.id as string,
     userId: row.user_id as string,
     title: row.title as string | null,
+    threadId: row.thread_id as string | null,
     agentType: row.agent_type as string | null,
+    lastMessage: (row.last_message as string | null) ?? null,
+    isPinned: (row.is_pinned as boolean) ?? false,
+    tags: (row.tags as string[]) ?? [],
     createdAt: new Date(row.created_at as string),
     updatedAt: new Date(row.updated_at as string),
   };
