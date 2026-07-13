@@ -38,6 +38,7 @@ import alertsRouter from "./routes/alerts.router.js";
 import whatifRouter from "./routes/whatif.router.js";
 import conversationsRouter from "./routes/conversations.router.js";
 import adminRouter from "./routes/admin.router.js";
+import feedbackRouter from "./routes/feedback.router.js";
 import exportRouter from "./routes/export.router.js";
 import multer from "multer";
 import swaggerUi from "swagger-ui-express";
@@ -173,18 +174,19 @@ app.get("/api/status", (_req, res) => {
 // ── Feature routers ──────────────────────────────────────────
 app.use("/api/chat",        chatRouter);
 app.use("/api/auth",        authRouter);
-app.use("/api/kpi",         kpiRouter);
+app.use("/api",             kpiRouter);       // /api/kpi/:metric, /api/kpi-history
 app.use("/api/finance-charts", financeRouter);
 app.use("/api/finance-audit",  financeRouter);
 app.use("/api/table-passport", financeRouter);
 app.use("/api/finance-reports", financeRouter);
 app.use("/api/dashboard",   dashboardRouter);
-app.use("/api",             dashboardRouter);   // /api/computed-metrics, /api/report/export-pdf|export-xlsx
+app.use("/api",             dashboardRouter);   // /api/computed-metrics, /api/export-pdf|export-xlsx
+app.use("/api/report",      dashboardRouter);   // /api/report/export-pdf|export-xlsx
 app.use("/api/alerts",      alertsRouter);
 app.use("/api/whatif",      whatifRouter);
 app.use("/api/conversations", conversationsRouter);
 app.use("/api/admin",       adminRouter);
-app.use("/api/feedback",    adminRouter);
+app.use("/api/feedback",    feedbackRouter);
 app.use("/api/export",      exportRouter);
 
 // ─────────────────────────────────────────────────────────────

@@ -75,7 +75,7 @@ router.get("/kpi-history", async (req, res) => {
   res.json(history);
 });
 
-router.get("/kpi/anomalies", requireAuth, requirePermission("kpi:anomaly"), async (req, res) => {
+router.get("/kpi/:metric/anomalies", requireAuth, requirePermission("kpi:anomaly"), async (req, res) => {
   try {
     const userId = getUserId(req);
     const pool = getPool();

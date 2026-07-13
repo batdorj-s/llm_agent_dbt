@@ -185,29 +185,40 @@ describe("invokeWithFallback", () => {
     });
 
     it("2. falls back to next provider on rate limit", async () => {
+        vi.useFakeTimers();
         mockGroqInvoke.mockRejectedValue(new Error("429 rate limit"));
         mockGeminiInvoke.mockResolvedValue({ content: "gemini ok" });
 
-        const result = await invokeWithFallback(msg);
+        const resultPromise = invokeWithFallback(msg);
+        await vi.advanceTimersByTimeAsync(6000);
+        const result = await resultPromise;
 
         expect(result).toEqual({ content: "gemini ok", provider: "gemini" });
-        expect(mockGroqInvoke).toHaveBeenCalledTimes(1);
+        // Groq retries once on rate limit (attempt 0 → retry, attempt 1 → break) = 2 calls
+        expect(mockGroqInvoke).toHaveBeenCalledTimes(2);
         expect(mockGeminiInvoke).toHaveBeenCalledTimes(1);
+        vi.useRealTimers();
     });
 
-    it("3. returns null when all providers hit rate limit", async () => {
+    it("3. throws AllProvidersExhaustedError when all providers hit rate limit", async () => {
+        vi.useFakeTimers();
         mockGroqInvoke.mockRejectedValue(new Error("rate limit"));
         mockGeminiInvoke.mockRejectedValue(new Error("rate limit"));
         mockAnthropicInvoke.mockRejectedValue(new Error("rate limit"));
         mockOpenaiInvoke.mockRejectedValue(new Error("rate limit"));
 
-        const result = await invokeWithFallback(msg);
+        const resultPromise = invokeWithFallback(msg).catch(e => e);
+        await vi.advanceTimersByTimeAsync(60000);
 
-        expect(result).toBeNull();
-        expect(mockGroqInvoke).toHaveBeenCalledTimes(1);
-        expect(mockGeminiInvoke).toHaveBeenCalledTimes(1);
-        expect(mockAnthropicInvoke).toHaveBeenCalledTimes(1);
-        expect(mockOpenaiInvoke).toHaveBeenCalledTimes(1);
+        const result = await resultPromise;
+        expect(result).toBeInstanceOf(Error);
+        expect(result.message).toContain("All LLM providers failed");
+        // Each provider retries once on rate limit (attempt 0 → retry, attempt 1 → break) = 2 calls each
+        expect(mockGroqInvoke).toHaveBeenCalledTimes(2);
+        expect(mockGeminiInvoke).toHaveBeenCalledTimes(2);
+        expect(mockAnthropicInvoke).toHaveBeenCalledTimes(2);
+        expect(mockOpenaiInvoke).toHaveBeenCalledTimes(2);
+        vi.useRealTimers();
     });
 
     it("4. falls back to next provider on timeout", async () => {
@@ -241,15 +252,13 @@ describe("invokeWithFallback", () => {
         expect(result).toEqual({ content: "gemini ok", provider: "gemini" });
     });
 
-    it("7. returns null with explicit message when all providers fail", async () => {
+    it("7. throws AllProvidersExhaustedError when all providers fail", async () => {
         mockGroqInvoke.mockRejectedValue(new Error("network error"));
         mockGeminiInvoke.mockRejectedValue(new Error("network error"));
         mockAnthropicInvoke.mockRejectedValue(new Error("network error"));
         mockOpenaiInvoke.mockRejectedValue(new Error("network error"));
 
-        const result = await invokeWithFallback(msg);
-
-        expect(result).toBeNull();
+        await expect(invokeWithFallback(msg)).rejects.toThrow("All LLM providers failed");
     });
 
     it("8. respects providerOrder option", async () => {
@@ -264,16 +273,14 @@ describe("invokeWithFallback", () => {
         expect(mockGroqInvoke).not.toHaveBeenCalled();
     });
 
-    it("9. returns null when no API keys configured", async () => {
+    it("9. throws AllProvidersExhaustedError when no API keys configured", async () => {
         delete process.env.GROQ_API_KEY;
         delete process.env.GOOGLE_API_KEY;
         delete process.env.ANTHROPIC_API_KEY;
         delete process.env.OPENAI_API_KEY;
 
         const mod = await import("../llm-provider.js");
-        const result = await mod.invokeWithFallback(msg);
-
-        expect(result).toBeNull();
+        await expect(mod.invokeWithFallback(msg)).rejects.toThrow("All LLM providers failed");
         expect(mockGroqInvoke).not.toHaveBeenCalled();
     });
 

@@ -38,7 +38,7 @@ describe("estimateTokens", () => {
     });
 
     it("uses Math.ceil(text.length / 4) — static analysis", () => {
-        const src = readFileSync("src/rag.ts", "utf8");
+        const src = readFileSync("src/rag/knowledge-base.ts", "utf8");
         expect(src).toContain("Math.ceil(text.length / 4)");
     });
 });

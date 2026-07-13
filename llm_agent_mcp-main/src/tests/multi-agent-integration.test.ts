@@ -137,7 +137,7 @@ describe("Multi-Agent Integration — Supervisor Node", () => {
 
         const { multiAgentApp } = await import("../multi-agent.js");
         const result = await multiAgentApp.invoke(
-            { messages: [{ role: "user", content: "sales target this quarter" }], userRole: "admin" },
+            { messages: [{ role: "user", content: "тодорхойлолт санхүүгийн бодлого" }], userRole: "admin" },
             { configurable: { thread_id: "test-sup-fa-1" } }
         );
 

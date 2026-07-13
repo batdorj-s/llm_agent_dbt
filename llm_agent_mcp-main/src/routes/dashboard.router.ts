@@ -5,7 +5,7 @@ import { generateReportPdf, generateReportXlsx } from "../agents/reportExport.js
 
 const router = Router();
 
-router.get("/dashboard/computed-metrics", async (req, res) => {
+router.get("/computed-metrics", async (req, res) => {
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
@@ -17,7 +17,7 @@ router.get("/dashboard/computed-metrics", async (req, res) => {
   }
 });
 
-router.post("/report/export-pdf", async (req, res) => {
+router.post("/export-pdf", async (req, res) => {
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
@@ -30,7 +30,7 @@ router.post("/report/export-pdf", async (req, res) => {
   }
 });
 
-router.post("/report/export-xlsx", async (req, res) => {
+router.post("/export-xlsx", async (req, res) => {
   const { startDate, endDate } = extractDateFilter(req);
 
   try {

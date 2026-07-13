@@ -1,0 +1,22 @@
+[
+  {
+    "id": "feedback_1783947410483",
+    "userId": "user-admin-001",
+    "message": "Test query 1783947398535",
+    "response": "test response",
+    "rating": "negative",
+    "status": "pending",
+    "threadId": "thread_1783947398535",
+    "timestamp": "2026-07-13T12:56:50.483Z"
+  },
+  {
+    "id": "feedback_1783947458710",
+    "userId": "user-admin-001",
+    "message": "Test query 1783947446324",
+    "response": "test response",
+    "rating": "negative",
+    "status": "pending",
+    "threadId": "thread_1783947446324",
+    "timestamp": "2026-07-13T12:57:38.710Z"
+  }
+]

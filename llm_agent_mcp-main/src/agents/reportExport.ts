@@ -11,7 +11,12 @@ function formatCurrency(value: number): string {
   return `₮${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// PDF-safe: Helvetica uses WinAnsi which cannot encode ₮ (U+20AE)
+// PDF-safe: Helvetica uses WinAnsi which cannot encode Cyrillic/Mongolian characters
+// Strip non-Latin chars so pdf-lib doesn't throw
+function sanitizePdfText(s: string): string {
+  return s.replace(/[^\x20-\x7E]/g, "?");
+}
+
 function formatCurrencyPdf(value: number): string {
   return `MNT ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -99,7 +104,7 @@ export async function generateReportPdf(userId: string, startDate?: string, endD
   function text(msg: string, size: number, opts?: { bold?: boolean; color?: number[]; x?: number }) {
     const f = opts?.bold ? bold : font;
     const x = opts?.x ?? col1;
-    page.drawText(msg, { x, y, size, font: f, color: rgb(opts?.color?.[0] ?? 0.2, opts?.color?.[1] ?? 0.2, opts?.color?.[2] ?? 0.2) });
+    page.drawText(sanitizePdfText(msg), { x, y, size, font: f, color: rgb(opts?.color?.[0] ?? 0.2, opts?.color?.[1] ?? 0.2, opts?.color?.[2] ?? 0.2) });
   }
 
   function line() {
@@ -155,7 +160,7 @@ export async function generateReportPdf(userId: string, startDate?: string, endD
     // Axis
     page.drawLine({ start: { x: chartLeft, y: chartBottom }, end: { x: chartLeft + chartWidth, y: chartBottom }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
 
-    const maxVal = Math.max(...history.map(h => h.revenue));
+    const maxVal = Math.max(...history.map(h => h.revenue), 1);
     const barCount = history.length;
     const barGap = 4;
     const barWidth = Math.min((chartWidth - barGap * (barCount + 1)) / barCount, 20);
@@ -171,7 +176,7 @@ export async function generateReportPdf(userId: string, startDate?: string, endD
       page.drawRectangle({ x, y: yBar, width: barWidth, height: barH, color: rgb(0.23, 0.51, 0.96) });
       // Label
       const label = h.month.length > 3 ? h.month.slice(0, 3) : h.month;
-      page.drawText(label, { x: x - 1, y: chartBottom - chartHeight - 8, size: 6, font, color: rgb(0.4, 0.4, 0.4) });
+      page.drawText(sanitizePdfText(label), { x: x - 1, y: chartBottom - chartHeight - 8, size: 6, font, color: rgb(0.4, 0.4, 0.4) });
     }
 
     y = chartBottom - chartHeight - 18;
@@ -199,7 +204,7 @@ export async function generateReportPdf(userId: string, startDate?: string, endD
       const prev = i > 0 ? history[i - 1].revenue : row.revenue;
       const change = prev > 0 ? ((row.revenue - prev) / prev * 100) : 0;
 
-      page.drawText(row.month, { x: tableLeft, y, size: 8, font, color: rgb(0.3, 0.3, 0.3) });
+      page.drawText(sanitizePdfText(row.month), { x: tableLeft, y, size: 8, font, color: rgb(0.3, 0.3, 0.3) });
       page.drawText(formatCurrencyPdf(row.revenue), { x: tableLeft + colW, y, size: 8, font, color: rgb(0.3, 0.3, 0.3) });
       page.drawText(i > 0 ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : hyphen, { x: tableLeft + colW * 2, y, size: 8, font, color: rgb(0.3, 0.3, 0.3) });
 

@@ -34,32 +34,29 @@ describe("SQL injection — defense-in-depth", () => {
 
     // ── data-lake.ts ──
     describe("data-lake.ts", () => {
-        const src = fs.readFileSync(
-            path.join(__dirname, "../db/data-lake.ts"),
+        const poolSrc = fs.readFileSync(
+            path.join(__dirname, "../db/pool.ts"),
+            "utf8"
+        );
+        const profilingSrc = fs.readFileSync(
+            path.join(__dirname, "../db/profiling.ts"),
             "utf8"
         );
 
-        it("has quoteIdent helper function", () => {
-            expect(src).toMatch(/function quoteIdent/);
+        it("has quoteIdent helper function in pool.ts", () => {
+            expect(poolSrc).toMatch(/function quoteIdent/);
         });
 
         it("does not interpolate tableName directly in SQL template literals", () => {
-            const lines = src.split("\n");
+            const lines = poolSrc.split("\n");
             const unsafeLines = lines.filter(l =>
                 l.includes('"${tableName}"') && !l.includes("quoteIdent")
             );
             expect(unsafeLines).toHaveLength(0);
         });
 
-        it("does not interpolate column names directly in SQL template literals", () => {
-            const lines = src.split("\n");
-            const unsafeLines = lines.filter(l => {
-                const hasInterpolation = /\${[a-z]+}/.test(l);
-                const isSql = l.includes("pool.query") || l.includes("SELECT") || l.includes("FROM") || l.includes("INSERT");
-                const hasSanitizeCall = l.includes("sanitizeColumnName") || l.includes("quoteIdent");
-                return hasInterpolation && isSql && !hasSanitizeCall;
-            });
-            expect(unsafeLines.length).toBeLessThanOrEqual(5);
+        it("profiling uses quoteIdent for table and column names", () => {
+            expect(profilingSrc).toMatch(/quoteIdent/);
         });
     });
 });

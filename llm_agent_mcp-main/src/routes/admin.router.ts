@@ -203,13 +203,13 @@ async function processUploadedTable(
 }
 
 // ── File Management ──────────────────────────────────────────
-router.get("/admin/files", requireAuth, requirePermission("admin:upload"), async (req, res) => {
+router.get("/files", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   await initDataLake();
   const result = await getPool().query(`SELECT * FROM uploaded_files ORDER BY created_at DESC`);
   res.json(result.rows);
 });
 
-router.delete("/admin/files/:id", requireAuth, requirePermission("admin:upload"), async (req, res) => {
+router.delete("/files/:id", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   const { id } = req.params;
   await initDataLake();
 
@@ -240,7 +240,7 @@ router.delete("/admin/files/:id", requireAuth, requirePermission("admin:upload")
   }
 });
 
-router.get("/admin/files/:id/preview", requireAuth, requirePermission("admin:upload"), async (req, res) => {
+router.get("/files/:id/preview", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   const { id } = req.params;
   await initDataLake();
 
@@ -290,7 +290,7 @@ router.get("/admin/files/:id/preview", requireAuth, requirePermission("admin:upl
   }
 });
 
-router.get("/admin/files/:id/download", requireAuth, requirePermission("admin:upload"), async (req, res) => {
+router.get("/files/:id/download", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   const { id } = req.params;
   await initDataLake();
 
@@ -312,7 +312,7 @@ router.get("/admin/files/:id/download", requireAuth, requirePermission("admin:up
 });
 
 // ── Upload CSV ───────────────────────────────────────────────
-router.post("/admin/upload-csv", requireAuth, requirePermission("admin:upload"), async (req, res) => {
+router.post("/upload-csv", requireAuth, requirePermission("admin:upload"), async (req, res) => {
   const userId = getUserId(req);
 
   const uploadLimit = await uploadLimiter.check(userId);
@@ -355,7 +355,7 @@ router.post("/admin/upload-csv", requireAuth, requirePermission("admin:upload"),
 });
 
 // ── Upload Excel ─────────────────────────────────────────────
-router.post("/admin/upload-excel", requireAuth, requirePermission("admin:upload"), upload.single("file"), async (req, res) => {
+router.post("/upload-excel", requireAuth, requirePermission("admin:upload"), upload.single("file"), async (req, res) => {
   const userId = getUserId(req);
 
   const uploadLimit = await uploadLimiter.check(userId);
@@ -450,7 +450,7 @@ router.post("/admin/upload-excel", requireAuth, requirePermission("admin:upload"
 });
 
 // ── Upload Document ──────────────────────────────────────────
-router.post("/admin/upload-doc", requireAuth, requirePermission("admin:upload"), upload.single("file"), async (req, res) => {
+router.post("/upload-doc", requireAuth, requirePermission("admin:upload"), upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   const userId = getUserId(req);
@@ -563,17 +563,17 @@ router.post("/feedback", async (req, res) => {
   }
 });
 
-router.get("/admin/feedback/pending", requireAuth, requirePermission("admin:users"), async (req, res) => {
+router.get("/feedback/pending", requireAuth, requirePermission("admin:users"), async (req, res) => {
   try {
     const all = await readFailedQueries();
     const pending = all.filter((f: any) => f.status === "pending");
-    res.json({ success: true, data: pending, count: pending.length });
+    res.json(pending);
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
-router.post("/admin/feedback/:id/approve", requireAuth, requirePermission("admin:users"), async (req, res) => {
+router.post("/feedback/:id/approve", requireAuth, requirePermission("admin:users"), async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -606,7 +606,7 @@ router.post("/admin/feedback/:id/approve", requireAuth, requirePermission("admin
   }
 });
 
-router.post("/admin/feedback/:id/reject", requireAuth, requirePermission("admin:users"), async (req, res) => {
+router.post("/feedback/:id/reject", requireAuth, requirePermission("admin:users"), async (req, res) => {
   const { id } = req.params;
 
   try {
