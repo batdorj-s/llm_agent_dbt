@@ -359,6 +359,37 @@ export function formatMessageText(text: string) {
   });
 }
 
+// ── Source citation badge ───────────────────────────────────────
+
+function extractSourceRefs(text: string): string[] {
+  const refs: string[] = [];
+  const regex = /\[Source:\s*([^\]]+)\]/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const name = match[1].trim();
+    if (!refs.includes(name)) refs.push(name);
+  }
+  return refs;
+}
+
+function SourceCitation({ text }: { text: string }) {
+  const sources = extractSourceRefs(text);
+  if (sources.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2 ml-1">
+      {sources.map((src, i) => (
+        <span
+          key={i}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-[9px] text-blue-600 dark:text-blue-400 font-medium"
+          title="Эх сурвалж"
+        >
+          📚 {src}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // #3, #4: Copy button and timestamp component
 function MessageActions({ text, timestamp, onRetry, onRegenerate, isError }: { text: string; timestamp?: Date; onRetry?: () => void; onRegenerate?: () => void; isError?: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -470,6 +501,9 @@ function ChatMessageInner({ message, feedbackState, feedbackSentMsgs, onFeedback
           <div className="text-xs">{formatMessageText(message.text)}</div>
         )}
       </div>
+
+      {/* Source citations */}
+      {isAgent && message.text && <SourceCitation text={message.text} />}
 
       {/* #3, #4: Actions row (copy, timestamp, retry, regenerate) */}
       {isAgent && message.text && (

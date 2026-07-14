@@ -22,6 +22,7 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "conversation:read",
     "conversation:create",
     "conversation:delete",
+    "metrics:read",
   ]),
   analyst: new Set([
     // viewer permissions

@@ -31,6 +31,7 @@ export {
   generateHypotheticalDocument,
   searchKnowledgeBase,
   searchKnowledgeBaseWithFilter,
+  formatRagDocuments,
   selfQueryTransform,
   removeDocumentsByPrefix,
   addDocumentToCatalog,

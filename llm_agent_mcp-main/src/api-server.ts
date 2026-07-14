@@ -40,6 +40,7 @@ import conversationsRouter from "./routes/conversations.router.js";
 import adminRouter from "./routes/admin.router.js";
 import feedbackRouter from "./routes/feedback.router.js";
 import exportRouter from "./routes/export.router.js";
+import metricsRouter from "./routes/metrics.router.js";
 import multer from "multer";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
@@ -188,6 +189,7 @@ app.use("/api/conversations", conversationsRouter);
 app.use("/api/admin",       adminRouter);
 app.use("/api/feedback",    feedbackRouter);
 app.use("/api/export",      exportRouter);
+app.use("/api/metrics",     metricsRouter);
 
 // ─────────────────────────────────────────────────────────────
 // Centralized error handler

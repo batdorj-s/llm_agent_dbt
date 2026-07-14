@@ -4,7 +4,7 @@ import { handleExecuteSql } from "../tools/enterprise-tools.js";
 import { runPythonCode } from "../sandbox.js";
 import { sandboxLimiter } from "../rate-limiter.js";
 import { searchKnowledgeBase } from "../rag.js";
-import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "../rag.js";
+import { selfQueryTransform, searchKnowledgeBaseWithFilter, formatRagDocuments } from "../rag.js";
 import { detectDateColumn, extractProfileFromSchemaDef } from "./dateColumnHelper.js";
 import { type AgentState, type AgentConfig, withTimeout } from "./agentState.js";
 import { computeAllStats } from "./statistics.js";
@@ -66,8 +66,9 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
             ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "DataScientistAgent", limit: 4, filter, userId: state.userId })
             : await searchKnowledgeBase(query, "DataScientistAgent", 4, state.userId);
         const docs = ragData.documents?.[0] ?? [];
+        const metas = ragData.metadatas?.[0] ?? [];
         if (docs.length > 0) {
-            ragContext = "\n\n## Relevant Knowledge\n" + docs.join("\n\n---\n\n");
+            ragContext = "\n\n## Relevant Knowledge\n" + formatRagDocuments(docs, metas).join("\n\n---\n\n");
             log.info(`Enriched with ${docs.length} RAG docs`);        }
     } catch (err) {
         log.warn("RAG fetch failed:", { error: (err as Error).message });

@@ -1,6 +1,6 @@
 import { createLLM, invokeWithFallback, streamWithFallback } from "../llm-provider.js";
 import { getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
-import { searchKnowledgeBase } from "../rag.js";
+import { searchKnowledgeBase, formatRagDocuments } from "../rag.js";
 import { handleExecuteSql, isPythonQuery } from "../tools/enterprise-tools.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, type AgentConfig, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
@@ -96,8 +96,10 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
     try {
         const ragResult = await searchKnowledgeBase(query, "TechAgent", 5, userId);
         const ragDocs = ragResult.documents?.[0] ?? [];
+        const ragMetas = ragResult.metadatas?.[0] ?? [];
         if (ragDocs.length > 0) {
-            ragContext = "\n\n## RAG Context (business knowledge, dbt docs, user uploads)\n" + ragDocs.join("\n\n---\n\n");
+            const formatted = formatRagDocuments(ragDocs, ragMetas);
+            ragContext = "\n\n## RAG Context (business knowledge, dbt docs, user uploads)\n" + formatted.join("\n\n---\n\n");
         }
     } catch (err) {
         log.warn("RAG search failed:", { error: (err as Error).message });

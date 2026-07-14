@@ -1,13 +1,47 @@
 import { createLLM, invokeWithFallback, streamWithFallback } from "../llm-provider.js";
-import { selfQueryTransform, searchKnowledgeBase, searchKnowledgeBaseWithFilter } from "../rag.js";
+import { selfQueryTransform, searchKnowledgeBase, searchKnowledgeBaseWithFilter, formatRagDocuments } from "../rag.js";
 import { buildFinanceKpiContext } from "../tools/enterprise-tools.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, type AgentConfig, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
 import { techAgentNode } from "./techAgentNode.js";
 import { createLogger } from "./logger.js";
+import fs from "fs";
+import path from "path";
+import yaml from "yaml";
 
 const log = createLogger("FinanceAgent");
+
+interface DbtMetric {
+  name: string;
+  label?: string;
+  description?: string;
+  model?: string;
+  calculation_method?: string;
+  expression?: string;
+  synonyms?: string[];
+}
+
+function buildMetricsContext(): string {
+  const metricsPath = path.join(process.cwd(), "docs", "dbt-metrics.yaml");
+  if (!fs.existsSync(metricsPath)) return "";
+  try {
+    const raw = fs.readFileSync(metricsPath, "utf-8");
+    const parsed = yaml.parse(raw) as { metrics?: DbtMetric[] };
+    if (!parsed?.metrics?.length) return "";
+    const lines = parsed.metrics.map((m) => {
+      const parts = [`- ${m.name}`];
+      if (m.label) parts.push(`(${m.label})`);
+      if (m.description) parts.push(`— ${m.description}`);
+      if (m.calculation_method && m.expression) parts.push(`[${m.calculation_method} of ${m.expression}]`);
+      if (m.synonyms?.length) parts.push(`{${m.synonyms.join(", ")}}`);
+      return parts.join(" ");
+    });
+    return lines.join("\n");
+  } catch {
+    return "";
+  }
+}
 
 export async function financeAgentNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
     log.info("Activated.");
@@ -55,8 +89,9 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
             ? await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "FinanceAgent", limit: 5, filter, userId: state.userId })
             : await searchKnowledgeBase(query, "FinanceAgent", 5, state.userId);
         const docs = ragData.documents?.[0] ?? [];
+        const metas = ragData.metadatas?.[0] ?? [];
         if (docs.length > 0) {
-            context = docs.join("\n\n---\n\n");
+            context = formatRagDocuments(docs, metas).join("\n\n---\n\n");
         } else {
             log.warn("RAG returned no documents.");
         }
@@ -65,6 +100,11 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
     }
 
     const liveKpiContext = await buildFinanceKpiContext(query);
+    const metricsContext = buildMetricsContext();
+    if (metricsContext) {
+        log.info("Enriched with defined business metrics.");
+        context = `${context}\n\n--- Defined Business Metrics ---\n${metricsContext}`;
+    }
     if (liveKpiContext) {
         log.info("Enriched with live KPI data from Data Lake (MCP tools).");
         context = `${context}\n\n--- Live KPI Data (from database) ---\n${liveKpiContext}`;

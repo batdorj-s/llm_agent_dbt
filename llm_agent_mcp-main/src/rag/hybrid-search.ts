@@ -259,6 +259,19 @@ function recursiveSearch(query: string, limit: number, categories?: string[], us
   return results.slice(0, limit);
 }
 
+/**
+ * Format RAG documents with `[Source: name]` markers for citation display.
+ */
+export function formatRagDocuments(docs: string[], metadatas: unknown[]): string[] {
+  return docs.map((text, i) => {
+    const meta = (metadatas[i] as Record<string, unknown>) || {};
+    const sourceName = (meta.source_name as string) || "";
+    const dept = (meta.department as string) || "";
+    const prefix = sourceName ? `[Source: ${sourceName}]${dept ? ` (${dept})` : ""}` : "";
+    return prefix ? `${prefix}\n${text}` : text;
+  });
+}
+
 // ── Main search ───────────────────────────────────────────────
 
 export async function searchKnowledgeBase(

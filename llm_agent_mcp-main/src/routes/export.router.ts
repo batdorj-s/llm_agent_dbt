@@ -2,7 +2,7 @@ import { Router } from "express";
 import type express from "express";
 import { requireAuth } from "../auth.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { getActiveCatalogEntry, getPool } from "../db/data-lake.js";
+import { getActiveCatalogEntry, getPool, getCatalog, canAccessCatalogEntry } from "../db/data-lake.js";
 
 const router = Router();
 
@@ -22,13 +22,22 @@ router.get("/", requireAuth, requirePermission("export:csv"), async (req, res) =
 
     // Resolve table name: explicit query param > user's active dataset
     let tableName = req.query.table as string | undefined;
+    const userId = getUserId(req);
     if (!tableName) {
-      const entry = await getActiveCatalogEntry(getUserId(req));
+      const entry = await getActiveCatalogEntry(userId);
       if (!entry) {
         res.status(404).json({ error: "No active dataset found. Upload data first." });
         return;
       }
       tableName = entry.table_name;
+    } else {
+      // When explicit table param is provided, validate user has access
+      const catalog = await getCatalog(userId);
+      const entry = catalog.find(e => e.table_name === tableName);
+      if (!entry || !canAccessCatalogEntry(entry, userId)) {
+        res.status(403).json({ error: "Access denied: table not found or not accessible" });
+        return;
+      }
     }
 
     // Fetch data from the resolved table
