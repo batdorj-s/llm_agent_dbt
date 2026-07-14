@@ -37,6 +37,8 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "conversation:delete",
     "glossary:read",
     "quality:read",
+    "quality:create",
+    "quality:write",
     // analyst additions
     "kpi:anomaly",
     "kpi:whatif",
@@ -62,6 +64,8 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "alert:read",
     "glossary:read",
     "quality:read",
+    "quality:create",
+    "quality:write",
     // admin additions
     "admin:users",
     "admin:upload",

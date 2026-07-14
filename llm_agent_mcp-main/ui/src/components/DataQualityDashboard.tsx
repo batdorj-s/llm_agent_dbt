@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, CheckCircle, XCircle, Activity, Clock, Database, ChevronDown, ChevronUp } from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, Activity, Clock, Database, ChevronDown, ChevronUp, Plus, Trash2, Edit3 } from "lucide-react";
 
 interface QualitySummary {
   available: boolean;
@@ -28,12 +28,22 @@ interface TestResult {
   expression: string | null;
 }
 
+interface CustomTest {
+  id: string; name: string; model_name: string; column_name: string | null;
+  test_type: string; expression: string | null; severity: string;
+  description: string; is_active: boolean; created_at: string; updated_at: string;
+}
+
 export function DataQualityDashboard({ token }: { token: string | null }) {
   const [summary, setSummary] = useState<QualitySummary | null>(null);
   const [tests, setTests] = useState<TestResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [expandedTest, setExpandedTest] = useState<string | null>(null);
+  const [customTests, setCustomTests] = useState<CustomTest[]>([]);
+  const [showTestForm, setShowTestForm] = useState(false);
+  const [editTestId, setEditTestId] = useState<string | null>(null);
+  const [testForm, setTestForm] = useState({ name: "", model_name: "", column_name: "", test_type: "assert_true", expression: "", severity: "error", description: "" });
 
   const headers = {
     "Content-Type": "application/json",
@@ -64,6 +74,36 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
   useEffect(() => {
     fetchTests();
   }, [filterStatus]);
+
+  const fetchCustomTests = useCallback(async () => {
+    try {
+      const res = await fetch("/api/data-quality/custom-tests", { headers });
+      const data = await res.json();
+      if (data.success) setCustomTests(data.data);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchCustomTests(); }, []);
+
+  const handleCreateTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await fetch("/api/data-quality/custom-tests", {
+        method: "POST", headers, body: JSON.stringify(testForm),
+      });
+      setShowTestForm(false);
+      setTestForm({ name: "", model_name: "", column_name: "", test_type: "assert_true", expression: "", severity: "error", description: "" });
+      fetchCustomTests();
+    } catch { /* ignore */ }
+  };
+
+  const handleDeleteTest = async (id: string) => {
+    if (!confirm("Тестийг устгах уу?")) return;
+    try {
+      await fetch(`/api/data-quality/custom-tests/${id}`, { method: "DELETE", headers });
+      fetchCustomTests();
+    } catch { /* ignore */ }
+  };
 
   if (loading) {
     return (
@@ -172,11 +212,14 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
         <span className="ml-auto text-[10px] text-foreground/30">{tests.length} тест</span>
       </div>
 
-      {/* Test results */}
-      <div className="flex-1 overflow-y-auto">
+      {/* dbt Test results */}
+      <div className="px-4 py-1.5 border-b border-border/30 bg-foreground/5">
+        <span className="text-[9px] font-medium text-foreground/40">dbt тестийн үр дүн</span>
+      </div>
+      <div className="overflow-y-auto max-h-[40vh]">
         {tests.length === 0 && (
-          <div className="flex items-center justify-center py-12 text-foreground/40">
-            <div className="text-xs">Тестийн үр дүн олдсонгүй</div>
+          <div className="flex items-center justify-center py-8 text-foreground/40">
+            <div className="text-[10px]">Тестийн үр дүн олдсонгүй</div>
           </div>
         )}
 
@@ -184,13 +227,13 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
           <div key={test.unique_id} className="border-b border-border/40 last:border-b-0">
             <button
               onClick={() => setExpandedTest(expandedTest === test.unique_id ? null : test.unique_id)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-foreground/5 transition-colors cursor-pointer text-left border-none bg-transparent"
+              className="w-full flex items-center gap-3 px-4 py-2 hover:bg-foreground/5 transition-colors cursor-pointer text-left border-none bg-transparent"
             >
               {statusIcon(test.status)}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-foreground">{test.test_name}</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                  <span className="text-[10px] font-medium text-foreground">{test.test_name}</span>
+                  <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-medium ${
                     test.status === "pass"
                       ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                       : test.status === "fail"
@@ -200,42 +243,111 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
                     {test.status}
                   </span>
                   {test.failures > 0 && (
-                    <span className="text-[9px] text-red-500/70">{test.failures} алдаа</span>
+                    <span className="text-[8px] text-red-500/70">{test.failures} алдаа</span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[9px] text-foreground/40">{test.test_type}</span>
-                  {test.model_name && <span className="text-[9px] text-foreground/40">· {test.model_name}</span>}
-                  {test.column_name && <span className="text-[9px] text-foreground/40">· {test.column_name}</span>}
-                  <span className="text-[9px] text-foreground/30 ml-auto">{test.execution_time.toFixed(2)}s</span>
+                  <span className="text-[8px] text-foreground/40">{test.test_type}</span>
+                  {test.model_name && <span className="text-[8px] text-foreground/40">· {test.model_name}</span>}
+                  {test.column_name && <span className="text-[8px] text-foreground/40">· {test.column_name}</span>}
+                  <span className="text-[8px] text-foreground/30 ml-auto">{test.execution_time.toFixed(2)}s</span>
                 </div>
               </div>
               {expandedTest === test.unique_id ? <ChevronUp className="w-3 h-3 text-foreground/30" /> : <ChevronDown className="w-3 h-3 text-foreground/30" />}
             </button>
 
             {expandedTest === test.unique_id && (
-              <div className="px-4 pb-3 pt-0">
-                <div className="bg-foreground/5 rounded-md p-2.5 space-y-1.5">
+              <div className="px-4 pb-2 pt-0">
+                <div className="bg-foreground/5 rounded-md p-2 space-y-1">
                   {test.message && (
-                    <div className="text-[10px] text-red-500/80 font-mono whitespace-pre-wrap bg-red-500/5 p-1.5 rounded">
+                    <div className="text-[9px] text-red-500/80 font-mono whitespace-pre-wrap bg-red-500/5 p-1.5 rounded">
                       {test.message}
                     </div>
                   )}
                   {test.expression && (
                     <div>
-                      <span className="text-[9px] text-foreground/40">Expression: </span>
-                      <code className="text-[10px] text-foreground/70 font-mono">{test.expression}</code>
+                      <span className="text-[8px] text-foreground/40">Expression: </span>
+                      <code className="text-[9px] text-foreground/70 font-mono">{test.expression}</code>
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-2 text-[9px] text-foreground/40">
-                    <div>Test type: {test.test_type}</div>
-                    {test.model_name && <div>Model: {test.model_name}</div>}
-                    {test.column_name && <div>Column: {test.column_name}</div>}
-                    <div>Duration: {test.execution_time.toFixed(3)}s</div>
-                  </div>
                 </div>
               </div>
             )}
+          </div>
+        ))}
+      </div>
+
+      {/* Custom tests section */}
+      <div className="border-t border-border px-4 py-1.5 flex items-center gap-2 bg-foreground/5">
+        <span className="text-[9px] font-medium text-foreground/40">Кофигурац тестүүд</span>
+        <button
+          onClick={() => setShowTestForm(!showTestForm)}
+          className="ml-auto flex items-center gap-1 px-2 py-0.5 text-[9px] font-medium rounded-md bg-blue-500/20 text-blue-600 dark:text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
+        >
+          <Plus className="w-2.5 h-2.5" />
+          Тест нэмэх
+        </button>
+      </div>
+
+      {showTestForm && (
+        <form onSubmit={handleCreateTest} className="px-4 py-2 border-b border-border bg-foreground/5 space-y-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
+            <input type="text" placeholder="Тестийн нэр" value={testForm.name}
+              onChange={(e) => setTestForm(f => ({ ...f, name: e.target.value }))}
+              className="px-2 py-1 text-[10px] rounded border border-border bg-background text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500" required />
+            <input type="text" placeholder="Model нэр" value={testForm.model_name}
+              onChange={(e) => setTestForm(f => ({ ...f, model_name: e.target.value }))}
+              className="px-2 py-1 text-[10px] rounded border border-border bg-background text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500" required />
+            <input type="text" placeholder="Багана (optional)" value={testForm.column_name}
+              onChange={(e) => setTestForm(f => ({ ...f, column_name: e.target.value }))}
+              className="px-2 py-1 text-[10px] rounded border border-border bg-background text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            <select value={testForm.test_type}
+              onChange={(e) => setTestForm(f => ({ ...f, test_type: e.target.value }))}
+              className="px-2 py-1 text-[10px] rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <option value="assert_true">assert_true</option>
+              <option value="unique">unique</option>
+              <option value="not_null">not_null</option>
+            </select>
+            <input type="text" placeholder="Expression (e.g. total_sales >= 0)" value={testForm.expression}
+              onChange={(e) => setTestForm(f => ({ ...f, expression: e.target.value }))}
+              className="px-2 py-1 text-[10px] rounded border border-border bg-background text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            <select value={testForm.severity}
+              onChange={(e) => setTestForm(f => ({ ...f, severity: e.target.value }))}
+              className="px-2 py-1 text-[10px] rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <option value="error">error</option>
+              <option value="warn">warn</option>
+            </select>
+          </div>
+          <input type="text" placeholder="Тайлбар (optional)" value={testForm.description}
+            onChange={(e) => setTestForm(f => ({ ...f, description: e.target.value }))}
+            className="w-full px-2 py-1 text-[10px] rounded border border-border bg-background text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          <div className="flex gap-2 pt-1">
+            <button type="submit" className="px-2.5 py-1 text-[9px] font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer">Хадгалах</button>
+            <button type="button" onClick={() => setShowTestForm(false)} className="px-2.5 py-1 text-[9px] text-foreground/50 hover:text-foreground/80 cursor-pointer">Цуцлах</button>
+          </div>
+        </form>
+      )}
+
+      {/* Custom tests list */}
+      <div className="overflow-y-auto max-h-[25vh]">
+        {customTests.length === 0 && (
+          <div className="flex items-center justify-center py-6 text-foreground/40">
+            <span className="text-[9px]">Тохируулсан тест байхгүй</span>
+          </div>
+        )}
+        {customTests.map((ct) => (
+          <div key={ct.id} className="flex items-center gap-2 px-4 py-1.5 border-b border-border/30 hover:bg-foreground/5">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50" />
+            <div className="flex-1 min-w-0">
+              <span className="text-[10px] font-medium text-foreground">{ct.name}</span>
+              <span className="text-[8px] text-foreground/40 ml-2">{ct.model_name}{ct.column_name ? `.${ct.column_name}` : ""}</span>
+            </div>
+            <span className={`text-[8px] px-1 py-0.5 rounded ${ct.severity === "error" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400"}`}>
+              {ct.severity}
+            </span>
+            <button onClick={() => handleDeleteTest(ct.id)} className="p-0.5 text-foreground/20 hover:text-red-500 transition-colors cursor-pointer">
+              <Trash2 className="w-2.5 h-2.5" />
+            </button>
           </div>
         ))}
       </div>

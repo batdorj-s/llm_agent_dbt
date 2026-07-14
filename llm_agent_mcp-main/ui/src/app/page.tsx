@@ -305,6 +305,7 @@ export default function Home() {
         serverStatus={dashboard.serverStatus} isLoggedIn={auth.isLoggedIn} user={auth.user} theme={theme}
         onToggleTheme={toggleTheme} onLogout={handleLogout}
         activeTab={activeTab} onTabChange={setActiveTab}
+        authToken={auth.token}
       />
 
       <OfflineBanner />

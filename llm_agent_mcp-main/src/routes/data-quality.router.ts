@@ -171,4 +171,87 @@ router.get("/data-quality/tests", requirePermission("quality:read"), (req, res) 
   }
 });
 
+// ── Custom Data Quality Test CRUD ──────────────────────────
+
+import crypto from "crypto";
+import { getPool } from "../db/pool.js";
+
+router.get("/data-quality/custom-tests", requirePermission("quality:read"), async (_req, res) => {
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      "SELECT * FROM data_quality_tests ORDER BY updated_at DESC"
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "Failed to load custom tests" });
+  }
+});
+
+router.post("/data-quality/custom-tests", requirePermission("quality:create"), async (req, res) => {
+  try {
+    const { name, model_name, column_name, test_type, expression, severity, description } = req.body;
+    if (!name || !model_name) {
+      res.status(400).json({ error: "name and model_name are required" });
+      return;
+    }
+    const id = `dqt_${crypto.randomBytes(6).toString("hex")}`;
+    const userId = (req as any).user?.userId || "system";
+    const pool = getPool();
+
+    await pool.query(
+      `INSERT INTO data_quality_tests (id, name, model_name, column_name, test_type, expression, severity, description, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [id, name, model_name, column_name || null, test_type || "assert_true", expression || null, severity || "error", description || "", userId]
+    );
+
+    res.status(201).json({ success: true, data: { id, name, model_name } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "Failed to create test" });
+  }
+});
+
+router.put("/data-quality/custom-tests/:id", requirePermission("quality:write"), async (req, res) => {
+  try {
+    const { name, model_name, column_name, test_type, expression, severity, description, is_active } = req.body;
+    const pool = getPool();
+
+    const sets: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+
+    if (name !== undefined) { sets.push(`name = $${idx++}`); params.push(name); }
+    if (model_name !== undefined) { sets.push(`model_name = $${idx++}`); params.push(model_name); }
+    if (column_name !== undefined) { sets.push(`column_name = $${idx++}`); params.push(column_name); }
+    if (test_type !== undefined) { sets.push(`test_type = $${idx++}`); params.push(test_type); }
+    if (expression !== undefined) { sets.push(`expression = $${idx++}`); params.push(expression); }
+    if (severity !== undefined) { sets.push(`severity = $${idx++}`); params.push(severity); }
+    if (description !== undefined) { sets.push(`description = $${idx++}`); params.push(description); }
+    if (is_active !== undefined) { sets.push(`is_active = $${idx++}`); params.push(is_active); }
+
+    sets.push(`updated_at = NOW()`);
+    params.push(req.params.id);
+
+    if (sets.length === 1) {
+      res.status(400).json({ error: "No fields to update" });
+      return;
+    }
+
+    await pool.query(`UPDATE data_quality_tests SET ${sets.join(", ")} WHERE id = $${idx}`, params);
+    res.json({ success: true, message: "Test updated" });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "Failed to update test" });
+  }
+});
+
+router.delete("/data-quality/custom-tests/:id", requirePermission("quality:write"), async (req, res) => {
+  try {
+    const pool = getPool();
+    await pool.query("DELETE FROM data_quality_tests WHERE id = $1", [req.params.id]);
+    res.json({ success: true, message: "Test deleted" });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "Failed to delete test" });
+  }
+});
+
 export default router;

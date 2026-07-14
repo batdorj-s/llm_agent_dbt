@@ -46,6 +46,7 @@ import lineageRouter from "./routes/lineage.router.js";
 import apiKeysRouter from "./routes/api-keys.router.js";
 import schedulerRouter from "./routes/scheduler.router.js";
 import sharingRouter from "./routes/sharing.router.js";
+import unifiedSearchRouter from "./routes/unified-search.router.js";
 import multer from "multer";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
@@ -201,6 +202,7 @@ app.use("/api",             lineageRouter);        // /api/lineage
 app.use("/api",             apiKeysRouter);        // /api/admin/api-keys
 app.use("/api",             schedulerRouter);      // /api/scheduler
 app.use("/api",             sharingRouter);        // /api/teams, /api/sharing
+app.use("/api",             unifiedSearchRouter);  // /api/search
 
 // ─────────────────────────────────────────────────────────────
 // Centralized error handler

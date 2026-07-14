@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu, X, BookOpen, ShieldCheck, GitBranch, Calendar, Users } from "lucide-react";
+import { Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu, X, BookOpen, ShieldCheck, GitBranch, Calendar, Users, Search } from "lucide-react";
 import { ServerStatus } from "./types";
 import { AvatarDropdown, DocLink } from "./RightContent";
+import { GlobalSearch } from "./GlobalSearch";
 
 export type TabId = "ask" | "dashboard" | "report" | "glossary" | "quality" | "lineage" | "scheduler" | "sharing";
 
@@ -16,6 +17,7 @@ interface HeaderProps {
   onLogout: () => void;
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
+  authToken?: string | null;
 }
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
@@ -29,7 +31,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "sharing", label: "Хамтрах", icon: <Users className="w-3.5 h-3.5" /> },
 ];
 
-export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, onLogout, activeTab, onTabChange }: HeaderProps) => {
+export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, onLogout, activeTab, onTabChange, authToken }: HeaderProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
@@ -93,6 +95,12 @@ export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, o
               {t.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {isLoggedIn && (
+        <div className="hidden sm:block">
+          <GlobalSearch token={authToken ?? null} />
         </div>
       )}
 

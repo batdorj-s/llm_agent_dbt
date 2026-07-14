@@ -269,6 +269,39 @@ export async function initDataLake(): Promise<void> {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_created_at ON sql_gen_log (created_at DESC)`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_outcome ON sql_gen_log (outcome)`);
 
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS generated_reports (
+          id TEXT PRIMARY KEY,
+          schedule_id TEXT REFERENCES scheduled_reports(id) ON DELETE SET NULL,
+          format TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          file_size BIGINT DEFAULT 0,
+          row_count INTEGER DEFAULT 0,
+          query TEXT,
+          generated_by TEXT,
+          generated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_generated_reports_schedule ON generated_reports (schedule_id)`);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS data_quality_tests (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          model_name TEXT NOT NULL,
+          column_name TEXT,
+          test_type TEXT NOT NULL DEFAULT 'assert_true',
+          expression TEXT,
+          severity TEXT DEFAULT 'error' CHECK (severity IN ('error', 'warn')),
+          description TEXT DEFAULT '',
+          created_by TEXT,
+          is_active BOOLEAN DEFAULT true,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_quality_tests_model ON data_quality_tests (model_name)`);
+
       const existing = await pool.query("SELECT metric_name, target_value, unit FROM kpi_targets");
       if (existing.rows.length > 0) {
         for (const row of existing.rows as Array<{ metric_name: string; target_value: number; unit: string }>) {

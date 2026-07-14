@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">81.86% </span>
+                <span class="strong">81.73% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>176/215</span>
+                <span class='fraction'>179/219</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">61.4% </span>
+                <span class="strong">61.58% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>105/171</span>
+                <span class='fraction'>109/177</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">87.16% </span>
+                <span class="strong">87.36% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>163/187</span>
+                <span class='fraction'>166/190</span>
             </div>
         
             
@@ -494,7 +494,13 @@
 <a name='L429'></a><a href='#L429'>429</a>
 <a name='L430'></a><a href='#L430'>430</a>
 <a name='L431'></a><a href='#L431'>431</a>
-<a name='L432'></a><a href='#L432'>432</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L432'></a><a href='#L432'>432</a>
+<a name='L433'></a><a href='#L433'>433</a>
+<a name='L434'></a><a href='#L434'>434</a>
+<a name='L435'></a><a href='#L435'>435</a>
+<a name='L436'></a><a href='#L436'>436</a>
+<a name='L437'></a><a href='#L437'>437</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -510,12 +516,14 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">8x</span>
@@ -559,6 +567,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -675,6 +684,7 @@
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -931,9 +941,10 @@ import { handleExecuteSql } from "../tools/enterprise-tools.js";
 import { runPythonCode } from "../sandbox.js";
 import { sandboxLimiter } from "../rate-limiter.js";
 import { searchKnowledgeBase } from "../rag.js";
-import { selfQueryTransform, searchKnowledgeBaseWithFilter } from "../rag.js";
+import { selfQueryTransform, searchKnowledgeBaseWithFilter, formatRagDocuments } from "../rag.js";
 import { detectDateColumn, extractProfileFromSchemaDef } from "./dateColumnHelper.js";
 import { type AgentState, type AgentConfig, withTimeout } from "./agentState.js";
+import { getProviderOrder, type ModelTier } from "./model-router.js";
 import { computeAllStats } from "./statistics.js";
 import { createLogger } from "./logger.js";
 &nbsp;
@@ -941,13 +952,15 @@ const log = createLogger("DataScientist");
 import { extractCodeBlock } from "../utils.js";
 import { prompts } from "./prompts.js";
 &nbsp;
-const LLM_TIMEOUT_MS = 40000;
 const PYTHON_GEN_TIMEOUT_MS = 55000;
 &nbsp;
 export async function dataScientistNode(state: AgentState, config?: AgentConfig): Promise&lt;Partial&lt;AgentState&gt;&gt; {
     const onChunk = config?.configurable?.onChunk;
+    const onEvent = config?.configurable?.onEvent;
     const query = state.sanitizedQuery || (<span class="branch-1 cbranch-no" title="branch not covered" >state.messages[state.messages.length - 1]?.content ?? <span class="branch-2 cbranch-no" title="branch not covered" >"</span>");</span>
     const userId = state.userId || "system";
+&nbsp;
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (onEvent) <span class="cstat-no" title="statement not covered" >onEvent({ type: "thinking", step: "analysis", agent: "DataScientist", message: "Running statistical analysis..." });</span>
 &nbsp;
     const prefix = "(Data Scientist Agent)\nӨгөгдөлд шинжилгээ хийж байна...\n\n";
     <span class="missing-if-branch" title="if path not taken" >I</span>if (onChunk) <span class="cstat-no" title="statement not covered" >onChunk(prefix);</span>
@@ -990,8 +1003,9 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
             ? <span class="branch-0 cbranch-no" title="branch not covered" >await searchKnowledgeBaseWithFilter({ query: filter.query || query, agentRole: "DataScientistAgent", limit: 4, filter, userId: state.userId })</span>
             : await searchKnowledgeBase(query, "DataScientistAgent", 4, state.userId);
         const docs = ragData.documents?.[0] ?? <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+        const metas = ragData.metadatas?.[0] ?? [];
         <span class="missing-if-branch" title="if path not taken" >I</span>if (docs.length &gt; 0) {
-<span class="cstat-no" title="statement not covered" >            ragContext = "\n\n## Relevant Knowledge\n" + docs.join("\n\n---\n\n");</span>
+<span class="cstat-no" title="statement not covered" >            ragContext = "\n\n## Relevant Knowledge\n" + formatRagDocuments(docs, metas).join("\n\n---\n\n");</span>
 <span class="cstat-no" title="statement not covered" >            log.info(`Enriched with ${docs.length} RAG docs`);        }</span>
     } catch (err) {
 <span class="cstat-no" title="statement not covered" >        log.warn("RAG fetch failed:", { error: (err as Error).message });</span>
@@ -1027,7 +1041,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
     const categoryCols = findCategoryColumns(columnList);
 &nbsp;
     let sampleData: any[] = [];
-    let exportCsvSql: string | null = null;
+    let _exportCsvSql: string | null = null;
 &nbsp;
     // Anomaly detection needs more data rows for reliable z-score/IQR calculation
     const isAnomalyMode = analysisType === "anomaly";
@@ -1060,7 +1074,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
             log.info(`Forecast mode: ${dateCol}`, { type: dateColType, castAs: dateCast });            const aggResult = await handleExecuteSql({ query: forecastSql, userId });
             <span class="missing-if-branch" title="else path not taken" >E</span>if (aggResult.ok &amp;&amp; aggResult.results) {
                 sampleData = Array.isArray(aggResult.results) ? aggResult.results : <span class="branch-1 cbranch-no" title="branch not covered" >[aggResult.results];</span>
-                exportCsvSql = forecastSql;
+                _exportCsvSql = forecastSql;
                 log.info(`Forecast data: ${sampleData.length} aggregated rows`);            }
         }
 &nbsp;
@@ -1072,7 +1086,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
             <span class="missing-if-branch" title="else path not taken" >E</span>if (sampleResult.ok &amp;&amp; sampleResult.results) {
                 sampleData = Array.isArray(sampleResult.results) ? sampleResult.results : <span class="branch-1 cbranch-no" title="branch not covered" >[sampleResult.results];</span>
             }
-            exportCsvSql = buildExportSql(tableName, columnList);
+            _exportCsvSql = buildExportSql(tableName, columnList);
         }
     } catch (err) {
 <span class="cstat-no" title="statement not covered" >        log.warn("Data fetch failed:", { error: (err as Error).message });</span>
@@ -1105,6 +1119,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
 &nbsp;
         <span class="missing-if-branch" title="if path not taken" >I</span>if (onChunk) onChunk(`\n*Python код бэлдэж байна...*\n`);
 &nbsp;
+        const tier: ModelTier = state.modelTier || <span class="branch-1 cbranch-no" title="branch not covered" >"capable";</span>
         const llmResult = await invokeWithFallback(
             [
                 { role: "system", content: pythonSystemPrompt },
@@ -1113,7 +1128,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
             {
                 temperature: 0,
                 timeout: PYTHON_GEN_TIMEOUT_MS,
-                providerOrder: ["groq", "gemini", "openai"]
+                providerOrder: getProviderOrder(tier),
             }
         );
         // AllProvidersExhaustedError is thrown by invokeWithFallback — propagates to outer catch block
@@ -1363,7 +1378,7 @@ ${dimensionHint}`,
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-07-13T13:13:49.213Z
+                at 2026-07-14T07:05:44.486Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

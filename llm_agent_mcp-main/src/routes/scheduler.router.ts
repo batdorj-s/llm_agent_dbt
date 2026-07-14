@@ -9,6 +9,7 @@
 
 import { Router } from "express";
 import crypto from "crypto";
+import fs from "fs";
 import cron from "node-cron";
 import { getPool } from "../db/pool.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -173,6 +174,64 @@ router.delete("/scheduler/reports/:id", requirePermission("report:read"), async 
   } catch (err) {
     log("error", "Failed to delete scheduled report", req as any, { error: (err as Error).message });
     res.status(500).json({ error: "Failed to delete scheduled report" });
+  }
+});
+
+// ── Report Download ────────────────────────────────────────
+
+router.get("/scheduler/reports/:id/download", requirePermission("report:read"), async (req, res) => {
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      "SELECT id, schedule_id, format, file_path, file_size, row_count, generated_at FROM generated_reports WHERE id = $1",
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: "Generated report not found" });
+      return;
+    }
+    const report = result.rows[0];
+
+    if (!fs.existsSync(report.file_path)) {
+      res.status(404).json({ error: "Report file not found on disk" });
+      return;
+    }
+
+    const contentTypeMap: Record<string, string> = {
+      pdf: "application/pdf",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      csv: "text/csv",
+      json: "application/json",
+    };
+    const contentType = contentTypeMap[report.format] || "application/octet-stream";
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="report-${report.id}.${report.format}"`);
+    res.setHeader("Content-Length", String(report.file_size));
+
+    const fileStream = fs.createReadStream(report.file_path);
+    fileStream.pipe(res);
+  } catch (err) {
+    log("error", "Failed to download report", req as any, { error: (err as Error).message });
+    res.status(500).json({ error: "Failed to download report" });
+  }
+});
+
+// ── Generated Reports List ────────────────────────────────
+
+router.get("/scheduler/reports/generated", requirePermission("report:read"), async (_req, res) => {
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT gr.id, gr.schedule_id, sr.name AS report_name, gr.format, gr.file_size, gr.row_count, gr.generated_at
+       FROM generated_reports gr
+       LEFT JOIN scheduled_reports sr ON sr.id = gr.schedule_id
+       ORDER BY gr.generated_at DESC
+       LIMIT 100`
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "Failed to list generated reports" });
   }
 });
 
