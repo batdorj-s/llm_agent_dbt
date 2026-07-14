@@ -20,8 +20,9 @@ vi.mock("dotenv", () => ({
 }));
 
 vi.mock("fs", () => ({
+    existsSync: vi.fn().mockReturnValue(false),
     readFileSync: vi.fn().mockReturnValue("mocked"),
-    default: { readFileSync: vi.fn().mockReturnValue("mocked") },
+    default: { existsSync: vi.fn().mockReturnValue(false), readFileSync: vi.fn().mockReturnValue("mocked") },
 }));
 
 vi.mock("yaml", () => ({

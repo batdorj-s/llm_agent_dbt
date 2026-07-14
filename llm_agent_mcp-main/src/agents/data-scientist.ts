@@ -7,6 +7,7 @@ import { searchKnowledgeBase } from "../rag.js";
 import { selfQueryTransform, searchKnowledgeBaseWithFilter, formatRagDocuments } from "../rag.js";
 import { detectDateColumn, extractProfileFromSchemaDef } from "./dateColumnHelper.js";
 import { type AgentState, type AgentConfig, withTimeout } from "./agentState.js";
+import { getProviderOrder, type ModelTier } from "./model-router.js";
 import { computeAllStats } from "./statistics.js";
 import { createLogger } from "./logger.js";
 
@@ -182,6 +183,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
 
         if (onChunk) onChunk(`\n*Python код бэлдэж байна...*\n`);
 
+        const tier: ModelTier = state.modelTier || "capable";
         const llmResult = await invokeWithFallback(
             [
                 { role: "system", content: pythonSystemPrompt },
@@ -190,7 +192,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
             {
                 temperature: 0,
                 timeout: PYTHON_GEN_TIMEOUT_MS,
-                providerOrder: ["groq", "gemini", "openai"]
+                providerOrder: getProviderOrder(tier),
             }
         );
         // AllProvidersExhaustedError is thrown by invokeWithFallback — propagates to outer catch block

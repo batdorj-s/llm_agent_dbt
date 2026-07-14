@@ -1,5 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import type { DataLakeCatalogEntry } from "../db/data-lake.js";
+import type { ModelTier } from "./model-router.js";
 
 export type UserRole = "viewer" | "analyst" | "admin";
 export type NextAgent = "FinanceAgent" | "TechAgent" | "DataScientistAgent" | "END";
@@ -34,6 +35,7 @@ export interface AgentState {
     cachedSchema?: string;
     cachedActiveEntry?: DataLakeCatalogEntry | null;
     sanitizedQuery?: string;
+    modelTier?: ModelTier;
 }
 
 export const AgentStateAnnotation = Annotation.Root({
@@ -72,6 +74,10 @@ export const AgentStateAnnotation = Annotation.Root({
     sanitizedQuery: Annotation<string | undefined>({
         reducer: (x, y) => y ?? x,
         default: () => undefined,
+    }),
+    modelTier: Annotation<ModelTier>({
+        reducer: (x, y) => y ?? x,
+        default: () => "fast",
     }),
 });
 

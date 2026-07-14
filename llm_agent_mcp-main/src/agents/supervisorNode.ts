@@ -2,6 +2,7 @@ import { createLLM } from "../llm-provider.js";
 import { getCatalog, getActiveCatalogEntry } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
 import { trimMessages, withTimeout, type AgentState, type AgentConfig, type NextAgent } from "./agentState.js";
+import { routeTierForAgent } from "./model-router.js";
 import { queryMentionsTable } from "../utils.js";
 import { z } from "zod";
 import { sanitizeUserInput } from "./sanitize.js";
@@ -174,7 +175,7 @@ export async function supervisorNode(state: AgentState, config?: AgentConfig): P
     if (immediateRoute !== "END") {
         log.info(`Immediate keyword route -> ${immediateRoute}`);
         if (onEvent) onEvent({ type: "thinking", step: "routing", agent: immediateRoute, message: `Routing to ${immediateRoute}` });
-        return { nextAgent: immediateRoute, sanitizedQuery: lastMessage };
+        return { nextAgent: immediateRoute, sanitizedQuery: lastMessage, modelTier: routeTierForAgent(immediateRoute) };
     }
 
     const llm = await createLLM({ temperature: 0 });
@@ -191,7 +192,7 @@ export async function supervisorNode(state: AgentState, config?: AgentConfig): P
                 const hasActive = !!state.cachedSchema || !!(await getActiveCatalogEntry(userId));
                 if (hasActive) {
                     log.info(`LLM routed to END but active dataset found. Overriding to TechAgent.`);
-                    return { nextAgent: "TechAgent", sanitizedQuery: lastMessage };
+                    return { nextAgent: "TechAgent", sanitizedQuery: lastMessage, modelTier: routeTierForAgent("TechAgent") };
                 }
                 const endSystemPrompt = prompts.supervisor_end;
                 try {
@@ -237,7 +238,7 @@ export async function supervisorNode(state: AgentState, config?: AgentConfig): P
                 }
             }
 
-            return { nextAgent: result.route, sanitizedQuery: lastMessage };
+            return { nextAgent: result.route, sanitizedQuery: lastMessage, modelTier: routeTierForAgent(result.route) };
         } catch (err) {
             log.warn("LLM routing failed, using keyword fallback:", { error: (err as Error).message });
         }
@@ -258,5 +259,5 @@ export async function supervisorNode(state: AgentState, config?: AgentConfig): P
             sanitizedQuery: lastMessage,
         };
     }
-    return { nextAgent: route, sanitizedQuery: lastMessage };
+    return { nextAgent: route, sanitizedQuery: lastMessage, modelTier: routeTierForAgent(route) };
 }
