@@ -12,9 +12,12 @@ const log = createLogger("FinanceAgent");
 export async function financeAgentNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
     log.info("Activated.");
     const onChunk = config?.configurable?.onChunk;
+    const onEvent = config?.configurable?.onEvent;
 
     const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
     const userId = state.userId || "system";
+
+    if (onEvent) onEvent({ type: "thinking", step: "analysis", agent: "FinanceAgent", message: "Analyzing your financial question..." });
 
     // ── 1-рт: Data query эсэхийг шалгах (RAG context-аас хамаарахгүй) ──
     const isDataQuery = /\b(sql|query|select|хүснэгт|багана|өгөгдөл|дата|row|мөр|column)\b/i.test(query)
@@ -22,13 +25,16 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
 
     if (isDataQuery) {
         log.info("Data query detected — delegating to TechAgent (bypassing RAG).");
+        if (onEvent) onEvent({ type: "thinking", step: "delegation", agent: "TechAgent", message: "Data query — delegating to TechAgent" });
         if (onChunk) onChunk("(Finance Agent → Tech Agent)\nМэдээллийн сангаас дата шүүж байна...\n\n");
         return techAgentNode(state, config);
     }
 
     const llm = await createLLM({ temperature: 0 });
 
-    log.info(`Fetching RAG context for query: "${query}"`);    let context = "No context available.";
+    log.info(`Fetching RAG context for query: "${query}"`);
+    if (onEvent) onEvent({ type: "thinking", step: "rag", agent: "FinanceAgent", message: "Searching knowledge base..." });
+    let context = "No context available.";
     try {
         let filter;
         if (llm) {

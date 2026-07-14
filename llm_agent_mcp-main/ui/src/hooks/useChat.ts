@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import type { Message } from "../components/types";
+import type { Message, ThinkingStep } from "../components/types";
 import { generateFollowUpSuggestions } from "../lib/generateFollowUpSuggestions";
 
 export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone: () => void, token?: string) {
@@ -14,11 +14,51 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
   const [feedbackState, setFeedbackState] = useState<Record<string, "positive" | "negative" | null>>({});
   const [feedbackSentMsgs, setFeedbackSentMsgs] = useState<Record<string, string>>({});
   const [isOffline, setIsOffline] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
   // #6: Dynamic follow-up suggestions
   const [dynamicSuggestions, setDynamicSuggestions] = useState<{ label: string; query: string }[]>([]);
   const lastQueryRef = useRef<string>("");
 
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // #2.3: Attempt to recover partial response from server after SSE disconnect
+  const attemptRecovery = useCallback(async (agentMsgId: string, partialText: string) => {
+    setIsRecovering(true);
+    try {
+      // Wait briefly for server to finish persisting
+      await new Promise(r => setTimeout(r, 2000));
+      // Poll up to 3 times with backoff
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await fetch(`/api/conversations?limit=1`, {
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        });
+        const data = await res.json();
+        if (data.success && data.data?.length > 0) {
+          const latest = data.data[0];
+          const msgRes = await fetch(`/api/conversations/${latest.id}/messages?limit=2`, {
+            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          });
+          const msgData = await msgRes.json();
+          if (msgData.success && msgData.data?.length > 0) {
+            const lastAssistant = [...msgData.data].reverse().find((m: { role: string }) => m.role === "assistant");
+            if (lastAssistant && lastAssistant.content && lastAssistant.content.length > partialText.length) {
+              // Server has the full response — replace partial
+              setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: lastAssistant.content } : m));
+              setIsRecovering(false);
+              return;
+            }
+          }
+        }
+        await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+      }
+    } catch { /* recovery is best-effort */ }
+    setIsRecovering(false);
+    // If recovery failed, keep the partial text and mark connection lost
+    setMessages(p => p.map(m => m.id === agentMsgId ? {
+      ...m,
+      text: m.text + "\n\n*Холболт тасарсан. Дахин оролдохын тулд зүүн дээрх товчийг дарна уу.*",
+    } : m));
+  }, [token]);
 
   // #17: Monitor online/offline status
   const checkOnline = useCallback(() => {
@@ -81,9 +121,21 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
         if (!reader) throw new Error("Response body is not readable");
 
         let buffer = "", fullResponse = "";
+        let gotDoneEvent = false;
+
+        // #2.3: Inactivity timeout — abort if no data for 60s
+        const INACTIVITY_MS = 60_000;
+        let inactivityTimer: ReturnType<typeof setTimeout> = setTimeout(() => controller.abort(), INACTIVITY_MS);
+        const resetInactivity = () => {
+          clearTimeout(inactivityTimer);
+          inactivityTimer = setTimeout(() => controller.abort(), INACTIVITY_MS);
+        };
+        resetInactivity();
+
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
+          resetInactivity();
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
@@ -126,11 +178,15 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
                 setLastAgentType(info.name);
                 setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, agentName: info.name } : m));
               } else if (data.type === "done") {
+                gotDoneEvent = true;
                 setActiveRoutingState("done");
                 // #6: Generate dynamic follow-up suggestions from last query + full response
                 const suggestions = generateFollowUpSuggestions(lastQueryRef.current, fullResponse, lastAgentType);
                 setDynamicSuggestions(suggestions);
                 onDone();
+              } else if (data.type === "thinking") {
+                const step: ThinkingStep = { step: data.step, agent: data.agent, message: data.message, timestamp: new Date() };
+                setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, thinkingSteps: [...(m.thinkingSteps || []), step] } : m));
               } else if (data.type === "error") {
                 throw new Error(data.error || "Streaming error occurred");
               }
@@ -141,6 +197,13 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
               }
             }
           }
+        }
+
+        clearTimeout(inactivityTimer);
+
+        // #2.3: If stream ended without a `done` event and we have partial text, attempt recovery
+        if (!gotDoneEvent && fullResponse.length > 0) {
+          attemptRecovery(agentMsgId, fullResponse);
         }
       } else {
         // #15: Fix non-streaming path to show actual response
@@ -308,7 +371,7 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
 
   return {
     messages, input, setInput, isChatLoading, streamEnabled, setStreamEnabled,
-    lastAgentType, activeRoutingState, feedbackState, feedbackSentMsgs, isOffline,
+    lastAgentType, activeRoutingState, feedbackState, feedbackSentMsgs, isOffline, isRecovering,
     dynamicSuggestions,
     handleSendMessage, handleCancelMessage, handleFeedback, handleRetry,
     handleRegenerate, handleStopAndRegenerate,

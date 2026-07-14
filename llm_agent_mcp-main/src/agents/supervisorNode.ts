@@ -165,6 +165,7 @@ export async function supervisorNode(state: AgentState, config?: AgentConfig): P
     log.info(`Analyzing query: "${lastMessage}"`);
     const systemPrompt = prompts.supervisor;
     const onChunk = config?.configurable?.onChunk;
+    const onEvent = config?.configurable?.onEvent;
 
     const catalog = state.cachedCatalog || await getCatalog(userId);
     const mentionsKnownTable = catalog.some((row) => queryMentionsTable(lastMessage, row.table_name));
@@ -172,6 +173,7 @@ export async function supervisorNode(state: AgentState, config?: AgentConfig): P
     const immediateRoute = routeByKeywords(lastMessage, false, mentionsKnownTable);
     if (immediateRoute !== "END") {
         log.info(`Immediate keyword route -> ${immediateRoute}`);
+        if (onEvent) onEvent({ type: "thinking", step: "routing", agent: immediateRoute, message: `Routing to ${immediateRoute}` });
         return { nextAgent: immediateRoute, sanitizedQuery: lastMessage };
     }
 
@@ -184,6 +186,7 @@ export async function supervisorNode(state: AgentState, config?: AgentConfig): P
                 { role: "user", content: lastMessage }
             ]), "Supervisor routing");
             log.info(`LLM routed to -> ${result.route}`, { reason: result.reason });
+            if (onEvent) onEvent({ type: "thinking", step: "routing", agent: result.route, message: result.reason });
             if (result.route === "END") {
                 const hasActive = !!state.cachedSchema || !!(await getActiveCatalogEntry(userId));
                 if (hasActive) {

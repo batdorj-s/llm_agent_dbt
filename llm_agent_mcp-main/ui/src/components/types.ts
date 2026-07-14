@@ -1,3 +1,10 @@
+export interface ThinkingStep {
+  step: "routing" | "rag" | "sql" | "analysis" | "delegation";
+  agent?: string;
+  message: string;
+  timestamp: Date;
+}
+
 export interface Message {
   id: string;
   sender: "user" | "agent";
@@ -5,6 +12,7 @@ export interface Message {
   timestamp: Date;
   agentName?: string;
   isError?: boolean;
+  thinkingSteps?: ThinkingStep[];
 }
 
 export interface KpiData {

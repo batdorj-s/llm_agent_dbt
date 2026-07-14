@@ -19,8 +19,11 @@ const PYTHON_GEN_TIMEOUT_MS = 55000;
 
 export async function dataScientistNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
     const onChunk = config?.configurable?.onChunk;
+    const onEvent = config?.configurable?.onEvent;
     const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
     const userId = state.userId || "system";
+
+    if (onEvent) onEvent({ type: "thinking", step: "analysis", agent: "DataScientist", message: "Running statistical analysis..." });
 
     const prefix = "(Data Scientist Agent)\nӨгөгдөлд шинжилгээ хийж байна...\n\n";
     if (onChunk) onChunk(prefix);

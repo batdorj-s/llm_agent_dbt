@@ -5,8 +5,8 @@ import { techAgentNode } from "./agents/techAgentNode.js";
 import { supervisorNode } from "./agents/supervisorNode.js";
 import { verifyToken } from "./auth.js";
 import { initTracing } from "./observability/tracer.js";
-import { AgentStateAnnotation, type AgentState, type UserRole } from "./agents/agentState.js";
-export type { UserRole, NextAgent, AgentState } from "./agents/agentState.js";
+import { AgentStateAnnotation, type AgentState, type UserRole, type ThinkingEvent } from "./agents/agentState.js";
+export type { UserRole, NextAgent, AgentState, ThinkingEvent } from "./agents/agentState.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "./db/data-lake.js";
 import dotenv from "dotenv";
 
@@ -76,10 +76,11 @@ export async function runMultiAgentStream(
     threadId: string,
     onChunk: (chunk: string) => void,
     visualRequest: boolean = false,
-    userId?: string
+    userId?: string,
+    onEvent?: (event: ThinkingEvent) => void
 ): Promise<void> {
     const tracing = initTracing();
-    const config: Record<string, any> = { configurable: { thread_id: threadId, onChunk } };
+    const config: Record<string, any> = { configurable: { thread_id: threadId, onChunk, onEvent } };
     if (tracing.handler) config.callbacks = [tracing.handler];
     const catalog = await getCatalog(userId || "system").catch(() => []);
     const activeEntry = await getActiveCatalogEntry(userId || "system").catch(() => null);

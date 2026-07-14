@@ -51,9 +51,12 @@ function generateQuerySuggestion(query: string, entry: any): string {
 
 export async function techAgentNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
     const onChunk = config?.configurable?.onChunk;
+    const onEvent = config?.configurable?.onEvent;
 
     const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
     const userId = state.userId || "system";
+
+    if (onEvent) onEvent({ type: "thinking", step: "analysis", agent: "TechAgent", message: "Analyzing your data query..." });
 
     const llm = await createLLM({ temperature: 0 });
     if (!llm) {
@@ -79,6 +82,7 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
     if (onChunk) onChunk(prefix);
 
     log.info("Fetching Data Lake catalog schema...");
+    if (onEvent) onEvent({ type: "thinking", step: "rag", agent: "TechAgent", message: "Loading database schema..." });
     const schemaContext = await buildActiveSchemaContext(query, userId, state.cachedCatalog, state.cachedActiveEntry, state.cachedSchema);
     try {
         log.info(`Active schema context:\n${schemaContext}`);
@@ -103,6 +107,7 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
     const deterministicSql = await buildDeterministicTechSql(query, activeEntry);
     if (deterministicSql && activeEntry) {
         try {
+            if (onEvent) onEvent({ type: "thinking", step: "sql", agent: "TechAgent", message: "Executing query..." });
             const sqlResult = await handleExecuteSql({ query: deterministicSql, userId });
             if (!sqlResult.ok) throw new Error(sqlResult.text);
             const results = sqlResult.results;
@@ -156,6 +161,7 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
             }
             sqlCode = currentSql;
 
+            if (onEvent) onEvent({ type: "thinking", step: "sql", agent: "TechAgent", message: `Executing SQL (attempt ${attempts})...` });
             const sqlResult = await handleExecuteSql({ query: sqlCode, userId });
             if (!sqlResult.ok) {
                 feedback = sqlResult.text;

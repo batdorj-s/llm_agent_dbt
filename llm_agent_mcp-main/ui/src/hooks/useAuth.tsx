@@ -24,6 +24,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const AUTH_STORAGE_KEY = "shinjech_auth";
+const THREAD_STORAGE_KEY = "shinjech_thread_id";
 
 function loadStoredAuth(): { token: string; user: AuthUser } | null {
   if (typeof window === "undefined") return null;
@@ -49,7 +50,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [threadId, setThreadId] = useState(`thread_${Date.now()}`);
+  const [threadId, setThreadIdState] = useState(`thread_${Date.now()}`);
+
+  // Persist threadId to localStorage
+  const setThreadId = useCallback((id: string) => {
+    setThreadIdState(id);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(THREAD_STORAGE_KEY, id);
+    }
+  }, []);
 
   // Load from localStorage on mount — skip expired tokens
   useEffect(() => {
@@ -60,6 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else if (stored) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
     }
+    // Restore last threadId
+    const storedThreadId = typeof window !== "undefined" ? localStorage.getItem(THREAD_STORAGE_KEY) : null;
+    if (storedThreadId) {
+      setThreadIdState(storedThreadId);
+    }
     setIsAuthLoading(false);
   }, []);
 
@@ -68,7 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setThreadId(`thread_${Date.now()}`);
     localStorage.removeItem(AUTH_STORAGE_KEY);
-  }, []);
+    localStorage.removeItem(THREAD_STORAGE_KEY);
+  }, [setThreadId]);
 
   const login = useCallback(async (email: string, password: string): Promise<string | null> => {
     try {
@@ -81,13 +96,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!res.ok) return data.error || "Login failed";
       setToken(data.token);
       setUser(data.user);
-      setThreadId(`thread_${Date.now()}`);
+      const newThreadId = `thread_${Date.now()}`;
+      setThreadId(newThreadId);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: data.token, user: data.user }));
       return null;
     } catch (e) {
       return e instanceof Error ? e.message : "Login failed";
     }
-  }, []);
+  }, [setThreadId]);
 
   const register = useCallback(async (email: string, password: string, name: string): Promise<string | null> => {
     try {
@@ -100,13 +116,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!res.ok) return data.error || "Registration failed";
       setToken(data.token);
       setUser(data.user);
-      setThreadId(`thread_${Date.now()}`);
+      const newThreadId = `thread_${Date.now()}`;
+      setThreadId(newThreadId);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: data.token, user: data.user }));
       return null;
     } catch (e) {
       return e instanceof Error ? e.message : "Registration failed";
     }
-  }, []);
+  }, [setThreadId]);
 
   return (
     <AuthContext.Provider value={{ token, user, isLoggedIn: !!user, threadId, setThreadId, isAuthLoading, login, register, logout }}>

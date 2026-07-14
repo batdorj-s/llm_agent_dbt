@@ -7,7 +7,8 @@ import { Message } from "./types";
 import { VisualMessage, DashboardMessage, VisualGrid } from "./VisualMessage";
 import { CodeBlock } from "./CodeBlock";
 import { ActionCard } from "./ActionCard";
-import { Copy, Check, RefreshCw, RotateCcw } from "lucide-react";
+import { Copy, Check, RefreshCw, RotateCcw, ChevronDown, ChevronRight } from "lucide-react";
+import type { ThinkingStep } from "./types";
 
 // #16: ErrorBoundary for individual messages
 interface ErrorBoundaryState { hasError: boolean; error: Error | null }
@@ -58,6 +59,49 @@ function parseCodeBlocks(text: string): { type: "text" | "sql" | "json" | "code"
     results.push({ type: "text", content: text.slice(lastIdx) });
   }
   return results;
+}
+
+const STEP_ICONS: Record<ThinkingStep["step"], string> = {
+  routing: "🔀",
+  rag: "📚",
+  sql: "🗃️",
+  analysis: "🧠",
+  delegation: "→",
+};
+
+const STEP_LABELS: Record<ThinkingStep["step"], string> = {
+  routing: "Замчлал",
+  rag: "Хайлт",
+  sql: "Өгөгдөл",
+  analysis: "Шинжилгээ",
+  delegation: "Шилжүүлэх",
+};
+
+function ThinkingIndicator({ steps }: { steps: ThinkingStep[] }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  return (
+    <div className="mb-2 ml-1">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-1 text-[10px] text-foreground/40 hover:text-foreground/60 transition-colors cursor-pointer"
+      >
+        {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <span className="font-medium">{steps.length} алхам</span>
+      </button>
+      {isExpanded && (
+        <div className="mt-1 space-y-0.5 pl-2 border-l border-foreground/10">
+          {steps.map((s, i) => (
+            <div key={i} className="flex items-center gap-1.5 text-[9px] text-foreground/40">
+              <span>{STEP_ICONS[s.step]}</span>
+              <span className="font-medium">{STEP_LABELS[s.step]}</span>
+              {s.agent && <span className="text-foreground/30">({s.agent})</span>}
+              <span className="text-foreground/30 truncate max-w-[200px]">{s.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // #5: Markdown renderer using react-markdown
@@ -405,6 +449,11 @@ function ChatMessageInner({ message, feedbackState, feedbackSentMsgs, onFeedback
       {/* Agent name label */}
       {isAgent && message.agentName && (
         <span className="text-[9px] text-foreground/40 mb-1 ml-1 font-medium">{message.agentName}</span>
+      )}
+
+      {/* Thinking steps indicator */}
+      {isAgent && message.thinkingSteps && message.thinkingSteps.length > 0 && (
+        <ThinkingIndicator steps={message.thinkingSteps} />
       )}
 
       {/* Message bubble */}

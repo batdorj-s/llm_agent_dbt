@@ -9,9 +9,17 @@ export interface Message {
     content: string;
 }
 
+export interface ThinkingEvent {
+    type: "thinking";
+    step: "routing" | "rag" | "sql" | "analysis" | "delegation";
+    agent?: string;
+    message: string;
+}
+
 export interface AgentConfig {
     configurable?: {
         onChunk?: (text: string) => void;
+        onEvent?: (event: ThinkingEvent) => void;
         threadId?: string;
     };
 }

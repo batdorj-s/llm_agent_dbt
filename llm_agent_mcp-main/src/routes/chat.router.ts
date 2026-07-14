@@ -158,7 +158,9 @@ chatRouter.post("/stream", async (req, res) => {
     await runMultiAgentStream(message, role, threadIdFinal, (chunk) => {
       fullResponse += chunk;
       res.write(`data: ${JSON.stringify({ chunk, type: "delta" })}\n\n`);
-    }, visualRequest, userId);
+    }, visualRequest, userId, (event) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    });
 
     clearInterval(heartbeatTimer);
     res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);

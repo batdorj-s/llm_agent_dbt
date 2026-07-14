@@ -148,7 +148,8 @@ export default function Home() {
   const handleNewChat = async () => {
     chat.clearMessages();
     setActiveConversationId(null);
-    auth.setThreadId(`thread_${Date.now()}`);
+    const newThreadId = `thread_${Date.now()}`;
+    auth.setThreadId(newThreadId);
   };
 
   const handleSelectConversation = async (id: string) => {
@@ -163,6 +164,11 @@ export default function Home() {
           chat.addSystemMessage(m.content, m.agentType ?? undefined);
         }
       });
+      // Update threadId so new messages continue in this conversation
+      const conv = conversation.conversations.find(c => c.id === id);
+      if (conv?.threadId) {
+        auth.setThreadId(conv.threadId);
+      }
     }
   };
 
@@ -207,6 +213,40 @@ export default function Home() {
     if (auth.isLoggedIn) {
       conversation.fetchConversations();
     }
+  }, [auth.isLoggedIn]);
+
+  // #2.2: Auto-load most recent conversation on mount (survives page refresh)
+  const didAutoRestore = useRef(false);
+  useEffect(() => {
+    if (!auth.isLoggedIn || didAutoRestore.current) return;
+    didAutoRestore.current = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/conversations?limit=1", {
+          headers: { "Content-Type": "application/json", ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
+        });
+        const data = await res.json();
+        if (data.success && data.data?.length > 0) {
+          const latest = data.data[0];
+          const msgs = await conversation.loadMessages(latest.id);
+          if (msgs.length > 0) {
+            setActiveConversationId(latest.id);
+            chat.clearMessages();
+            msgs.forEach(m => {
+              if (m.role === "user") {
+                chat.addUserMessage(m.content);
+              } else {
+                chat.addSystemMessage(m.content, m.agentType ?? undefined);
+              }
+            });
+            // Restore threadId so new messages continue this conversation
+            if (latest.threadId) {
+              auth.setThreadId(latest.threadId);
+            }
+          }
+        }
+      } catch { /* best-effort */ }
+    })();
   }, [auth.isLoggedIn]);
 
   // Refresh chat history when sidebar opens
