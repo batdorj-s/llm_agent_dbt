@@ -114,21 +114,11 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
         </div>
         <div className="space-y-2">
           <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Багийн гишүүд</span>
-          <AvatarList maxLength={4}>
-            <AvatarList.Item name="Admin" tips="Админ" onClick={() => {}} />
-            <AvatarList.Item name="User" tips="Хэрэглэгч" />
-            <AvatarList.Item name="Analyst" />
-            <AvatarList.Item name="Viewer" />
-            <AvatarList.Item name="Guest" />
-          </AvatarList>
+          <div className="text-[10px] text-foreground/40 italic py-2">Одоогоор гишүүд байхгүй</div>
         </div>
         <div className="space-y-2">
           <span className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Хурдан холбоос</span>
-          <EditableLinkGroup links={[
-            { title: "Борлуулалт", href: "#" }, { title: "Тайлан", href: "#" },
-            { title: "Хэрэглэгчид", href: "#" }, { title: "Бүтээгдэхүүн", href: "#" },
-            { title: "Аналитик", href: "#" }, { title: "Тохиргоо", href: "#" },
-          ]} />
+          <EditableLinkGroup links={[]} />
         </div>
         <AdminPanel
           user={user}
@@ -179,7 +169,6 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
               <PageHeaderContent currentUser={{
                 avatar: user?.email?.charAt(0).toUpperCase(),
                 name: user?.email?.split("@")[0] || "Хэрэглэгч",
-                title: "Өгөгдлийн шинжээч", group: "Аналитик хэлтэс",
               }} />
               <ExtraContent />
             </div>

@@ -43,7 +43,7 @@ const PageHeaderContent: React.FC<PageHeaderContentProps> = ({ currentUser }) =>
           Сайн уу, {currentUser.name} — танд амжилттай өдөр байх болтугай!
         </div>
         <div className="text-sm text-foreground/60">
-          {currentUser.title} | {currentUser.group}
+          {[currentUser.title, currentUser.group].filter(Boolean).join(" | ") || ""}
         </div>
       </div>
     </div>

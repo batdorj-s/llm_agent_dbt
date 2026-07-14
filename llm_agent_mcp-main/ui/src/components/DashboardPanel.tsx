@@ -36,7 +36,7 @@ export const DashboardPanel = ({
   churnKpi,
   salesHistory = [],
   growthRate,
-  growthDirection = "up",
+  growthDirection,
   topCategory,
 }: DashboardPanelProps) => {
   const formatCurrency = (value: number) =>

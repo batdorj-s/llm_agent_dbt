@@ -13,7 +13,7 @@ interface GaugeProps {
 }
 
 export const Gauge: React.FC<GaugeProps> = ({
-  percent = 89,
+  percent = 0,
   title = "Орлогын гүйцэтгэл",
   color = "#3b82f6",
   size = 180,
@@ -90,7 +90,7 @@ export const Gauge: React.FC<GaugeProps> = ({
           fontSize={9}
           fontFamily="inherit"
         >
-          {subLabel ?? "200M зорилгоос"}
+          {subLabel ?? ""}
         </text>
 
         {/* Scale ticks */}

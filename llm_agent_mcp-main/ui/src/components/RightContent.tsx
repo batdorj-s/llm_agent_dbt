@@ -4,7 +4,6 @@ import React from "react";
 import {
   BookOpen,
   Globe,
-  GitFork,
   User,
   Settings,
   Palette,
@@ -73,28 +72,8 @@ export const LangDropdown: React.FC<LangDropdownProps> = ({
   );
 };
 
-/* ─── VersionDropdown ─── */
-const versionItems: MenuItem[] = [
-  { key: "https://v5.pro.ant.design", label: "v5" },
-  { key: "https://v4.pro.ant.design", label: "v4" },
-  { key: "https://v2.pro.ant.design", label: "v2" },
-  { key: "https://v1.pro.ant.design", label: "v1" },
-];
-
-export const VersionDropdown: React.FC = () => (
-  <HeaderDropdown
-    placement="bottomRight"
-    items={versionItems}
-    onItemClick={(key) => window.open(key, "_blank", "noopener,noreferrer")}
-  >
-    <button
-      className="inline-flex items-center justify-center h-9 min-w-9 p-0.5 text-foreground/50 hover:text-foreground transition-colors rounded-lg hover:bg-foreground/5 cursor-pointer border-none"
-      aria-label="Versions"
-    >
-      <GitFork className="w-4 h-4" />
-    </button>
-  </HeaderDropdown>
-);
+/* ─── VersionDropdown (disabled — no versions configured) ─── */
+export const VersionDropdown: React.FC = () => null;
 
 /* ─── AvatarDropdown ─── */
 interface AvatarDropdownProps {
