@@ -218,6 +218,31 @@ export async function validateSqlColumns(query: string, userId: string) {
   validateSqlColumnsAgainstCatalog(query, catalog);
 }
 
+// ── SQL execution safeguards ──────────────────────────────────
+
+export const SQL_STATEMENT_TIMEOUT_MS = parseInt(process.env.PG_STATEMENT_TIMEOUT_MS || "30000", 10);
+export const SQL_MAX_RESULT_ROWS = parseInt(process.env.PG_MAX_RESULT_ROWS || "10000", 10);
+
+function enforceMaxRows(query: string, maxRows: number): string {
+  const trimmed = query.trim();
+  try {
+    const statements = parseSql(trimmed);
+    if (statements.length !== 1) return trimmed;
+    const stmt = statements[0];
+    if (stmt.type === "select" && !(stmt as any).limit) {
+      const clean = trimmed.replace(/;+\s*$/, "");
+      return `${clean} LIMIT ${maxRows};`;
+    }
+  } catch {
+    // If parsing fails, fall back to regex heuristic
+    if (/^select\b/i.test(trimmed) && !/\blimit\b/i.test(trimmed)) {
+      const clean = trimmed.replace(/;+\s*$/, "");
+      return `${clean} LIMIT ${maxRows};`;
+    }
+  }
+  return trimmed;
+}
+
 // ── SQL execution ─────────────────────────────────────────────
 
 export async function executeSql(query: string, readOnly: boolean, userId: string): Promise<any> {
@@ -228,9 +253,12 @@ export async function executeSql(query: string, readOnly: boolean, userId: strin
     assertSelectOnly(query);
     await validateSqlColumns(query, userId);
 
+    const safeQuery = enforceMaxRows(query, SQL_MAX_RESULT_ROWS);
+
     try {
       await getPool().query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE");
-      const result = await getPool().query(query);
+      await getPool().query(`SET LOCAL statement_timeout = '${SQL_STATEMENT_TIMEOUT_MS}ms'`);
+      const result = await getPool().query(safeQuery);
       await getPool().query("ROLLBACK");
       return result.rows;
     } catch (err: unknown) {
