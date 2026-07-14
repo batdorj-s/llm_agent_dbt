@@ -22,6 +22,8 @@ import { chatRouter } from "./routes/chat.router.js";
 import { requestContext } from "./context.js";
 import helmet from "helmet";
 import { detectProvider } from "./llm-provider.js";
+import { RateLimiter } from "./rate-limiter.js";
+import { authLimiter, mcpLimiter } from "./rate-limiter.js";
 import { getPool } from "./db/data-lake.js";
 import { setupKnowledgeBase } from "./rag.js";
 import { ensureProjectReady } from "./setup/init.js";
@@ -47,6 +49,7 @@ import apiKeysRouter from "./routes/api-keys.router.js";
 import schedulerRouter from "./routes/scheduler.router.js";
 import sharingRouter from "./routes/sharing.router.js";
 import unifiedSearchRouter from "./routes/unified-search.router.js";
+import notificationRouter from "./routes/notification.router.js";
 import multer from "multer";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
@@ -57,6 +60,31 @@ const app = express();
 app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
 app.use(express.json({ limit: "5mb" }));
+
+// Rate limiter middleware — applies to all /api/* routes
+const apiLimiter = new RateLimiter({ maxRequests: 120, windowMs: 60_000 });
+app.use("/api", async (req, res, next) => {
+  const key = `api:${(req as any).user?.userId || req.ip || "anon"}`;
+  const result = await apiLimiter.check(key);
+  res.setHeader("X-RateLimit-Limit", "120");
+  res.setHeader("X-RateLimit-Remaining", String(result.remaining));
+  if (!result.allowed) {
+    res.status(429).json({ error: result.message });
+    return;
+  }
+  next();
+});
+
+const authEndpointLimiter = new RateLimiter({ maxRequests: 10, windowMs: 60_000 });
+app.use("/api/auth/login", async (req, res, next) => {
+  const key = `auth:${req.ip}`;
+  const result = await authEndpointLimiter.check(key);
+  if (!result.allowed) {
+    res.status(429).json({ error: result.message });
+    return;
+  }
+  next();
+});
 
 // Request ID middleware — propagates requestId through the entire async call chain
 app.use((req, _res, next) => {
@@ -203,6 +231,17 @@ app.use("/api",             apiKeysRouter);        // /api/admin/api-keys
 app.use("/api",             schedulerRouter);      // /api/scheduler
 app.use("/api",             sharingRouter);        // /api/teams, /api/sharing
 app.use("/api",             unifiedSearchRouter);  // /api/search
+app.use("/api",             notificationRouter);   // /api/notifications/*
+
+// ── Production security hardening ──────────────────────────
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
 
 // ─────────────────────────────────────────────────────────────
 // Centralized error handler
@@ -231,8 +270,24 @@ app.use((err: Error & { code?: string; statusCode?: number }, _req: express.Requ
 // ─────────────────────────────────────────────────────────────
 // Startup
 // ─────────────────────────────────────────────────────────────
+// ── Production env validation ──────────────────────────────
+function validateEnv(): string[] {
+  const warnings: string[] = [];
+  if (!process.env.DATABASE_URL) warnings.push("DATABASE_URL not set");
+  if (!process.env.JWT_SECRET) warnings.push("JWT_SECRET not set — using insecure dev fallback");
+  if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) warnings.push("No LLM API key set (OPENAI_API_KEY or GEMINI_API_KEY)");
+  if (process.env.NODE_ENV === "production") {
+    if (!process.env.CORS_ORIGIN) warnings.push("CORS_ORIGIN not set in production");
+    if (!process.env.REDIS_URL) warnings.push("REDIS_URL not set — rate limiter uses in-memory store (not safe for multi-instance)");
+    if (!process.env.ADMIN_PASSWORD) warnings.push("ADMIN_PASSWORD not set — admin uses random password on first boot");
+  }
+  return warnings;
+}
+
 const PORT = process.env.API_PORT || 3001;
 async function start() {
+  const envWarnings = validateEnv();
+  for (const w of envWarnings) console.warn(`[env] ${w}`);
   try { await ensureProjectReady(); }
   catch (err) {
     console.warn("[API] Data Lake initialization failed — running in limited mode:", (err as Error).message);

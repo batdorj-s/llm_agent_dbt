@@ -145,6 +145,18 @@ export function startScheduler(): void {
           );
 
           console.log(`[scheduler] Generated ${format} report "${report.name}" (${fileId}) — ${buffer.length} bytes`);
+
+          // Send notifications
+          try {
+            const { sendNotificationToAllChannels } = await import("./notifications.js");
+            const userId = report.created_by || "user-admin-001";
+            await sendNotificationToAllChannels(userId, {
+              subject: `Report Ready: ${report.name}`,
+              body: `Your scheduled report "${report.name}" has been generated.\n\nFormat: ${format.toUpperCase()}\nRows: ${rowCount}\nSize: ${(buffer.length / 1024).toFixed(1)} KB\nGenerated: ${new Date().toISOString()}`,
+            });
+          } catch (notifErr) {
+            console.warn(`[scheduler] Notification failed for report ${report.id}:`, (notifErr as Error).message);
+          }
         } catch (err: unknown) {
           console.error(`[scheduler] Failed to generate report ${report.id}:`, (err as Error).message);
         }

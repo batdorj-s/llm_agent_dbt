@@ -25,6 +25,7 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "metrics:read",
     "glossary:read",
     "quality:read",
+    "notification:read",
   ]),
   analyst: new Set([
     // viewer permissions
@@ -46,6 +47,8 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "export:json",
     "sql:query",
     "alert:read",
+    "notification:read",
+    "notification:write",
   ]),
   admin: new Set([
     // all permissions
@@ -71,6 +74,8 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "admin:upload",
     "admin:settings",
     "admin:system",
+    "notification:read",
+    "notification:write",
   ]),
 };
 
