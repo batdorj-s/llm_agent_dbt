@@ -19,8 +19,8 @@ interface LineageEdge {
 interface LineageData {
   available?: boolean;
   message?: string;
-  nodes: LineageNode[];
-  edges: LineageEdge[];
+  nodes?: LineageNode[];
+  edges?: LineageEdge[];
 }
 
 const NODE_COLORS: Record<string, string> = {
@@ -134,9 +134,17 @@ export function DataLineageView({ token }: { token: string | null }) {
     try {
       const params = model ? `?model=${encodeURIComponent(model)}` : "";
       const res = await fetch(`/api/lineage${params}`, { headers });
+      if (!res.ok) {
+        setData({ available: false, message: `Алдаа: ${res.status}` });
+        setLoading(false);
+        return;
+      }
       const d = await res.json();
       if (d.success) setData(d.data);
-    } catch { /* ignore */ }
+      else setData({ available: false, message: d.error || "Алдаа гарлаа" });
+    } catch {
+      setData({ available: false, message: "Серверт холбогдох боломжгүй" });
+    }
     setLoading(false);
   }, []);
 
@@ -167,9 +175,18 @@ export function DataLineageView({ token }: { token: string | null }) {
     );
   }
 
-  if (!data) return null;
+  if (!data || (!data.available && data.available !== undefined)) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 gap-3">
+        <GitBranch className="w-10 h-10 opacity-30" />
+        <div className="text-xs">{data?.message || "Lineage өгөгдөл ачаалахад алдаа гарлаа"}</div>
+      </div>
+    );
+  }
 
-  const positions = layoutDag(data.nodes, data.edges);
+  const nodes = data.nodes ?? [];
+  const edges = data.edges ?? [];
+  const positions = layoutDag(nodes, edges);
   const minX = Math.min(...Array.from(positions.values()).map((p) => p.x), 0);
   const maxX = Math.max(...Array.from(positions.values()).map((p) => p.x + NODE_WIDTH), 600);
   const minY = Math.min(...Array.from(positions.values()).map((p) => p.y), -200);
@@ -182,7 +199,7 @@ export function DataLineageView({ token }: { token: string | null }) {
         <div className="flex items-center gap-1.5 text-foreground/70">
           <GitBranch className="w-4 h-4" />
           <span className="text-xs font-semibold">Өгөгдлийн гарал үүсэл (Lineage)</span>
-          <span className="text-[10px] text-foreground/40">{data.nodes.length} зангилаа</span>
+           <span className="text-[10px] text-foreground/40">{nodes.length} зангилаа</span>
         </div>
 
         <form onSubmit={handleSearch} className="flex items-center gap-1 ml-auto">
@@ -233,7 +250,7 @@ export function DataLineageView({ token }: { token: string | null }) {
         >
           <g transform={`translate(${offset.x + 100}, ${offset.y + 200}) scale(${scale})`}>
             {/* Edges */}
-            {data.edges.map((e, i) => {
+            {edges.map((e, i) => {
               const src = positions.get(e.source);
               const tgt = positions.get(e.target);
               if (!src || !tgt) return null;
@@ -262,7 +279,7 @@ export function DataLineageView({ token }: { token: string | null }) {
             </defs>
 
             {/* Nodes */}
-            {data.nodes.map((node) => {
+            {nodes.map((node) => {
               const pos = positions.get(node.id);
               if (!pos) return null;
               const color = NODE_COLORS[node.type] || "#6b7280";
