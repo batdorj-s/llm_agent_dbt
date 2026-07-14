@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu, X } from "lucide-react";
+import { Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu, X, BookOpen, ShieldCheck, GitBranch, Calendar, Users } from "lucide-react";
 import { ServerStatus } from "./types";
 import { AvatarDropdown, DocLink } from "./RightContent";
 
-type TabId = "ask" | "dashboard" | "report";
+export type TabId = "ask" | "dashboard" | "report" | "glossary" | "quality" | "lineage" | "scheduler" | "sharing";
 
 interface HeaderProps {
   serverStatus: ServerStatus | null;
@@ -22,6 +22,11 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "ask", label: "Асуулт", icon: <MessageSquare className="w-3.5 h-3.5" /> },
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
   { id: "report", label: "Тайлан", icon: <FileText className="w-3.5 h-3.5" /> },
+  { id: "glossary", label: "Толь", icon: <BookOpen className="w-3.5 h-3.5" /> },
+  { id: "quality", label: "Чанар", icon: <ShieldCheck className="w-3.5 h-3.5" /> },
+  { id: "lineage", label: "Lineage", icon: <GitBranch className="w-3.5 h-3.5" /> },
+  { id: "scheduler", label: "Хуваарь", icon: <Calendar className="w-3.5 h-3.5" /> },
+  { id: "sharing", label: "Хамтрах", icon: <Users className="w-3.5 h-3.5" /> },
 ];
 
 export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, onLogout, activeTab, onTabChange }: HeaderProps) => {

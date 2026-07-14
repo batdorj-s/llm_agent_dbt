@@ -8,7 +8,33 @@ import { hashPassword, verifyPassword } from "../auth.js";
 // ── Catalog access ────────────────────────────────────────────
 
 export function canAccessCatalogEntry(entry: Pick<DataLakeCatalogEntry, "owner_id" | "visibility">, userId: string): boolean {
-  return entry.visibility === "shared" || entry.owner_id === userId;
+  if (entry.visibility === "shared" || entry.owner_id === userId) return true;
+  return false;
+}
+
+/**
+ * Enhanced access check that also consults shared_resources for granular sharing.
+ * Call this from routes that need the new granular sharing feature.
+ */
+export async function canAccessCatalogEntryEnhanced(
+  entry: Pick<DataLakeCatalogEntry, "owner_id" | "visibility" | "table_name">,
+  userId: string
+): Promise<boolean> {
+  if (entry.visibility === "shared" || entry.owner_id === userId) return true;
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT 1 FROM shared_resources
+       WHERE resource_type = 'catalog' AND resource_id = $1
+         AND (granted_to_user_id = $2
+              OR granted_to_team_id IN (SELECT team_id FROM team_members WHERE user_id = $2))
+       LIMIT 1`,
+      [entry.table_name, userId]
+    );
+    return result.rows.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 export async function getActiveCatalogEntry(userId: string): Promise<DataLakeCatalogEntry | null> {

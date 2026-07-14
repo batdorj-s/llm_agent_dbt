@@ -170,6 +170,78 @@ export async function initDataLake(): Promise<void> {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_table_relationships_source ON table_relationships (source_table)`);
 
       await pool.query(`
+        CREATE TABLE IF NOT EXISTS scheduled_reports (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT DEFAULT '',
+          query TEXT NOT NULL,
+          format TEXT NOT NULL DEFAULT 'pdf',
+          cron_expression TEXT NOT NULL,
+          recipients TEXT[] DEFAULT '{}',
+          created_by TEXT,
+          is_active BOOLEAN DEFAULT true,
+          last_run_at TIMESTAMPTZ,
+          next_run_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_reports_next_run ON scheduled_reports (next_run_at)`);
+      try { await pool.query(`ALTER TABLE scheduled_reports ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''`); } catch {}
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS teams (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT DEFAULT '',
+          created_by TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS team_members (
+          team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member', 'admin')),
+          joined_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (team_id, user_id)
+        )
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS shared_resources (
+          id SERIAL PRIMARY KEY,
+          resource_type TEXT NOT NULL,
+          resource_id TEXT NOT NULL,
+          granted_to_user_id TEXT,
+          granted_to_team_id TEXT,
+          permission TEXT NOT NULL DEFAULT 'view' CHECK (permission IN ('view', 'edit', 'admin')),
+          granted_by TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          UNIQUE(resource_type, resource_id, granted_to_user_id, granted_to_team_id)
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_shared_resources_resource ON shared_resources (resource_type, resource_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_shared_resources_user ON shared_resources (granted_to_user_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_shared_resources_team ON shared_resources (granted_to_team_id)`);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS api_keys (
+          id TEXT PRIMARY KEY,
+          user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+          key_hash TEXT NOT NULL,
+          key_prefix TEXT NOT NULL,
+          name TEXT NOT NULL,
+          permissions TEXT[] DEFAULT '{}',
+          expires_at TIMESTAMPTZ,
+          is_active BOOLEAN DEFAULT true,
+          last_used_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys (user_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash)`);
+
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS kpi_targets (
           metric_name TEXT PRIMARY KEY,
           target_value REAL NOT NULL,

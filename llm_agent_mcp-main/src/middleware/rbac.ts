@@ -23,6 +23,8 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "conversation:create",
     "conversation:delete",
     "metrics:read",
+    "glossary:read",
+    "quality:read",
   ]),
   analyst: new Set([
     // viewer permissions
@@ -33,6 +35,8 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "conversation:read",
     "conversation:create",
     "conversation:delete",
+    "glossary:read",
+    "quality:read",
     // analyst additions
     "kpi:anomaly",
     "kpi:whatif",
@@ -56,6 +60,8 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "export:json",
     "sql:query",
     "alert:read",
+    "glossary:read",
+    "quality:read",
     // admin additions
     "admin:users",
     "admin:upload",

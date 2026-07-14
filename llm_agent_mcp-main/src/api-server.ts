@@ -40,6 +40,12 @@ import adminRouter from "./routes/admin.router.js";
 import feedbackRouter from "./routes/feedback.router.js";
 import exportRouter from "./routes/export.router.js";
 import metricsRouter from "./routes/metrics.router.js";
+import glossaryRouter from "./routes/glossary.router.js";
+import dataQualityRouter from "./routes/data-quality.router.js";
+import lineageRouter from "./routes/lineage.router.js";
+import apiKeysRouter from "./routes/api-keys.router.js";
+import schedulerRouter from "./routes/scheduler.router.js";
+import sharingRouter from "./routes/sharing.router.js";
 import multer from "multer";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
@@ -189,6 +195,12 @@ app.use("/api/admin",       adminRouter);
 app.use("/api/feedback",    feedbackRouter);
 app.use("/api/export",      exportRouter);
 app.use("/api/metrics",     metricsRouter);
+app.use("/api",             glossaryRouter);       // /api/glossary
+app.use("/api",             dataQualityRouter);    // /api/data-quality/*
+app.use("/api",             lineageRouter);        // /api/lineage
+app.use("/api",             apiKeysRouter);        // /api/admin/api-keys
+app.use("/api",             schedulerRouter);      // /api/scheduler
+app.use("/api",             sharingRouter);        // /api/teams, /api/sharing
 
 // ─────────────────────────────────────────────────────────────
 // Centralized error handler
@@ -226,6 +238,11 @@ async function start() {
   await setupKnowledgeBase();
   await initConversationSchema();
 
+  // Start background scheduler
+  const schedulerModule = await import("./services/scheduler.js");
+  schedulerModule.startScheduler();
+  const _stopScheduler = () => schedulerModule.stopScheduler();
+
   const server = app.listen(PORT, () => {
     console.log(`\nAPI Server running at http://localhost:${PORT}`);
   });
@@ -236,6 +253,7 @@ async function start() {
     if (isShuttingDown) return;
     isShuttingDown = true;
     console.log(`\n[API] ${signal} received — starting graceful shutdown...`);
+    if (_stopScheduler) _stopScheduler();
     server.close(() => { console.log("[API] HTTP server closed"); });
     const forceTimer = setTimeout(() => { console.error("[API] Forced shutdown — timeout exceeded"); process.exit(1); }, SHUTDOWN_TIMEOUT_MS);
     try {

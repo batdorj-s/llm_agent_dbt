@@ -3,12 +3,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon, ArrowUp, Sparkles, PanelLeftClose, PanelLeft, Download } from "lucide-react";
 
-import { Header } from "../components/Header";
+import { Header, type TabId } from "../components/Header";
 import { PreviewDrawer } from "../components/PreviewDrawer";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { AskTab, DashboardTab, ReportTab } from "../components/tabs";
 import { ConversationSidebar } from "../components/ConversationSidebar";
 import { LoginPage } from "../components/LoginPage";
+import { GlossaryBrowser } from "../components/GlossaryBrowser";
+import { DataQualityDashboard } from "../components/DataQualityDashboard";
+import { DataLineageView } from "../components/DataLineageView";
+import { ReportScheduler } from "../components/ReportScheduler";
+import { SharingPanel } from "../components/SharingPanel";
 
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
@@ -106,7 +111,7 @@ function useFinanceChartData(financeCharts: Record<string, unknown> | null, sale
 }
 
 export default function Home() {
-  const [activeTab, setActiveTab]             = useState<"ask" | "dashboard" | "report">("ask");
+  const [activeTab, setActiveTab]             = useState<TabId>("ask");
   const [sidebarOpen, setSidebarOpen]         = useState(false);
   const [reportMode, setReportMode]           = useState<"finance" | "sales">("finance");
   const [isGraphicModeEnabled, setIsGraphicModeEnabled] = useState(false);
@@ -396,6 +401,36 @@ export default function Home() {
         {activeTab === "report" && (
           <div id="panel-report" role="tabpanel" aria-label="Тайлан" className="flex-1 min-h-0 flex flex-col">
             <ReportTab reportMode={reportMode} setReportMode={setReportMode} />
+          </div>
+        )}
+
+        {activeTab === "glossary" && (
+          <div id="panel-glossary" role="tabpanel" aria-label="Толь бичиг" className="flex-1 min-h-0 flex flex-col">
+            <GlossaryBrowser token={auth.token} />
+          </div>
+        )}
+
+        {activeTab === "quality" && (
+          <div id="panel-quality" role="tabpanel" aria-label="Өгөгдлийн чанар" className="flex-1 min-h-0 flex flex-col">
+            <DataQualityDashboard token={auth.token} />
+          </div>
+        )}
+
+        {activeTab === "lineage" && (
+          <div id="panel-lineage" role="tabpanel" aria-label="Lineage" className="flex-1 min-h-0 flex flex-col">
+            <DataLineageView token={auth.token} />
+          </div>
+        )}
+
+        {activeTab === "scheduler" && (
+          <div id="panel-scheduler" role="tabpanel" aria-label="Тайлангийн хуваарь" className="flex-1 min-h-0 flex flex-col">
+            <ReportScheduler token={auth.token} />
+          </div>
+        )}
+
+        {activeTab === "sharing" && (
+          <div id="panel-sharing" role="tabpanel" aria-label="Хамтын ажиллагаа" className="flex-1 min-h-0 flex flex-col">
+            <SharingPanel token={auth.token} />
           </div>
         )}
 
