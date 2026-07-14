@@ -10,7 +10,6 @@ import {
   bm25Search,
   removeDocumentEmbedding,
   embedDocuments,
-  type BM25Index,
 } from "./semantic-search.js";
 import { getChromaCollection } from "./chroma-client.js";
 import {
@@ -202,14 +201,6 @@ function applyRecencyWeighting(
   });
 }
 
-function formatWithSource(docs: RagDocument[]): string {
-  return docs.map(doc => {
-    const source = doc.metadata.source_name ? `[Source: ${doc.metadata.source_name}]` : "";
-    const dept = doc.metadata.department ? `(${doc.metadata.department})` : "";
-    return `${source}${dept ? " " + dept : ""}\n${doc.text}`;
-  }).join("\n\n---\n\n");
-}
-
 // ── In-memory search helpers ──────────────────────────────────
 
 function legacyKeywordSearch(query: string, limit: number, categories?: string[], userId?: string): RagDocument[] {
@@ -243,7 +234,7 @@ function inMemorySearch(query: string, limit: number, categories?: string[], use
   return legacyKeywordSearch(query, limit, categories, userId);
 }
 
-function recursiveSearch(query: string, limit: number, categories?: string[], userId?: string): RagDocument[] {
+function _recursiveSearch(query: string, limit: number, categories?: string[], userId?: string): RagDocument[] {
   const results = inMemorySearch(query, limit, categories, userId);
   if (results.length < limit && categories) {
     const queryWords = query.toLowerCase().split(/\W+/).filter(Boolean);

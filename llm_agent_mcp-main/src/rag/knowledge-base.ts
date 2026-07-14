@@ -65,10 +65,10 @@ export const ROLE_CATEGORY_MAP: Record<string, string[]> = {
 // ── Embedding readiness gate ──────────────────────────────────
 
 let embeddingReadyResolve: (() => void) | null = null;
-let embeddingReadyReject: ((err: Error) => void) | null = null;
+let _embeddingReadyReject: ((err: Error) => void) | null = null;
 const embeddingReadyPromise = new Promise<void>((resolve, reject) => {
   embeddingReadyResolve = resolve;
-  embeddingReadyReject = reject;
+  _embeddingReadyReject = reject;
 });
 let embeddingReady = false;
 
@@ -129,7 +129,7 @@ export function chunkText(
             const clauses = sentence.split(/[,;:]\s*/);
             current = "";
             for (const clause of clauses) {
-              const clauseTokens = estimateTokens(clause);
+              const _clauseTokens = estimateTokens(clause);
               if (estimateTokens(current + " " + clause) > chunkSize && current.length > 0) {
                 chunks.push(current.trim());
                 current = clause;

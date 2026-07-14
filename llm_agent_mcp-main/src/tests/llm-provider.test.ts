@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
-import { detectProvider, isRateLimitError, DEFAULT_PROVIDER_ORDER } from "../llm-provider.js";
+import { detectProvider, isRateLimitError } from "../llm-provider.js";
+import { invokeWithFallback as InvokeWithFallbackFn } from "../llm-provider.js";
 
 // ── Mock LangChain packages ──────────────────────────────────
 // hoisted runs before vi.mock factories, so mock functions are available
@@ -127,7 +128,7 @@ describe("detectProvider", () => {
 });
 
 describe("invokeWithFallback", () => {
-    let invokeWithFallback: typeof import("../llm-provider.js")["invokeWithFallback"];
+    let invokeWithFallback: typeof InvokeWithFallbackFn;
     const OLD_KEYS: Record<string, string | undefined> = {};
     const ENV_KEYS = ["GROQ_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"];
 
@@ -207,12 +208,12 @@ describe("invokeWithFallback", () => {
         mockAnthropicInvoke.mockRejectedValue(new Error("rate limit"));
         mockOpenaiInvoke.mockRejectedValue(new Error("rate limit"));
 
-        const resultPromise = invokeWithFallback(msg).catch(e => e);
+        const resultPromise = invokeWithFallback(msg).catch((e: unknown) => e);
         await vi.advanceTimersByTimeAsync(60000);
 
         const result = await resultPromise;
         expect(result).toBeInstanceOf(Error);
-        expect(result.message).toContain("All LLM providers failed");
+        expect((result as Error).message).toContain("All LLM providers failed");
         // Each provider retries once on rate limit (attempt 0 → retry, attempt 1 → break) = 2 calls each
         expect(mockGroqInvoke).toHaveBeenCalledTimes(2);
         expect(mockGeminiInvoke).toHaveBeenCalledTimes(2);

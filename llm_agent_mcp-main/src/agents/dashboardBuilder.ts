@@ -3,7 +3,7 @@ import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition, type DataLake
 import { handleExecuteSql } from "../tools/enterprise-tools.js";
 import { safeJsonParse, buildSemanticGroups, formatSemanticGroups, queryMentionsTable } from "../utils.js";
 import { prompts } from "./prompts.js";
-import { type AgentState, withTimeout } from "./agentState.js";
+import { type AgentState } from "./agentState.js";
 
 export async function buildDashboard(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,7 +19,6 @@ export async function buildDashboard(
     if (onChunk) onChunk(dashPrefix);
 
     const catalog = cachedCatalog || await getCatalog(userId);
-    const lowerQuery = query.toLowerCase();
     const mentioned = catalog?.find((e) => queryMentionsTable(query, e.table_name));
     const activeEntry = mentioned || cachedActiveEntry || await getActiveCatalogEntry(userId);
     if (!activeEntry) {
@@ -48,10 +47,10 @@ export async function buildDashboard(
         const raw = dashResponse.content;
         let widgets: any[];
         try {
-            const { data, cleaned } = safeJsonParse<any[]>(raw, []);
+            const { data } = safeJsonParse<any[]>(raw, []);
             if (!Array.isArray(data) || data.length === 0) throw new Error("No valid JSON array found");
             widgets = data;
-        } catch (parseErr) {
+        } catch {
             const fallback = `${dashPrefix}[АНХААР] Dashboard өгөгдлийг боловсруулахад алдаа гарлаа. Анхны хариу:\n\`\`\`json\n${raw}\n\`\`\``;
             if (onChunk) onChunk(fallback);
             return { messages: [{ role: "assistant", content: fallback }] };

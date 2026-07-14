@@ -15,7 +15,6 @@ const log = createLogger("DataScientist");
 import { extractCodeBlock } from "../utils.js";
 import { prompts } from "./prompts.js";
 
-const LLM_TIMEOUT_MS = 40000;
 const PYTHON_GEN_TIMEOUT_MS = 55000;
 
 export async function dataScientistNode(state: AgentState, config?: AgentConfig): Promise<Partial<AgentState>> {
@@ -105,7 +104,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
     const categoryCols = findCategoryColumns(columnList);
 
     let sampleData: any[] = [];
-    let exportCsvSql: string | null = null;
+    let _exportCsvSql: string | null = null;
 
     // Anomaly detection needs more data rows for reliable z-score/IQR calculation
     const isAnomalyMode = analysisType === "anomaly";
@@ -138,7 +137,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
             log.info(`Forecast mode: ${dateCol}`, { type: dateColType, castAs: dateCast });            const aggResult = await handleExecuteSql({ query: forecastSql, userId });
             if (aggResult.ok && aggResult.results) {
                 sampleData = Array.isArray(aggResult.results) ? aggResult.results : [aggResult.results];
-                exportCsvSql = forecastSql;
+                _exportCsvSql = forecastSql;
                 log.info(`Forecast data: ${sampleData.length} aggregated rows`);            }
         }
 
@@ -150,7 +149,7 @@ export async function dataScientistNode(state: AgentState, config?: AgentConfig)
             if (sampleResult.ok && sampleResult.results) {
                 sampleData = Array.isArray(sampleResult.results) ? sampleResult.results : [sampleResult.results];
             }
-            exportCsvSql = buildExportSql(tableName, columnList);
+            _exportCsvSql = buildExportSql(tableName, columnList);
         }
     } catch (err) {
         log.warn("Data fetch failed:", { error: (err as Error).message });

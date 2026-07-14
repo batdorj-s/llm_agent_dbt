@@ -7,8 +7,8 @@
  * Usage: npx tsx src/test-semantic-quality.ts
  */
 
-import { setupKnowledgeBase, searchKnowledgeBase, searchKnowledgeBaseWithFilter, getKnowledgeDocuments } from "./rag.js";
-import { buildBM25Index, bm25Search, hybridSearch, getSemanticSearchStatus, type BM25Index } from "./rag/semantic-search.js";
+import { setupKnowledgeBase, getKnowledgeDocuments } from "./rag.js";
+import { buildBM25Index, bm25Search, hybridSearch, getSemanticSearchStatus } from "./rag/semantic-search.js";
 
 interface TestCase {
   query: string;
@@ -170,7 +170,7 @@ const TEST_CASES: TestCase[] = [
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function padRight(str: string, len: number): string {
+function _padRight(str: string, len: number): string {
   return str.length >= len ? str.slice(0, len) : str + " ".repeat(len - str.length);
 }
 

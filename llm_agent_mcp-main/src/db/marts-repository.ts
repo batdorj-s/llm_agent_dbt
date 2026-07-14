@@ -1,11 +1,11 @@
-import { IKpiRepository, KpiMetric, SalesRecord, DateFilter } from "./types.js";
+import type { IKpiRepository, KpiMetric, SalesRecord, DateFilter } from "./types.js";
 import { initDataLake, getPool } from "./data-lake.js";
 
 const MART_SALES = "kpi_sales";
 const MART_USERS = "user_metrics";
 
 export class MartsKpiRepository implements IKpiRepository {
-    async getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter, userId?: string): Promise<KpiMetric | null> {
+    async getKpi(metric: KpiMetric["name"], _dateFilter?: DateFilter, _userId?: string): Promise<KpiMetric | null> {
         try {
             await initDataLake();
 
@@ -48,7 +48,7 @@ export class MartsKpiRepository implements IKpiRepository {
         }
     }
 
-    async getSalesHistory(limit: number, dateFilter?: DateFilter, userId?: string): Promise<SalesRecord[]> {
+    async getSalesHistory(limit: number, dateFilter?: DateFilter, _userId?: string): Promise<SalesRecord[]> {
         try {
             await initDataLake();
 

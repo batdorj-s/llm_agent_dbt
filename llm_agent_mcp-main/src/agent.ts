@@ -1,5 +1,5 @@
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
-import { createLLM, printProviderStatus } from "./llm-provider.js";
+import { createLLM } from "./llm-provider.js";
 import { searchKnowledgeBase } from "./rag.js";
 import dotenv from "dotenv";
 

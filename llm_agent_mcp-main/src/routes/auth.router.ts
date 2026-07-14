@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth, createToken, verifyToken } from "../auth.js";
 import { authenticateUser, createUser } from "../db/data-lake.js";
 import { authLimiter, registerLimiter } from "../rate-limiter.js";
-import { requirePermission, getPermissions } from "../middleware/rbac.js";
+import { getPermissions } from "../middleware/rbac.js";
 
 const router = Router();
 

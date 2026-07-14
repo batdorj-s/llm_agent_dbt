@@ -609,7 +609,7 @@ export function generateVisualTag(jsonResults: string): string {
     return "";
   }
 
-  const { labelKey, valueKey, allNumericKeys, isTimeSeries, isSmallCategory, isBinary, categoryCount } = shape;
+  const { labelKey, valueKey, allNumericKeys, isTimeSeries, isSmallCategory, isBinary, categoryCount: _categoryCount } = shape;
   const remainingNumeric = allNumericKeys.filter(k => k !== labelKey && k !== valueKey);
   const hasMultiMetric = remainingNumeric.length >= 1;
   const title = inferTitle(data, shape);

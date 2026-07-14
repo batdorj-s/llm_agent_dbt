@@ -69,7 +69,7 @@ describe("Data Lake — Active Catalog Entry", () => {
             expect(activeEntry).not.toBeNull();
             expect(activeEntry!.table_name).toBe(testName);
 
-            const isSameAsCatalogFirst = activeEntry!.table_name === catalog[0].table_name;
+            const _isSameAsCatalogFirst = activeEntry!.table_name === catalog[0].table_name;
         } finally {
             await getPool().query(`DROP TABLE IF EXISTS "${testName}" CASCADE`).catch(() => {});
             await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [testName]).catch(() => {});
@@ -82,10 +82,10 @@ describe("Data Lake — Active Catalog Entry", () => {
 
         const testName = `_test_active_${Date.now()}`;
         testCreated.push(testName);
-        let restoredPrev = "";
+        let _restoredPrev = "";
         try {
             const before = await getActiveCatalogEntry(testUserId);
-            restoredPrev = before?.table_name || "";
+            _restoredPrev = before?.table_name || "";
 
             await getPool().query(`CREATE TABLE IF NOT EXISTS "${testName}" (id INT)`);
             await getPool().query(

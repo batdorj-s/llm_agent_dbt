@@ -1,12 +1,10 @@
 import { Router } from "express";
 import { getUserId } from "./shared.js";
 import {
-  initConversationSchema,
   createConversation,
   getConversations,
   getConversationById,
   deleteConversation,
-  addMessage,
   getMessages,
   searchConversations,
   updateConversationTitle,

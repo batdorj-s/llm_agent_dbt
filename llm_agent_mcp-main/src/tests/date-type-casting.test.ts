@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 describe("Date Column Type Detection", () => {
     type ColumnTypes = Record<string, string>;
 
-    function findDateColumn(columns: string[], colTypes?: ColumnTypes): string | null {
+    function findDateColumn(columns: string[], _colTypes?: ColumnTypes): string | null {
         const dateKeywords = ["date", "огноо", "сар", "month", "жыл", "year", "dag", "time", "timestamp", "datetime", "θar", "on"];
         for (const col of columns) {
             const lower = col.toLowerCase();

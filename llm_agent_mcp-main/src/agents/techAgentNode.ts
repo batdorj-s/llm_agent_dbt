@@ -1,9 +1,9 @@
 import { createLLM, invokeWithFallback, streamWithFallback } from "../llm-provider.js";
-import { getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
+import { getActiveCatalogEntry } from "../db/data-lake.js";
 import { searchKnowledgeBase, formatRagDocuments } from "../rag.js";
 import { handleExecuteSql, isPythonQuery } from "../tools/enterprise-tools.js";
 import { prompts } from "./prompts.js";
-import { type AgentState, type AgentConfig, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
+import { type AgentState, type AgentConfig, buildContextSummary, trimMessages } from "./agentState.js";
 import { extractCodeBlock, safeJsonParse } from "../utils.js";
 import {
     MAX_SQL_RETRIES,
@@ -16,6 +16,7 @@ import {
     computeResultStats,
     generateVisualTag,
     logSqlOutcome,
+    type SqlOutcome,
 } from "./sqlGeneration.js";
 import { createLogger } from "./logger.js";
 
@@ -23,7 +24,7 @@ const log = createLogger("TechAgent");
 import { executeTechPythonAgent } from "./pythonExecution.js";
 import { buildDashboard } from "./dashboardBuilder.js";
 
-function generateQuerySuggestion(query: string, entry: any): string {
+function generateQuerySuggestion(query: string, _entry: any): string {
     const lower = query.toLowerCase();
     const suggestions: string[] = [];
 
@@ -255,7 +256,7 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
     }
 
     if (isSuccess && attempts > 0) {
-        const outcome: import("./sqlGeneration.js").SqlOutcome = attempts === 1 ? "llm_attempt_1_success" : "llm_attempt_2_success";
+        const outcome: SqlOutcome = attempts === 1 ? "llm_attempt_1_success" : "llm_attempt_2_success";
         void logSqlOutcome({ userId, query, outcome, attempts, tableName: activeEntry?.table_name });
     }
 

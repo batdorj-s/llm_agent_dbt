@@ -521,7 +521,7 @@ router.get("/finance-reports", async (req, res) => {
     const qAmt    = buildMntAmountExpr(quoteIdent(amtCol));
     const qCat    = quoteIdent(catCol);
     const qSubCat = subCatCol ? quoteIdent(subCatCol) : null;
-    const qDate   = dateCol  ? quoteIdent(dateCol) : null;
+    const _qDate   = dateCol  ? quoteIdent(dateCol) : null;
     const qTbl    = quoteIdent(table);
 
     const isOpIncome  = `(${qCat} ILIKE '%орлого%' AND ${qCat} NOT ILIKE '%зээл%')`;

@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import { parse as parseYaml } from "yaml";
 import { parse as parseSql } from "pgsql-ast-parser";
-import { getPool, isPgAvailable, initDataLake, quoteIdent, type DataLakeCatalogEntry } from "./pool.js";
+import { getPool, isPgAvailable, initDataLake, type DataLakeCatalogEntry } from "./pool.js";
 import { getCatalog } from "./catalog.js";
 import { traceToolCall } from "../observability/tracer.js";
 
@@ -202,7 +202,7 @@ export function validateSqlColumnsAgainstCatalog(query: string, catalog: DataLak
     aliasToTable.set(alias, tableName);
   }
 
-  for (const [alias, tableName] of aliasToTable) {
+  for (const [_alias, tableName] of aliasToTable) {
     const entry = tableColumnsMap.get(tableName);
     if (!entry) {
       const available = Array.from(tableColumnsMap.keys()).join(", ");

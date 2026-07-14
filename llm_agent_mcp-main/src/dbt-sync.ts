@@ -21,7 +21,7 @@ interface DbtModelNode {
   tests?: Array<{ name?: string; severity?: string; expression?: string }>;
 }
 
-interface DbtSourceNode {
+interface _DbtSourceNode {
   name: string;
   description?: string;
   database?: string;

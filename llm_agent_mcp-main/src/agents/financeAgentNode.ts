@@ -3,7 +3,7 @@ import { selfQueryTransform, searchKnowledgeBase, searchKnowledgeBaseWithFilter,
 import { buildFinanceKpiContext } from "../tools/enterprise-tools.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
-import { type AgentState, type AgentConfig, buildContextSummary, trimMessages, withTimeout } from "./agentState.js";
+import { type AgentState, type AgentConfig, buildContextSummary, trimMessages } from "./agentState.js";
 import { techAgentNode } from "./techAgentNode.js";
 import { createLogger } from "./logger.js";
 import fs from "fs";

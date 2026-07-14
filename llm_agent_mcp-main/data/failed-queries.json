@@ -228,5 +228,15 @@
     "status": "pending",
     "threadId": "thread_1784009018443",
     "timestamp": "2026-07-14T06:03:51.106Z"
+  },
+  {
+    "id": "feedback_1784009951706",
+    "userId": "user-admin-001",
+    "message": "Test query 1784009938480",
+    "response": "test response",
+    "rating": "negative",
+    "status": "pending",
+    "threadId": "thread_1784009938480",
+    "timestamp": "2026-07-14T06:19:11.706Z"
   }
 ]

@@ -117,7 +117,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
   let topCategoryValue = 0;
 
   const { clause: dateWhere, params: dateParams } = buildDateWhere(dateCol || "", dateCast, startDate, endDate);
-  const dateLen = dateParams.length;
+  const _dateLen = dateParams.length;
 
   if (salesCol) {
     try {
@@ -251,7 +251,7 @@ export async function computeMetrics(userId: string, startDate?: string, endDate
     }
   }
 
-  const totalIncomeForCalc = isFinanceTable ? Math.round(aov * 100) / 100 : 0;
+  const _totalIncomeForCalc = isFinanceTable ? Math.round(aov * 100) / 100 : 0;
   const operatingProfit = isFinanceTable ? Math.round((aov - totalExpense) * 100) / 100 : 0;
 
   // Transaction counts (noise-filtered)

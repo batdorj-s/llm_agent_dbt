@@ -60,7 +60,7 @@ describe("generateReportPdf", () => {
     expect(pages.length).toBeGreaterThanOrEqual(1);
 
     const text = (pages[0] as any).getText?.() || "";
-    const hasKpiText = text.includes("Sales") || text.includes("Revenue");
+    const _hasKpiText = text.includes("Sales") || text.includes("Revenue");
     expect(pages.length).toBeGreaterThanOrEqual(1);
   });
 });

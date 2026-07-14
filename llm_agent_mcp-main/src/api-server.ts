@@ -29,7 +29,6 @@ import { requireAuth } from "./auth.js";
 import { initConversationSchema } from "./services/conversation.js";
 import { log } from "./routes/shared.js";
 import { REQUEST_TIMEOUT_MS } from "./routes/shared.js";
-import { getRepository } from "./db/kpi-repository.js";
 import authRouter from "./routes/auth.router.js";
 import kpiRouter from "./routes/kpi.router.js";
 import financeRouter from "./routes/finance.router.js";

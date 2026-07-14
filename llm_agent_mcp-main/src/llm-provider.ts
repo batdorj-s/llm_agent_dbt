@@ -164,7 +164,6 @@ export async function createLLM(options?: { temperature?: number; streaming?: bo
   return await createLLMWithOrder(options);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function createLLMWithOrder(options?: {
   temperature?: number;
   streaming?: boolean;

@@ -1,5 +1,5 @@
 import { CallbackHandler, Langfuse } from "langfuse-langchain";
-import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import dotenv from "dotenv";
 
 dotenv.config();

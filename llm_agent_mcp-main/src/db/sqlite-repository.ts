@@ -1,4 +1,4 @@
-import { IKpiRepository, KpiMetric, SalesRecord, DateFilter } from "./types.js";
+import type { IKpiRepository, KpiMetric, SalesRecord, DateFilter } from "./types.js";
 import { initDataLake, getPool } from "./data-lake.js";
 
 function buildDateWhere(tableInfo: { dateCol: string }, df?: DateFilter, paramOffset: number = 0): { clause: string; params: any[] } {
@@ -24,7 +24,7 @@ function incomeFilter(categoryCol: string | undefined): string {
 }
 
 // Зарлагын категориудыг шүүх нөхцөл
-function expenseFilter(categoryCol: string | undefined): string {
+function _expenseFilter(categoryCol: string | undefined): string {
     if (!categoryCol) return "";
     return ` AND ("${categoryCol}" LIKE '%Зарлага%' OR "${categoryCol}" LIKE '%зарлага%' OR "${categoryCol}" LIKE '%ЗАРЛАГА%')`;
 }
@@ -109,7 +109,7 @@ export class SQLiteKpiRepository implements IKpiRepository {
                 unit: targetRow.unit,
                 updatedAt: new Date().toISOString()
             };
-        } catch (err) {
+        } catch {
             return null;
         }
     }

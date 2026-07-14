@@ -1,6 +1,6 @@
 import { invokeWithFallback } from "../llm-provider.js";
 import { runPythonCode } from "../sandbox.js";
-import { type AgentState, withTimeout } from "./agentState.js";
+import { type AgentState } from "./agentState.js";
 import { extractCodeBlock } from "../utils.js";
 import { prompts } from "./prompts.js";
 

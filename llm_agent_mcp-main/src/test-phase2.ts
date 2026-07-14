@@ -7,7 +7,7 @@ async function main() {
     // 1. Setup Vector DB
     try {
         await setupKnowledgeBase();
-    } catch (e) {
+    } catch {
         console.error("Make sure ChromaDB is running via docker-compose!");
         process.exit(1);
     }

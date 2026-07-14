@@ -11,7 +11,7 @@ const TEST_TABLE = `flow_test_${SUFFIX}`;
 
 describe("Complete Data Flow & Workflow", () => {
     let app: Express;
-    let threadId: string;
+    let _threadId: string;
 
     beforeAll(async () => {
         await initDataLake();
@@ -299,7 +299,7 @@ describe("Complete Data Flow & Workflow", () => {
             expect(res.status).toBe(200);
             expect(res.headers["content-type"]).toMatch(/text\/event-stream/);
             expect(res.text).toContain("data:");
-            threadId = `thread_${SUFFIX}_stream`;
+            _threadId = `thread_${SUFFIX}_stream`;
         }, 60000);
     });
 

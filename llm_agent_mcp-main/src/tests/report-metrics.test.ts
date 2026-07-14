@@ -95,7 +95,7 @@ describe("computeMetrics — tenant isolation", () => {
     }));
 
     const { computeMetrics } = await import("../agents/reportMetrics.js");
-    const result = await computeMetrics("date-test-user");
+    const _result = await computeMetrics("date-test-user");
 
     const growthSqlCalls = mockPool.query.mock.calls.filter(
       (call: unknown[]) => (call[0] as string).includes("periods")

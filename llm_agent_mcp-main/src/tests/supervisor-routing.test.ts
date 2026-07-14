@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { routeByKeywords } from "../agents/supervisorNode.js";
 
-type NextAgent = "FinanceAgent" | "TechAgent" | "DataScientistAgent" | "END";
+type _NextAgent = "FinanceAgent" | "TechAgent" | "DataScientistAgent" | "END";
 
 describe("Supervisor keyword-based routing", () => {
     describe("Data science queries (highest priority)", () => {

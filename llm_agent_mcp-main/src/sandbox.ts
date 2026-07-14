@@ -140,7 +140,7 @@ with open(_sandbox_out, "w") as _f:
         fs.writeFileSync(tmpFile, fullCode, "utf8");
 
         await new Promise<void>((resolve, reject) => {
-            const proc = execFile("python3", [tmpFile], {
+            execFile("python3", [tmpFile], {
                 timeout: timeoutMs,
                 maxBuffer: SANDBOX_MAX_OUTPUT_CHARS * 2,
                 env: {

@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { requireAuth } from "../auth.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { getUserId, getRole, log } from "./shared.js";
+import { getUserId, log } from "./shared.js";
 import { uploadLimiter } from "../rate-limiter.js";
 import {
-  initDataLake, getPool, getCatalog, seedCsv, getActiveCatalogEntry,
+  initDataLake, getPool, getCatalog, seedCsv,
   getColumnSamples, getColumnProfile, computeTableKpis, detectForeignKeys,
   quoteIdent, mergeIntoCombined,
 } from "../db/data-lake.js";

@@ -123,7 +123,7 @@ export function calculateCustomKpi(
   kpi: CustomKpiDefinition,
   data: Record<string, unknown>[]
 ): number {
-  const { formula, parameters } = kpi;
+  const { formula, parameters: _parameters } = kpi;
 
   // Common formula patterns
   const formulaLower = formula.toLowerCase();

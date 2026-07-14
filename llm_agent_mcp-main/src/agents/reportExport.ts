@@ -4,12 +4,7 @@ import { getRepository } from "../db/kpi-repository.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { buildMntAmountExpr } from "../utils/sqlHelpers.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import path from "path";
-import fs from "fs";
 
-function formatCurrency(value: number): string {
-  return `₮${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 // PDF-safe: Helvetica uses WinAnsi which cannot encode Cyrillic/Mongolian characters
 // Strip non-Latin chars so pdf-lib doesn't throw
@@ -155,7 +150,7 @@ export async function generateReportPdf(userId: string, startDate?: string, endD
     const chartWidth = width - margin * 2;
     const chartHeight = 100;
     const chartBottom = y;
-    const chartTop = y - chartHeight;
+    const _chartTop = y - chartHeight;
 
     // Axis
     page.drawLine({ start: { x: chartLeft, y: chartBottom }, end: { x: chartLeft + chartWidth, y: chartBottom }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });

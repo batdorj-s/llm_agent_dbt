@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_PATH = path.resolve(__dirname, "../../dbt/models/marts/schema.yml");
 
 export async function generateSchemaYml(tableName: string, columns: string[]): Promise<void> {
-  const colLower = columns.map(c => c.toLowerCase());
+  const _colLower = columns.map(c => c.toLowerCase());
 
   const stgColumns = columns.map(name => {
     const low = name.toLowerCase();
