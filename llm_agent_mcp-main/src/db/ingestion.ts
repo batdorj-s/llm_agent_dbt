@@ -203,8 +203,6 @@ export async function mergeIntoCombined(
     console.log(`[Data Lake] Merged '${uploadedTableName}' into '${combined}'`);
   }
 
-  await p.query(`DROP TABLE IF EXISTS ${quoteIdent(uploadedTableName)} CASCADE`);
-
   const existingCombined = await p.query(
     `SELECT table_name FROM data_lake_catalog WHERE table_name = $1`,
     [combined]
@@ -229,6 +227,8 @@ export async function mergeIntoCombined(
   `, [combined, `${combined} (auto-merged)`, description, ownerId]);
 
   await p.query(`DELETE FROM uploaded_files WHERE id = $1`, [uploadedTableName]);
+
+  await p.query(`DROP TABLE IF EXISTS ${quoteIdent(uploadedTableName)} CASCADE`);
 
   console.log(`[Data Lake] Catalog updated: '${combined}' is now the active table`);
 }

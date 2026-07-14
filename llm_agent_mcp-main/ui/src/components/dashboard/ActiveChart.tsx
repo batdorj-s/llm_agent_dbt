@@ -8,13 +8,6 @@ interface CashDataPoint {
   y: number;
 }
 
-const defaultCashData: CashDataPoint[] = [
-  { x: "1/1", label: "1-р сарын эхлэл", y: 2118200 },
-  { x: "2/1", label: "2-р сарын эхлэл", y: 1197539 },
-  { x: "3/1", label: "3-р сарын эхлэл", y: 6582195 },
-  { x: "4/1", label: "Q1 дуусгавар", y: 1049423 },
-];
-
 interface ActiveChartProps {
   cashData?: CashDataPoint[];
 }
@@ -34,7 +27,15 @@ const tooltipStyle = {
   borderRadius: "6px",
 };
 
-export const ActiveChart: React.FC<ActiveChartProps> = ({ cashData = defaultCashData }) => {
+export const ActiveChart: React.FC<ActiveChartProps> = ({ cashData }) => {
+  if (!cashData || cashData.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64 text-[11px] text-foreground/40">
+        Өгөгдөл байхгүй
+      </div>
+    );
+  }
+
   const peak = Math.max(...cashData.map((d) => d.y));
   const opening = cashData[0].y;
   const closing = cashData[cashData.length - 1].y;

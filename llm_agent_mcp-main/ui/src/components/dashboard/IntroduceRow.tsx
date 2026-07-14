@@ -18,12 +18,6 @@ interface IntroduceRowProps {
   transactionCount?: number;
 }
 
-const defaultVisitData: DataItem[] = [
-  { x: "1-р сар", y: 41797000 },
-  { x: "2-р сар", y: 56550000 },
-  { x: "3-р сар", y: 92277000 },
-];
-
 /* Ant-design-pro style avatar icons */
 const AvatarSales = () => (
   <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-50 text-blue-500">
@@ -59,22 +53,22 @@ const AvatarRate = () => (
 
 export const IntroduceRow: React.FC<IntroduceRowProps> = ({
   loading = false,
-  visitData = defaultVisitData,
-  totalSales = 190624000,
-  totalVisits = 4,
+  visitData,
+  totalSales,
+  totalVisits,
   totalPayments,
-  campaignEffect = 89,
+  campaignEffect,
   operatingProfit,
   transactionCount,
 }) => {
   const fmtCurrency = (v: number) => `₮${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
   const fmtNum = (v: number) => v.toLocaleString();
 
-  const months = visitData.length > 0 ? visitData.length : 3;
-  const avgMonthlyIncome = totalSales ? Math.round(totalSales / months) : 0;
+  const months = visitData != null && visitData.length > 0 ? visitData.length : 1;
+  const avgMonthlyIncome = totalSales != null ? Math.round(totalSales / months) : 0;
 
-  const firstMonthIncome = visitData[0]?.y ?? 0;
-  const lastMonthIncome  = visitData[visitData.length - 1]?.y ?? 0;
+  const firstMonthIncome = visitData?.[0]?.y ?? 0;
+  const lastMonthIncome  = visitData?.[visitData.length - 1]?.y ?? 0;
   const incomeGrowthPct  = firstMonthIncome > 0
     ? Math.round(((lastMonthIncome - firstMonthIncome) / firstMonthIncome) * 100)
     : 0;
@@ -92,8 +86,8 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         title="Нийт орлого"
         avatar={<AvatarSales />}
         action="Нийт орлого"
-        total={fmtCurrency(totalSales)}
-        footer={<Field label="Дундаж сарын орлого" value={fmtCurrency(avgMonthlyIncome)} />}
+        total={totalSales != null ? fmtCurrency(totalSales) : "—"}
+        footer={<Field label="Дундаж сарын орлого" value={totalSales != null ? fmtCurrency(avgMonthlyIncome) : "—"} />}
         contentHeight={72}
         loading={loading}
       >
@@ -116,13 +110,13 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         title="Орлогын харилцагч"
         avatar={<AvatarCustomer />}
         action="Орлоготой харилцагчдын тоо"
-        total={fmtNum(totalVisits)}
-        footer={<Field label="Харилцагчийн тоо" value={String(totalVisits)} />}
+        total={totalVisits != null ? fmtNum(totalVisits) : "—"}
+        footer={<Field label="Харилцагчийн тоо" value={totalVisits != null ? String(totalVisits) : "—"} />}
         contentHeight={72}
         loading={loading}
       >
         <ResponsiveContainer width="100%" height={72}>
-          <AreaChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+          <AreaChart data={visitData ?? []} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="introAreaGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#975FE4" stopOpacity={0.3} />
@@ -145,7 +139,7 @@ export const IntroduceRow: React.FC<IntroduceRowProps> = ({
         loading={loading}
       >
         <ResponsiveContainer width="100%" height={72}>
-          <BarChart data={visitData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+          <BarChart data={visitData ?? []} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <Bar dataKey="y" fill="#36A2EB" radius={[3, 3, 0, 0]} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>

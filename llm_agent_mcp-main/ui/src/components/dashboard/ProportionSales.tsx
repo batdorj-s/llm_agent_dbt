@@ -11,16 +11,6 @@ interface ProportionSalesProps {
   salesPieData?: DataItem[];
 }
 
-const defaultPieData: DataItem[] = [
-  { x: "Цалин", y: 77876281 },
-  { x: "Төсөл", y: 52607526 },
-  { x: "Зээл", y: 42473800 },
-  { x: "Бусад", y: 17600000 },
-  { x: "Түрээс", y: 11601906 },
-  { x: "ҮАЗ", y: 11457856 },
-  { x: "Оффис", y: 1357500 },
-];
-
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
 
 const formatCurrency = (v: number) =>
@@ -28,7 +18,7 @@ const formatCurrency = (v: number) =>
 
 export const ProportionSales: React.FC<ProportionSalesProps> = ({
   loading = false,
-  salesPieData = defaultPieData,
+  salesPieData,
 }) => {
   const [salesType, setSalesType] = useState<SalesType>("all");
 
@@ -43,6 +33,19 @@ export const ProportionSales: React.FC<ProportionSalesProps> = ({
       <div className="rounded-xl border border-border/80 bg-card p-5 animate-pulse">
         <div className="h-5 w-32 bg-foreground/10 rounded mb-4" />
         <div className="h-[300px] bg-foreground/5 rounded" />
+      </div>
+    );
+  }
+
+  if (!salesPieData || salesPieData.length === 0) {
+    return (
+      <div className="rounded-xl border border-border/80 bg-card p-5 h-full">
+        <h3 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">
+          Зарлагын бүтэц
+        </h3>
+        <div className="flex items-center justify-center h-64 text-[11px] text-foreground/40">
+          Өгөгдөл байхгүй
+        </div>
       </div>
     );
   }

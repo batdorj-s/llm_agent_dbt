@@ -21,50 +21,41 @@ interface SalesCardProps {
   rankingData?: { title: string; total: number }[];
 }
 
-const defaultSalesData: DataItem[] = [
-  { x: "1-р сар", y: 41797000 },
-  { x: "2-р сар", y: 56550000 },
-  { x: "3-р сар", y: 92277000 },
-];
-
-const defaultExpenseData: DataItem[] = [
-  { x: "1-р сар", y: 75923153 },
-  { x: "2-р сар", y: 55858944 },
-  { x: "3-р сар", y: 83192772 },
-];
-
-const defaultRanking = [
-  { title: "Цалин", total: 77876281 },
-  { title: "Төсөл", total: 52607526 },
-  { title: "Зээл", total: 42473800 },
-  { title: "Бусад", total: 17600000 },
-  { title: "Түрээс", total: 11601906 },
-  { title: "ҮАЗ", total: 11457856 },
-  { title: "Оффис", total: 1357500 },
-];
-
 const formatCurrency = (v: number) =>
   `₮${v.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
 
 export const SalesCard: React.FC<SalesCardProps> = ({
   loading = false,
-  salesData = defaultSalesData,
-  expenseData = defaultExpenseData,
-  rankingData = defaultRanking,
+  salesData,
+  expenseData,
+  rankingData,
 }) => {
   const [timeRange, setTimeRange] = useState<TimeType>("month");
-
-  const chartData = salesData.map((s, i) => ({
-    x: s.x,
-    income: s.y,
-    expense: expenseData[i]?.y ?? 0,
-  }));
 
   if (loading) {
     return (
       <div className="rounded-xl border border-border/80 bg-card p-5 animate-pulse">
         <div className="h-6 w-48 bg-foreground/10 rounded mb-4" />
         <div className="h-[300px] bg-foreground/5 rounded" />
+      </div>
+    );
+  }
+
+  const chartData = (salesData ?? []).map((s, i) => ({
+    x: s.x,
+    income: s.y,
+    expense: (expenseData ?? [])[i]?.y ?? 0,
+  }));
+
+  if (chartData.length === 0 && (!rankingData || rankingData.length === 0)) {
+    return (
+      <div className="rounded-xl border border-border/80 bg-card p-5">
+        <h3 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">
+          Орлого / Зарлага
+        </h3>
+        <div className="flex items-center justify-center h-64 text-[11px] text-foreground/40">
+          Өгөгдөл байхгүй
+        </div>
       </div>
     );
   }
@@ -172,38 +163,40 @@ export const SalesCard: React.FC<SalesCardProps> = ({
         </div>
 
         {/* Ranking list */}
-        <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l border-border/60 p-5">
-          <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">
-            Зарлагын ангилал
-          </h4>
-          <ul className="space-y-3">
-            {rankingData.map((item, i) => (
-              <li key={item.title} className="flex items-center gap-3 group">
-                <span
-                  className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 transition-transform group-hover:scale-110 ${
-                    i < 3
-                      ? "text-white"
-                      : "bg-foreground/5 text-foreground/40"
-                  }`}
-                  style={i < 3 ? {
-                    background: "linear-gradient(135deg, #ef4444, #f87171)",
-                  } : {}}
-                >
-                  {i + 1}
-                </span>
-                <span
-                  className="flex-1 text-xs text-foreground/70 truncate"
-                  title={item.title}
-                >
-                  {item.title}
-                </span>
-                <span className="text-xs font-semibold text-foreground/80 font-mono">
-                  {formatCurrency(item.total)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {rankingData && rankingData.length > 0 && (
+          <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l border-border/60 p-5">
+            <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">
+              Зарлагын ангилал
+            </h4>
+            <ul className="space-y-3">
+              {rankingData.map((item, i) => (
+                <li key={item.title} className="flex items-center gap-3 group">
+                  <span
+                    className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 transition-transform group-hover:scale-110 ${
+                      i < 3
+                        ? "text-white"
+                        : "bg-foreground/5 text-foreground/40"
+                    }`}
+                    style={i < 3 ? {
+                      background: "linear-gradient(135deg, #ef4444, #f87171)",
+                    } : {}}
+                  >
+                    {i + 1}
+                  </span>
+                  <span
+                    className="flex-1 text-xs text-foreground/70 truncate"
+                    title={item.title}
+                  >
+                    {item.title}
+                  </span>
+                  <span className="text-xs font-semibold text-foreground/80 font-mono">
+                    {formatCurrency(item.total)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

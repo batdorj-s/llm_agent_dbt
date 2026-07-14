@@ -15,22 +15,28 @@ interface TopSearchProps {
   period?: string;
 }
 
-const defaultCounterparties: CounterpartyItem[] = [
-  { index: 1, name: "ВАЙРАЛ ПИКСЕЛЬ ХХК", amount: 161220000, share: 84.6 },
-  { index: 2, name: "БАТБИЛЭГ БИЛЭГСАЙХАН", amount: 26950000, share: 14.1 },
-  { index: 3, name: "АНУДАРЬ ТҮВШИНБАЯР", amount: 1227000, share: 0.6 },
-  { index: 4, name: "ДАЙСҮКИ ГЛОБАЛ КОО", amount: 1227000, share: 0.6 },
-];
-
 const RANK_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6"];
 
 const formatCurrencyM = (v: number) => `₮${(v / 1_000_000).toFixed(1)}M`;
 
 export const TopSearch: React.FC<TopSearchProps> = ({
   loading = false,
-  counterparties = defaultCounterparties,
+  counterparties,
   period,
 }) => {
+  if (!counterparties || counterparties.length === 0) {
+    return (
+      <div className="rounded-xl border border-border/80 bg-card p-5 h-full">
+        <h3 className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider mb-4">
+          Орлогын эх үүсвэр
+        </h3>
+        <div className="flex items-center justify-center h-48 text-[11px] text-foreground/40">
+          Өгөгдөл байхгүй
+        </div>
+      </div>
+    );
+  }
+
   const totalIncome = counterparties.reduce((sum, c) => sum + c.amount, 0);
 
   if (loading) {
