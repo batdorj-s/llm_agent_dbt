@@ -178,13 +178,6 @@ export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, o
       )}
 
       <div className="flex items-center gap-2 sm:gap-4">
-        {serverStatus && (
-          <div className="hidden md:flex items-center gap-1.5 text-[10px] text-foreground/50 font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span>{serverStatus.llm.model}</span>
-          </div>
-        )}
-
         {isLoggedIn && user && (
           <div className="flex items-center gap-1">
             <DocLink />
