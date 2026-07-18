@@ -76,6 +76,14 @@ export function SharingPanel({ token }: { token: string | null }) {
     } catch { /* ignore */ }
   };
 
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-foreground/30 text-xs animate-pulse">Ачаалж байна...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="px-4 py-3 border-b border-border flex items-center gap-2">

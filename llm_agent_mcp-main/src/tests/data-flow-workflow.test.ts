@@ -2,12 +2,16 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { initDataLake, isPgAvailable, getPool, getCatalog } from "../db/data-lake.js";
 import { removeDocumentsByPrefix } from "../rag.js";
+import { agentLimiter, uploadLimiter } from "../rate-limiter.js";
 import type { Express } from "express";
 import fs from "fs";
 import path from "path";
 
 const SUFFIX = Date.now();
 const TEST_TABLE = `flow_test_${SUFFIX}`;
+
+// Rate limiter keys used in tests (see getUserId() fallback and extractAuth() fallback)
+const ADMIN_USER_KEY = "user-admin-001";
 
 describe("Complete Data Flow & Workflow", () => {
     let app: Express;
@@ -19,6 +23,14 @@ describe("Complete Data Flow & Workflow", () => {
 
         const { app: apiApp } = await import("../api-server.js");
         app = apiApp;
+
+        // Clean up any stale rate_limiter entries (from previous test runs)
+        await getPool().query("DELETE FROM rate_limiter").catch(() => {});
+
+        // Reset rate limiters so the whole test suite doesn't get blocked
+        // Keys: admin router falls back to "user-admin-001", chat router uses DEFAULT_USER_ID ("user-admin-001")
+        await uploadLimiter.reset(ADMIN_USER_KEY);
+        await agentLimiter.reset(ADMIN_USER_KEY);
     });
 
     afterAll(async () => {

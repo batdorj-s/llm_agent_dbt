@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/utils/financeDataCleaner.ts</title>
+    <title>Code coverage report for src/rag/doc-persistence.ts</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../../prettify.css" />
     <link rel="stylesheet" href="../../base.css" />
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/utils</a> financeDataCleaner.ts</h1>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/rag</a> doc-persistence.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">68.75% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>18/18</span>
+                <span class='fraction'>11/16</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">96.66% </span>
+                <span class="strong">42.1% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>29/30</span>
+                <span class='fraction'>16/38</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">75% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>3/3</span>
+                <span class='fraction'>3/4</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">75% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>14/14</span>
+                <span class='fraction'>9/12</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line medium'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -119,20 +119,32 @@
 <a name='L54'></a><a href='#L54'>54</a>
 <a name='L55'></a><a href='#L55'>55</a>
 <a name='L56'></a><a href='#L56'>56</a>
-<a name='L57'></a><a href='#L57'>57</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -143,23 +155,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">9x</span>
-<span class="cline-any cline-yes">9x</span>
-<span class="cline-any cline-yes">9x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">9x</span>
-<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -167,6 +166,9 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -174,62 +176,84 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">11x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
- * "₮2,000,000" → 2000000
+ * doc-persistence.ts — Persist RAG documents to PostgreSQL so user-uploaded documents
+ * survive server restarts (in-memory _knowledgeDocuments are lost otherwise).
  */
-export function cleanMNTAmount(raw: string): number | null {
-  if (!raw || typeof raw !== "string") return null;
 &nbsp;
-  const cleaned = raw
-    .replace(/₮/g, "")
-    .replace(/,/g, "")
-    .replace(/\s/g, "")
-    .trim();
+import { getPool, isPgAvailable } from "../db/pool.js";
+import type { RagDocument } from "./knowledge-base.js";
 &nbsp;
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? null : num;
+export async function saveRagDocuments(docs: RagDocument[]): Promise&lt;void&gt; {
+  if (!isPgAvailable() || docs.length === 0) return;
+  const pool = getPool();
+  for (const doc of docs) {
+    await pool.query(
+      `INSERT INTO rag_documents (id, text, category, department, author, created_at, source_name, parent_doc_id, chunk_index, shared, keywords)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (id) DO UPDATE SET
+         text = EXCLUDED.text,
+         category = EXCLUDED.category,
+         department = EXCLUDED.department,
+         author = EXCLUDED.author,
+         created_at = EXCLUDED.created_at,
+         source_name = EXCLUDED.source_name,
+         parent_doc_id = EXCLUDED.parent_doc_id,
+         chunk_index = EXCLUDED.chunk_index,
+         shared = EXCLUDED.shared,
+         keywords = EXCLUDED.keywords`,
+      [
+        doc.id, doc.text, doc.metadata.category, doc.metadata.department,
+        doc.metadata.author || <span class="branch-1 cbranch-no" title="branch not covered" >null, d</span>oc.metadata.created_at || <span class="branch-1 cbranch-no" title="branch not covered" >null,</span>
+        doc.metadata.source_name || <span class="branch-1 cbranch-no" title="branch not covered" >null, d</span>oc.metadata.parent_doc_id || null,
+        doc.metadata.chunk_index ?? null, doc.metadata.shared ?? true,
+        doc.keywords,
+      ]
+    );
+  }
 }
 &nbsp;
-/**
- * "5-Jan" → "2026-01-05" (ISO format)
- * Жилийг parameter-аар авах (default: одоогийн жил)
- */
-export function parseMonthDayDate(
-  raw: string,
-  year: number = new Date().getFullYear(),
-): string | null {
-  if (!raw) return null;
-&nbsp;
-  const months: Record&lt;string, string&gt; = {
-    jan: "01", feb: "02", mar: "03", apr: "04",
-    may: "05", jun: "06", jul: "07", aug: "08",
-    sep: "09", oct: "10", nov: "11", dec: "12",
-  };
-&nbsp;
-  const match = raw.match(/^(\d{1,2})-([a-zA-Z]+)$/);
-  if (!match) return null;
-&nbsp;
-  const day = match[1].padStart(2, "0");
-  const monthKey = match[2].toLowerCase().slice(0, 3);
-  const month = months[monthKey];
-&nbsp;
-  if (!month) return null;
-  return `${year}-${month}-${day}`;
+export async function loadRagDocuments(): Promise&lt;RagDocument[]&gt; {
+  <span class="missing-if-branch" title="else path not taken" >E</span>if (!isPgAvailable()) return [];
+  const <span class="cstat-no" title="statement not covered" >pool = getPool();</span>
+  const result = <span class="cstat-no" title="statement not covered" >await pool.query("SELECT * FROM rag_documents ORDER BY uploaded_at");</span>
+<span class="cstat-no" title="statement not covered" >  return result.rows.<span class="fstat-no" title="function not covered" >map(r</span>ow =&gt; (<span class="cstat-no" title="statement not covered" >{</span></span>
+    id: row.id,
+    text: row.text,
+    metadata: {
+      category: row.category,
+      department: row.department || "general",
+      author: row.author || undefined,
+      created_at: row.created_at || undefined,
+      source_name: row.source_name || undefined,
+      parent_doc_id: row.parent_doc_id || undefined,
+      chunk_index: row.chunk_index ?? undefined,
+      shared: row.shared ?? true,
+    },
+    keywords: row.keywords || [],
+  }));
 }
 &nbsp;
-/**
- * Бүтэн гүйлгээний мөрийг цэвэрлэж стандарт форматад оруулна
- */
-export function cleanTransactionRow(row: Record&lt;string, string&gt;) {
-  return {
-    огноо:       parseMonthDayDate(row["Өдөр"] || row["өдөр"] || row["огноо"]),
-    харилцагч:   (row["Харилцагч"] || row["харилцагч"] || "").trim(),
-    дүн:         cleanMNTAmount(row["Дүн"] || <span class="branch-1 cbranch-no" title="branch not covered" >row["дүн"])</span>,
-    ангилал:     (row["Ангилал"] || row["ангилал"] || "").trim(),
-    дэд_ангилал: (row["Дэд ангилал"] || row["дэд_ангилал"] || "").trim(),
-    тайлбар:     (row["Тайлбар"] || row["тайлбар"] || "").trim(),
-  };
+export async function deleteRagDocumentsByPrefix(idPrefix: string): Promise&lt;number&gt; {
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (!isPgAvailable()) <span class="cstat-no" title="statement not covered" >return 0;</span>
+  const pool = getPool();
+  const result = await pool.query("DELETE FROM rag_documents WHERE id LIKE $1", [`${idPrefix}%`]);
+  return result.rowCount ?? <span class="branch-1 cbranch-no" title="branch not covered" >0;</span>
 }
 &nbsp;</pre></td></tr></table></pre>
 

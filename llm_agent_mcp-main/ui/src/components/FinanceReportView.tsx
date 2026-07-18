@@ -128,7 +128,7 @@ function ExportButton({ label, endpoint, icon }: { label: string; endpoint: stri
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      alert("Export amjiltgui bolloo.");
+      alert("Экспорт амжилтгүй боллоо.");
     } finally {
       setIsExporting(false);
     }

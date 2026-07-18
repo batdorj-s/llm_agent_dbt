@@ -12,14 +12,14 @@ function isChunkLoadError(error: Error): boolean {
 }
 
 function getSubTitle(isChunkError: boolean, isOnline: boolean): string {
-  if (!isChunkError) return "Sorry, an error occurred on this page.";
+  if (!isChunkError) return "Уучлаарай, энэ хуудсанд алдаа гарлаа.";
   return isOnline
-    ? "Page resources failed to load. Please reload and try again."
-    : "Your network connection has been lost. Please check your connection and reload.";
+    ? "Хуудасны нөөцүүд ачаалагдахгүй байна. Дахин ачааллаад оролдоно уу."
+    : "Таны интернет холболт тасарсан байна. Холболтоо шалгаад дахин ачааллана уу.";
 }
 
 function getTitle(isChunkError: boolean): string {
-  return isChunkError ? "Failed to load page" : "Something went wrong";
+  return isChunkError ? "Хуудас ачаалагдсангүй" : "Алдаа гарлаа";
 }
 
 interface ErrorBoundaryState {
@@ -118,7 +118,7 @@ export default class ErrorBoundary extends React.Component<
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
-                Retry
+                Дахин оролдох
               </button>
             )}
             <button
@@ -126,14 +126,14 @@ export default class ErrorBoundary extends React.Component<
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
-              Reload Page
+              Хуудсыг дахин ачаалах
             </button>
             <a
               href="/"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
             >
               <Home className="w-4 h-4" />
-              Back Home
+              Нүүр хуудас
             </a>
           </div>
         </div>

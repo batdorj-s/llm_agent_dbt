@@ -145,7 +145,7 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
       </section>
 
       {/* Dashboard content */}
-      <section className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-background p-4 md:p-6">
+      <section id="dashboard-export-area" className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-background p-4 md:p-6">
         {!hasDataset ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
             <LayoutDashboard className="w-12 h-12 text-foreground/20" />
@@ -189,7 +189,7 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
               {hasDataset && <AnomalyBadge token={token} />}
               {hasDataset && <WhatIfPanel token={token} />}
               {hasDataset && <AlertBell token={token} />}
-              {hasDataset && <ExportButton token={token} />}
+              {hasDataset && <ExportButton token={token} dashboardContainerId="dashboard-export-area" />}
             </div>
 
             <div className="animate-fade-in-up" style={{ animationDelay: "50ms" }}>

@@ -38,15 +38,15 @@ export const CodeBlock = ({ code, language, defaultExpanded = false }: { code: s
     <div className="bg-sidebar border border-border/80 rounded-lg mt-2 mb-3 transition-colors overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 bg-background/30 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <span className="text-[9px] font-bold uppercase tracking-wider text-foreground/50">{language || "Code"}</span>
-          <span className="text-[8px] text-foreground/30 font-mono">{rows} lines</span>
+          <span className="text-[9px] font-bold uppercase tracking-wider text-foreground/50">{language || "Код"}</span>
+          <span className="text-[8px] text-foreground/30 font-mono">{rows} мөр</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={handleCopy}
             className="text-[9px] px-1.5 py-0.5 text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 rounded transition-all cursor-pointer"
           >
-            {copied ? "Copied" : "Copy"}
+            {copied ? "Хуулсан" : "Хуулах"}
           </button>
           <button
             onClick={() => setExpanded(!expanded)}
@@ -74,7 +74,7 @@ export const CodeBlock = ({ code, language, defaultExpanded = false }: { code: s
             onClick={() => setExpanded(true)}
             className="text-[9px] text-blue-400/70 hover:text-blue-400 transition-colors cursor-pointer"
           >
-            Show all {rows} lines
+            Бүх {rows} мөрийг харуулах
           </button>
         </div>
       )}

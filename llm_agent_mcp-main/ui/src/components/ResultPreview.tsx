@@ -10,7 +10,7 @@ export const ResultPreview = ({ jsonStr }: { jsonStr: string }) => {
   } catch {
     return <pre className="text-[10px] font-mono text-foreground/60 p-2 bg-background/30 rounded max-h-32 overflow-auto">{jsonStr}</pre>;
   }
-  if (data.length === 0) return <div className="text-[10px] text-foreground/40 italic">Empty result</div>;
+  if (data.length === 0) return <div className="text-[10px] text-foreground/40 italic">Хоосон үр дүн</div>;
   const keys = Object.keys(data[0]);
   return (
     <div className="overflow-auto max-h-48 rounded border border-border/50">
@@ -34,7 +34,7 @@ export const ResultPreview = ({ jsonStr }: { jsonStr: string }) => {
       </table>
       {data.length > 10 && (
         <div className="px-2 py-1 text-[8px] text-foreground/30 text-center border-t border-border/30">
-          {data.length - 10} more rows...
+          {data.length - 10} нэмэлт мөр...
         </div>
       )}
     </div>

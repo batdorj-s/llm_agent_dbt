@@ -183,17 +183,39 @@ app.get("/api/health", async (_req, res) => {
     } else { checks.chromadb = "unavailable"; }
   } catch { checks.chromadb = "unavailable"; }
 
+  const rag = await import("./rag.js");
+  const docCount = (rag as any).getKnowledgeDocuments?.()?.length ?? 0;
+
+  let catalogCount = 0;
+  try {
+    const pool = getPool();
+    const result = await pool.query("SELECT COUNT(*) AS cnt FROM data_lake_catalog");
+    catalogCount = Number(result.rows[0]?.cnt ?? 0);
+  } catch {}
+
+  const provider = detectProvider();
   const mem = process.memoryUsage();
   const status = Object.values(checks).every(v => v === "ok") ? "ok" : "degraded";
   res.json({
     status,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
+    version: "1.0.0",
     services: checks,
+    llm: {
+      provider: provider.provider,
+      model: provider.model,
+    },
+    rag: {
+      documents: docCount,
+      catalogTables: catalogCount,
+    },
     memory: {
       rss: `${(mem.rss / 1024 / 1024).toFixed(1)}MB`,
       heapUsed: `${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB`,
     },
+    node: process.version,
+    env: process.env.NODE_ENV || "development",
   });
 });
 

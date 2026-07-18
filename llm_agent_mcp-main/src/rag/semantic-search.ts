@@ -29,7 +29,7 @@ const EMBEDDING_CACHE_MAX_ENTRIES = 500;
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
-    .split(/[\s,.\-;:!?\[\](){}'"]/)
+    .split(/[\s,.\-;:!?\[\](){}'"«»–—…”“‘’'`]+/)
     .filter(t => t.length >= 2);
 }
 

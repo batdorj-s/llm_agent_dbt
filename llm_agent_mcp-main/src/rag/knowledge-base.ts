@@ -97,7 +97,7 @@ export function estimateTokens(text: string): number {
 export function chunkText(
   text: string,
   chunkSize: number = 512,
-  overlap: number = 64
+  overlap: number = 128
 ): string[] {
   const estimatedTokens = estimateTokens(text);
   if (estimatedTokens <= chunkSize) return [text];

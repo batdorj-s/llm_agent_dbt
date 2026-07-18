@@ -187,8 +187,8 @@ function computeRecencyScore(createdAt: string | undefined): number {
   }
 }
 
-const SEMANTIC_WEIGHT = 0.6;
-const KEYWORD_WEIGHT = 0.25;
+const SEMANTIC_WEIGHT = 0.55;
+const KEYWORD_WEIGHT = 0.30;
 const RECENCY_WEIGHT = 0.15;
 
 function applyRecencyWeighting(
@@ -327,7 +327,7 @@ export async function searchKnowledgeBaseWithFilter(
       const chromaResults: Array<{ documents: string[][]; metadatas: unknown[][]; distances: number[][] }> = [];
       const queryPromises = allQueries.slice(0, 2).map(async (q) => {
         try {
-          const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("ChromaDB query timeout")), 3000));
+              const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("ChromaDB query timeout")), 5000));
           const r = await Promise.race([
             col.query({ queryTexts: [q], nResults: limit * 2, where: chromaWhere }),
             timeoutPromise,

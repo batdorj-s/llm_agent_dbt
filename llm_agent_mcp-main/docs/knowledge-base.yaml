@@ -260,3 +260,33 @@ documents:
       created_at: "2026-07-13"
       source_name: "Data Lake Catalog"
     keywords: ["finance_combined", "query", "SQL", "асуулт", "загвар", "нийт", "сараар", "ангилалаар", "харилцагчаар", "P&L", "дундаж"]
+
+  - id: "kpi_trend_analysis"
+    text: "KPI (Key Performance Indicator) хандлагын шинжилгээ: Өмнөх үетэй харьцуулахдаа LAG() window function ашиглана. Example: LAG(SUM(amount)) OVER (ORDER BY period) AS previous. Өөрчлөлтийн хувь = (current - previous) / NULLIF(previous, 0) * 100. KPI-г dashboard-д widget хэлбэрээр харуулна: trend arrow (↑↓), өөрчлөлтийн хувь, absolute утга."
+    metadata:
+      category: "business_policy"
+      department: "analytics"
+      author: "admin"
+      created_at: "2026-07-18"
+      source_name: "KPI Guide"
+    keywords: ["kpi", "trend", "хандлага", "өөрчлөлт", "LAG", "window function", "dashboard", "widget", "харьцуулалт"]
+
+  - id: "vpn_data_security"
+    text: "Монголд заавал баримтлах өгөгдлийн аюулгүй байдлын дүрэм: 1) Хувь хүний мэдээлэл (ХХМ) — нэр, хаяг, утас зэргийг шифрлэж хадгалах. 2) Банкны нууц — гүйлгээний мэдээллийг зөвхөн эрхтэй хэрэглэгч харуулах. 3) Өгөгдөл задруулахгүй байх — query result-д мэдээлэл харагдахгүйгээр зөвхөн статистик дүнг харуулах. 4) VPN ашиглах — алсын холболт зөвхөн VPN-ээр. 5) audit log — бүх query-г лог хийх."
+    metadata:
+      category: "business_policy"
+      department: "security"
+      author: "admin"
+      created_at: "2026-07-18"
+      source_name: "Security Policy"
+    keywords: ["аюулгүй байдал", "security", "VPN", "ХХМ", "нууц", "шифрлэлт", "encryption", "audit", "логийн"]
+
+  - id: "mongolian_tax_calculation"
+    text: "Монголын татварын тооцоо: Ашгийн татвар (Corporate Income Tax) = 10% (25% -ийг 2025 оноос хэрэгжүүлэх). Нэмэгдсэн өртгийн татвар (НӨАТ/VAT) = 10%. Нийгмийн даатгалын шимтгэл: Ажил олгогч 11%, Ажилтан 10.5% (цалингаас). Хувь хүний орлогын татвар (ХХОТ) = 10%. Татварын тайлан: Улирал бүр (ашгийн татвар), Сар бүр (НӨАТ, НДШ). Эрх зүйн үндэс: Татварын ерөнхий хууль."
+    metadata:
+      category: "business_policy"
+      department: "finance"
+      author: "admin"
+      created_at: "2026-07-18"
+      source_name: "Tax Guide"
+    keywords: ["татвар", "tax", "НӨАТ", "VAT", "ашгийн таттар", "НДШ", "ХХОТ", "татварын тайлан", "Монгол"]

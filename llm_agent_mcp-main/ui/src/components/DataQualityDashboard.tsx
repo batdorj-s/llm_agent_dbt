@@ -38,6 +38,7 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
   const [summary, setSummary] = useState<QualitySummary | null>(null);
   const [tests, setTests] = useState<TestResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [expandedTest, setExpandedTest] = useState<string | null>(null);
   const [customTests, setCustomTests] = useState<CustomTest[]>([]);
@@ -55,7 +56,7 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
       const res = await fetch("/api/data-quality/summary", { headers });
       const data = await res.json();
       if (data.success) setSummary(data.data);
-    } catch { /* ignore */ }
+    } catch { setError("Өгөгдлийн чанарын хураангуй ачаалахад алдаа гарлаа."); }
   }, []);
 
   const fetchTests = useCallback(async () => {
@@ -64,7 +65,7 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
       const res = await fetch(`/api/data-quality/tests${params}`, { headers });
       const data = await res.json();
       if (data.success) setTests(data.data);
-    } catch { /* ignore */ }
+    } catch { setError("Тестийн жагсаалт ачаалахад алдаа гарлаа."); }
   }, [filterStatus]);
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
       const res = await fetch("/api/data-quality/custom-tests", { headers });
       const data = await res.json();
       if (data.success) setCustomTests(data.data);
-    } catch { /* ignore */ }
+    } catch { setError("Тусгай тестийн жагсаалт ачаалахад алдаа гарлаа."); }
   }, []);
 
   useEffect(() => { fetchCustomTests(); }, []);
@@ -131,6 +132,19 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
     }
   };
 
+  if (error) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 gap-3">
+        <AlertTriangle className="w-10 h-10 opacity-30" />
+        <div className="text-xs text-amber-500">{error}</div>
+        <button onClick={() => { setError(null); setLoading(true); Promise.all([fetchSummary(), fetchTests()]).finally(() => setLoading(false)); }}
+          className="text-[10px] px-3 py-1 bg-foreground/10 hover:bg-foreground/20 rounded transition-colors cursor-pointer">
+          Дахин оролдох
+        </button>
+      </div>
+    );
+  }
+
   const failedTests = tests.filter((t) => t.status === "fail" || t.status === "error");
   const passedCount = tests.filter((t) => t.status === "pass").length;
 
@@ -165,7 +179,7 @@ export function DataQualityDashboard({ token }: { token: string | null }) {
         <div className="rounded-lg border border-border bg-card p-3">
           <div className="flex items-center gap-1.5 text-foreground/50 mb-1">
             <Clock className="w-3 h-3" />
-            <span className="text-[10px] font-medium">Pass Rate</span>
+            <span className="text-[10px] font-medium">Амжилтын хувь</span>
           </div>
           <div className="text-lg font-bold" style={{ color: (summary?.passRate ?? 0) >= 80 ? "#10b981" : (summary?.passRate ?? 0) >= 50 ? "#f59e0b" : "#ef4444" }}>
             {summary?.passRate ?? 0}%
