@@ -42,6 +42,13 @@ describe("Export endpoints — POST /api/report/export-pdf and export-xlsx", () 
                visibility = EXCLUDED.visibility`,
             [TEST_TABLE]
         );
+
+        // Pin the uploaded_files ordering so `getActiveCatalogEntry` picks our test table
+        // even when other tests have inserted rows with the same NOW() timestamp.
+        await getPool().query(
+            `UPDATE uploaded_files SET created_at = NOW() + INTERVAL '1 second' WHERE id = $1`,
+            [TEST_TABLE]
+        );
     });
 
     afterAll(async () => {

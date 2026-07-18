@@ -36,7 +36,7 @@ export function AlertBell({ token }: AlertBellProps) {
       });
       const data = await res.json();
       if (data.success) setAlerts(data.data);
-    } catch { /* silent */ }
+    } catch { console.warn("Alert fetch failed"); }
     finally { setLoading(false); }
   };
 

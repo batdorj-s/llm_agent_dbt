@@ -31,6 +31,7 @@ export function GlossaryBrowser({ token }: { token: string | null }) {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   const fetchGlossary = useCallback(async () => {
     setLoading(true);
@@ -48,7 +49,8 @@ export function GlossaryBrowser({ token }: { token: string | null }) {
         setEntries(data.data);
         if (!meta && data.meta) setMeta(data.meta);
       }
-    } catch { /* ignore */ }
+      setError("");
+    } catch { setError("Тайлбар толь татахад алдаа гарлаа."); }
     setLoading(false);
   }, [search, selectedCategory, selectedDepartment, token, meta]);
 
@@ -64,6 +66,13 @@ export function GlossaryBrowser({ token }: { token: string | null }) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      {error && (
+        <div className="px-4 py-2 text-[10px] text-red-500 bg-red-500/5 border-b border-red-500/20 flex items-center gap-2">
+          <span>⚠</span>
+          <span>{error}</span>
+          <button onClick={() => setError("")} className="ml-auto text-red-400 hover:text-red-300 cursor-pointer">✕</button>
+        </div>
+      )}
       <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 text-foreground/70">
           <BookOpen className="w-4 h-4" />

@@ -26,6 +26,7 @@ export function SharingPanel({ token }: { token: string | null }) {
   const [loading, setLoading] = useState(true);
   const [teamForm, setTeamForm] = useState({ name: "", description: "" });
   const [showTeamForm, setShowTeamForm] = useState(false);
+  const [error, setError] = useState("");
 
   const headers = {
     "Content-Type": "application/json",
@@ -43,7 +44,8 @@ export function SharingPanel({ token }: { token: string | null }) {
       const sharedData = await sharedRes.json();
       if (teamsData.success) setTeams(teamsData.data);
       if (sharedData.success) setSharedWithMe(sharedData.data);
-    } catch { /* ignore */ }
+      setError("");
+    } catch { setError("Өгөгдөл татахад алдаа гарлаа."); }
     setLoading(false);
   }, []);
 
@@ -59,8 +61,9 @@ export function SharingPanel({ token }: { token: string | null }) {
       });
       setShowTeamForm(false);
       setTeamForm({ name: "", description: "" });
+      setError("");
       fetchData();
-    } catch { /* ignore */ }
+    } catch { setError("Баг үүсгэхэд алдаа гарлаа."); }
   };
 
   const handleAddMember = async (teamId: string) => {
@@ -72,8 +75,9 @@ export function SharingPanel({ token }: { token: string | null }) {
         headers,
         body: JSON.stringify({ user_id: userId }),
       });
+      setError("");
       fetchData();
-    } catch { /* ignore */ }
+    } catch { setError("Гишүүн нэмэхэд алдаа гарлаа."); }
   };
 
   if (loading) {
@@ -86,6 +90,13 @@ export function SharingPanel({ token }: { token: string | null }) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      {error && (
+        <div className="px-4 py-2 text-[10px] text-red-500 bg-red-500/5 border-b border-red-500/20 flex items-center gap-2">
+          <span>⚠</span>
+          <span>{error}</span>
+          <button onClick={() => setError("")} className="ml-auto text-red-400 hover:text-red-300 cursor-pointer">✕</button>
+        </div>
+      )}
       <div className="px-4 py-3 border-b border-border flex items-center gap-2">
         <Users className="w-4 h-4 text-foreground/70" />
         <span className="text-xs font-semibold text-foreground">Хамтын ажиллагаа</span>

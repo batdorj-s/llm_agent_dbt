@@ -35,7 +35,7 @@ export function ReportScheduler({ token }: { token: string | null }) {
       const res = await fetch("/api/scheduler/reports", { headers });
       const d = await res.json();
       if (d.success) setReports(d.data);
-    } catch { /* ignore */ }
+    } catch { setError("Тайлангууд татахад алдаа гарлаа."); }
     setLoading(false);
   }, []);
 
@@ -65,8 +65,9 @@ export function ReportScheduler({ token }: { token: string | null }) {
     if (!window.confirm("Устгах уу?")) return;
     try {
       await fetch(`/api/scheduler/reports/${id}`, { method: "DELETE", headers });
+      setError("");
       fetchReports();
-    } catch { /* ignore */ }
+    } catch { setError("Тайлан устгахад алдаа гарлаа."); }
   };
 
   const handleToggle = async (report: ScheduledReport) => {
@@ -76,8 +77,9 @@ export function ReportScheduler({ token }: { token: string | null }) {
         headers,
         body: JSON.stringify({ is_active: !report.is_active }),
       });
+      setError("");
       fetchReports();
-    } catch { /* ignore */ }
+    } catch { setError("Төлөв өөрчлөхөд алдаа гарлаа."); }
   };
 
   return (

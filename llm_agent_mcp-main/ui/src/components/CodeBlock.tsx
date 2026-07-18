@@ -13,7 +13,7 @@ export const CodeBlock = ({ code, language, defaultExpanded = false }: { code: s
       await navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {}
+    } catch { console.warn("Clipboard write failed"); }
   };
 
   const lang = (language || "").toLowerCase();
