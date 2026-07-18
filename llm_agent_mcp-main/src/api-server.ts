@@ -50,6 +50,7 @@ import schedulerRouter from "./routes/scheduler.router.js";
 import sharingRouter from "./routes/sharing.router.js";
 import unifiedSearchRouter from "./routes/unified-search.router.js";
 import notificationRouter from "./routes/notification.router.js";
+import historyRouter from "./routes/history.router.js";
 import multer from "multer";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
@@ -175,10 +176,10 @@ app.get("/api/health", async (_req, res) => {
     checks.postgresql = "ok";
   } catch { checks.postgresql = "unavailable"; }
   try {
-    const ragModule = await import("./rag.js");
-    const client = (ragModule as any).chromaClient;
-    if (client && typeof client.heartbeat === "function") {
-      await client.heartbeat();
+    const { getChromaCollection } = await import("./rag.js");
+    const col = await getChromaCollection();
+    if (col) {
+      await col.count();
       checks.chromadb = "ok";
     } else { checks.chromadb = "unavailable"; }
   } catch { checks.chromadb = "unavailable"; }
@@ -254,6 +255,7 @@ app.use("/api",             schedulerRouter);      // /api/scheduler
 app.use("/api",             sharingRouter);        // /api/teams, /api/sharing
 app.use("/api",             unifiedSearchRouter);  // /api/search
 app.use("/api",             notificationRouter);   // /api/notifications/*
+app.use("/api",             historyRouter);        // /api/history
 
 // ── Production security hardening ──────────────────────────
 app.use((_req, res, next) => {
@@ -295,9 +297,21 @@ app.use((err: Error & { code?: string; statusCode?: number }, _req: express.Requ
 // ── Production env validation ──────────────────────────────
 function validateEnv(): string[] {
   const warnings: string[] = [];
-  if (!process.env.DATABASE_URL) warnings.push("DATABASE_URL not set");
-  if (!process.env.JWT_SECRET) warnings.push("JWT_SECRET not set — using insecure dev fallback");
-  if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) warnings.push("No LLM API key set (OPENAI_API_KEY or GEMINI_API_KEY)");
+  if (!process.env.DATABASE_URL) {
+    const msg = "DATABASE_URL not set";
+    if (process.env.NODE_ENV === "production") throw new Error(msg);
+    warnings.push(msg);
+  }
+  if (!process.env.JWT_SECRET) {
+    const msg = "JWT_SECRET not set — using insecure dev fallback";
+    if (process.env.NODE_ENV === "production") throw new Error(msg);
+    warnings.push(msg);
+  }
+  if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
+    const msg = "No LLM API key set (OPENAI_API_KEY or GEMINI_API_KEY)";
+    if (process.env.NODE_ENV === "production") throw new Error(msg);
+    warnings.push(msg);
+  }
   if (process.env.NODE_ENV === "production") {
     if (!process.env.CORS_ORIGIN) warnings.push("CORS_ORIGIN not set in production");
     if (!process.env.REDIS_URL) warnings.push("REDIS_URL not set — rate limiter uses in-memory store (not safe for multi-instance)");

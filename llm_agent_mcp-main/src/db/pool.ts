@@ -272,6 +272,10 @@ export async function initDataLake(): Promise<void> {
         )
       `);
 
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_rag_docs_category ON rag_documents(category)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_rag_docs_department ON rag_documents(department)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_rag_docs_author ON rag_documents(author)`);
+
       await pool.query(`
         CREATE TABLE IF NOT EXISTS kpi_targets (
           metric_name TEXT PRIMARY KEY,

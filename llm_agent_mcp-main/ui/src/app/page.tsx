@@ -6,7 +6,7 @@ import { BarChart2, Activity, TrendingUp, TrendingDown, PieChart as PieChartIcon
 import { Header, type TabId } from "../components/Header";
 import { PreviewDrawer } from "../components/PreviewDrawer";
 import { OfflineBanner } from "../components/OfflineBanner";
-import { AskTab, DashboardTab, ReportTab } from "../components/tabs";
+import { AskTab, DashboardTab, ReportTab, HistoryTab } from "../components/tabs";
 import { ConversationSidebar } from "../components/ConversationSidebar";
 import { LoginPage } from "../components/LoginPage";
 import { GlossaryBrowser } from "../components/GlossaryBrowser";
@@ -432,6 +432,12 @@ export default function Home() {
         {activeTab === "sharing" && (
           <div id="panel-sharing" role="tabpanel" aria-label="Хамтын ажиллагаа" className="flex-1 min-h-0 flex flex-col">
             <SharingPanel token={auth.token} />
+          </div>
+        )}
+
+        {activeTab === "history" && (
+          <div id="panel-history" role="tabpanel" aria-label="Түүх" className="flex-1 min-h-0 flex flex-col">
+            <HistoryTab token={auth.token} />
           </div>
         )}
 

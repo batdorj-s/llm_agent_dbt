@@ -40,15 +40,15 @@ const REVENUE_KEYWORDS = [/revenue/i, /income/i, /орлого/i, /борлуу�
 /** Keywords to identify expense-like columns */
 const EXPENSE_KEYWORDS = [/expense/i, /cost/i, /зардал/i, /зарлага/i, /spend/i];
 
-function getNumericColumns(firstRow: Record<string, unknown>): string[] {
+export function getNumericColumns(firstRow: Record<string, unknown>): string[] {
   return Object.keys(firstRow).filter(k => NUMERIC_KEYWORDS.some(p => p.test(k)));
 }
 
-function findColumn(columns: string[], keywords: RegExp[]): string | undefined {
+export function findColumn(columns: string[], keywords: RegExp[]): string | undefined {
   return columns.find(col => keywords.some(kw => kw.test(col)));
 }
 
-function sumColumn(data: Record<string, unknown>[], col: string | undefined): number {
+export function sumColumn(data: Record<string, unknown>[], col: string | undefined): number {
   if (!col) return 0;
   return data.reduce((sum, row) => {
     const v = typeof row[col] === "number" ? row[col] : 0;
@@ -59,7 +59,7 @@ function sumColumn(data: Record<string, unknown>[], col: string | undefined): nu
 /**
  * Build alert rules dynamically based on available columns
  */
-function buildDefaultRules(): AlertRule[] {
+export function buildDefaultRules(): AlertRule[] {
   return [
     {
       id: "negative-profit",

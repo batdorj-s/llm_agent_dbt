@@ -5,7 +5,7 @@ const MART_SALES = "kpi_sales";
 const MART_USERS = "user_metrics";
 
 export class MartsKpiRepository implements IKpiRepository {
-    async getKpi(metric: KpiMetric["name"], _dateFilter?: DateFilter, _userId?: string): Promise<KpiMetric | null> {
+    async getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter, userId?: string): Promise<KpiMetric | null> {
         try {
             await initDataLake();
 
@@ -16,16 +16,32 @@ export class MartsKpiRepository implements IKpiRepository {
             const targetRow = targetResult.rows[0] as any;
             if (!targetRow) return null;
 
+            const params: any[] = [];
+            let dateWhere = "";
+            if (metric === "sales" || metric === "users") {
+                const dateCol = metric === "sales" ? "order_date" : "last_order_date";
+                if (dateFilter?.startDate) {
+                    params.push(dateFilter.startDate);
+                    dateWhere += ` AND ${dateCol} >= $${params.length}`;
+                }
+                if (dateFilter?.endDate) {
+                    params.push(dateFilter.endDate);
+                    dateWhere += ` AND ${dateCol} <= $${params.length}`;
+                }
+            }
+
             let current = 0;
 
             if (metric === "sales") {
                 const result = await getPool().query(
-                    `SELECT COALESCE(SUM(total_sales), 0) as total FROM ${MART_SALES}`
+                    `SELECT COALESCE(SUM(total_sales), 0) as total FROM ${MART_SALES} WHERE 1=1${dateWhere}`,
+                    params
                 );
                 current = Number(result.rows[0]?.total || 0);
             } else if (metric === "users") {
                 const result = await getPool().query(
-                    `SELECT COUNT(DISTINCT customer_id) as count FROM ${MART_USERS}`
+                    `SELECT COUNT(DISTINCT customer_id) as count FROM ${MART_USERS} WHERE 1=1${dateWhere}`,
+                    params
                 );
                 current = Number(result.rows[0]?.count || 0);
             } else if (metric === "churn_rate") {

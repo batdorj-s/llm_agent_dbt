@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">82.92% </span>
+                <span class="strong">78.43% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>34/41</span>
+                <span class='fraction'>40/51</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">72.72% </span>
+                <span class="strong">75% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>16/22</span>
+                <span class='fraction'>24/32</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">85% </span>
+                <span class="strong">80% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>34/40</span>
+                <span class='fraction'>40/50</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line medium'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -164,7 +164,23 @@
 <a name='L99'></a><a href='#L99'>99</a>
 <a name='L100'></a><a href='#L100'>100</a>
 <a name='L101'></a><a href='#L101'>101</a>
-<a name='L102'></a><a href='#L102'>102</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">14x</span>
@@ -181,16 +197,32 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
@@ -272,7 +304,7 @@ const MART_SALES = "kpi_sales";
 const MART_USERS = "user_metrics";
 &nbsp;
 export class MartsKpiRepository implements IKpiRepository {
-    async getKpi(metric: KpiMetric["name"], _dateFilter?: DateFilter, _userId?: string): Promise&lt;KpiMetric | null&gt; {
+    async getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter, userId?: string): Promise&lt;KpiMetric | null&gt; {
         try {
             await initDataLake();
 &nbsp;
@@ -283,16 +315,32 @@ export class MartsKpiRepository implements IKpiRepository {
             const targetRow = targetResult.rows[0] as any;
             <span class="missing-if-branch" title="if path not taken" >I</span>if (!targetRow) <span class="cstat-no" title="statement not covered" >return null;</span>
 &nbsp;
+            const params: any[] = [];
+            let dateWhere = "";
+            if (metric === "sales" || metric === "users") {
+                const dateCol = metric === "sales" ? "order_date" : "last_order_date";
+                <span class="missing-if-branch" title="if path not taken" >I</span>if (dateFilter?.startDate) {
+<span class="cstat-no" title="statement not covered" >                    params.push(dateFilter.startDate);</span>
+<span class="cstat-no" title="statement not covered" >                    dateWhere += ` AND ${dateCol} &gt;= $${params.length}`;</span>
+                }
+                <span class="missing-if-branch" title="if path not taken" >I</span>if (dateFilter?.endDate) {
+<span class="cstat-no" title="statement not covered" >                    params.push(dateFilter.endDate);</span>
+<span class="cstat-no" title="statement not covered" >                    dateWhere += ` AND ${dateCol} &lt;= $${params.length}`;</span>
+                }
+            }
+&nbsp;
             let current = 0;
 &nbsp;
             if (metric === "sales") {
                 const result = await getPool().query(
-                    `SELECT COALESCE(SUM(total_sales), 0) as total FROM ${MART_SALES}`
+                    `SELECT COALESCE(SUM(total_sales), 0) as total FROM ${MART_SALES} WHERE 1=1${dateWhere}`,
+                    params
                 );
                 current = Number(result.rows[0]?.total || <span class="branch-1 cbranch-no" title="branch not covered" >0)</span>;
             } else if (metric === "users") {
                 const result = await getPool().query(
-                    `SELECT COUNT(DISTINCT customer_id) as count FROM ${MART_USERS}`
+                    `SELECT COUNT(DISTINCT customer_id) as count FROM ${MART_USERS} WHERE 1=1${dateWhere}`,
+                    params
                 );
                 current = Number(result.rows[0]?.count || <span class="branch-1 cbranch-no" title="branch not covered" >0)</span>;
             } else <span class="missing-if-branch" title="else path not taken" >E</span>if (metric === "churn_rate") {
@@ -373,7 +421,7 @@ export class MartsKpiRepository implements IKpiRepository {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-07-18T07:07:27.353Z
+                at 2026-07-18T07:31:19.644Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

@@ -81,7 +81,8 @@ export async function getCatalog(userId: string): Promise<DataLakeCatalogEntry[]
     const result = await getPool().query(
       `SELECT * FROM data_lake_catalog
        WHERE visibility = 'shared' OR owner_id = $1
-       ORDER BY created_at DESC, id DESC`,
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1000`,
       [userId]
     );
     return result.rows as DataLakeCatalogEntry[];

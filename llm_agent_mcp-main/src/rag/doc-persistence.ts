@@ -9,10 +9,26 @@ import type { RagDocument } from "./knowledge-base.js";
 export async function saveRagDocuments(docs: RagDocument[]): Promise<void> {
   if (!isPgAvailable() || docs.length === 0) return;
   const pool = getPool();
-  for (const doc of docs) {
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+    const batch = docs.slice(i, i + BATCH_SIZE);
+    const values: any[] = [];
+    const placeholders: string[] = [];
+    for (let j = 0; j < batch.length; j++) {
+      const doc = batch[j];
+      const base = j * 11;
+      placeholders.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11})`);
+      values.push(
+        doc.id, doc.text, doc.metadata.category, doc.metadata.department,
+        doc.metadata.author || null, doc.metadata.created_at || null,
+        doc.metadata.source_name || null, doc.metadata.parent_doc_id || null,
+        doc.metadata.chunk_index ?? null, doc.metadata.shared ?? true,
+        doc.keywords,
+      );
+    }
     await pool.query(
       `INSERT INTO rag_documents (id, text, category, department, author, created_at, source_name, parent_doc_id, chunk_index, shared, keywords)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       VALUES ${placeholders.join(",")}
        ON CONFLICT (id) DO UPDATE SET
          text = EXCLUDED.text,
          category = EXCLUDED.category,
@@ -24,13 +40,7 @@ export async function saveRagDocuments(docs: RagDocument[]): Promise<void> {
          chunk_index = EXCLUDED.chunk_index,
          shared = EXCLUDED.shared,
          keywords = EXCLUDED.keywords`,
-      [
-        doc.id, doc.text, doc.metadata.category, doc.metadata.department,
-        doc.metadata.author || null, doc.metadata.created_at || null,
-        doc.metadata.source_name || null, doc.metadata.parent_doc_id || null,
-        doc.metadata.chunk_index ?? null, doc.metadata.shared ?? true,
-        doc.keywords,
-      ]
+      values
     );
   }
 }
@@ -38,7 +48,7 @@ export async function saveRagDocuments(docs: RagDocument[]): Promise<void> {
 export async function loadRagDocuments(): Promise<RagDocument[]> {
   if (!isPgAvailable()) return [];
   const pool = getPool();
-  const result = await pool.query("SELECT * FROM rag_documents ORDER BY uploaded_at");
+  const result = await pool.query("SELECT * FROM rag_documents ORDER BY uploaded_at LIMIT 5000");
   return result.rows.map(row => ({
     id: row.id,
     text: row.text,

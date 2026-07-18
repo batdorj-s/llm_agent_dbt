@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu, X, BookOpen, ShieldCheck, GitBranch, Calendar, Users, Search, ChevronDown } from "lucide-react";
+import { Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu, X, BookOpen, ShieldCheck, GitBranch, Calendar, Users, Search, ChevronDown, Clock } from "lucide-react";
 import { ServerStatus } from "./types";
 import { AvatarDropdown, DocLink } from "./RightContent";
 import { GlobalSearch } from "./GlobalSearch";
 
-export type TabId = "ask" | "dashboard" | "report" | "glossary" | "quality" | "lineage" | "scheduler" | "sharing";
+export type TabId = "ask" | "dashboard" | "report" | "glossary" | "quality" | "lineage" | "scheduler" | "sharing" | "history";
 
 interface HeaderProps {
   serverStatus: ServerStatus | null;
@@ -27,6 +27,7 @@ const MAIN_TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 ];
 
 const SECONDARY_TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  { id: "history", label: "Түүх", icon: <Clock className="w-3.5 h-3.5" /> },
   { id: "glossary", label: "Толь", icon: <BookOpen className="w-3.5 h-3.5" /> },
   { id: "quality", label: "Чанар", icon: <ShieldCheck className="w-3.5 h-3.5" /> },
   { id: "lineage", label: "Lineage", icon: <GitBranch className="w-3.5 h-3.5" /> },

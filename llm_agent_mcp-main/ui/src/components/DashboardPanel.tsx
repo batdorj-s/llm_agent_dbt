@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { KpiData, SalesHistory } from "./types";
 import { ChartCard, NumberInfo, Trend, Field } from "./dashboard";
 import {
@@ -30,7 +30,7 @@ interface DashboardPanelProps {
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
-export const DashboardPanel = ({
+export const DashboardPanel = React.memo(({
   salesKpi,
   usersKpi,
   churnKpi,
@@ -42,15 +42,17 @@ export const DashboardPanel = ({
   const formatCurrency = (value: number) =>
     `$${value.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
 
-  const salesReach =
-    salesKpi && salesKpi.target > 0
+  const salesReach = useMemo(
+    () => salesKpi && salesKpi.target > 0
       ? Math.min(Math.round((salesKpi.current / salesKpi.target) * 100), 100)
-      : 0;
+      : 0,
+    [salesKpi?.current, salesKpi?.target]
+  );
 
-  const pieData = [
+  const pieData = useMemo(() => [
     { name: "Reached", value: salesReach },
     { name: "Remaining", value: 100 - salesReach },
-  ];
+  ], [salesReach]);
 
   return (
     <div className="space-y-4">
@@ -247,4 +249,4 @@ export const DashboardPanel = ({
       </div>
     </div>
   );
-};
+});

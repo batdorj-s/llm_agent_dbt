@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">68.75% </span>
+                <span class="strong">81.48% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>11/16</span>
+                <span class='fraction'>22/27</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">75% </span>
+                <span class="strong">85.71% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>9/12</span>
+                <span class='fraction'>18/21</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line medium'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -127,7 +127,17 @@
 <a name='L62'></a><a href='#L62'>62</a>
 <a name='L63'></a><a href='#L63'>63</a>
 <a name='L64'></a><a href='#L64'>64</a>
-<a name='L65'></a><a href='#L65'>65</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -140,12 +150,22 @@
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -202,10 +222,26 @@ import type { RagDocument } from "./knowledge-base.js";
 export async function saveRagDocuments(docs: RagDocument[]): Promise&lt;void&gt; {
   if (!isPgAvailable() || docs.length === 0) return;
   const pool = getPool();
-  for (const doc of docs) {
+  const BATCH_SIZE = 100;
+  for (let i = 0; i &lt; docs.length; i += BATCH_SIZE) {
+    const batch = docs.slice(i, i + BATCH_SIZE);
+    const values: any[] = [];
+    const placeholders: string[] = [];
+    for (let j = 0; j &lt; batch.length; j++) {
+      const doc = batch[j];
+      const base = j * 11;
+      placeholders.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11})`);
+      values.push(
+        doc.id, doc.text, doc.metadata.category, doc.metadata.department,
+        doc.metadata.author || <span class="branch-1 cbranch-no" title="branch not covered" >null, d</span>oc.metadata.created_at || <span class="branch-1 cbranch-no" title="branch not covered" >null,</span>
+        doc.metadata.source_name || <span class="branch-1 cbranch-no" title="branch not covered" >null, d</span>oc.metadata.parent_doc_id || null,
+        doc.metadata.chunk_index ?? null, doc.metadata.shared ?? true,
+        doc.keywords,
+      );
+    }
     await pool.query(
       `INSERT INTO rag_documents (id, text, category, department, author, created_at, source_name, parent_doc_id, chunk_index, shared, keywords)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       VALUES ${placeholders.join(",")}
        ON CONFLICT (id) DO UPDATE SET
          text = EXCLUDED.text,
          category = EXCLUDED.category,
@@ -217,13 +253,7 @@ export async function saveRagDocuments(docs: RagDocument[]): Promise&lt;void&gt;
          chunk_index = EXCLUDED.chunk_index,
          shared = EXCLUDED.shared,
          keywords = EXCLUDED.keywords`,
-      [
-        doc.id, doc.text, doc.metadata.category, doc.metadata.department,
-        doc.metadata.author || <span class="branch-1 cbranch-no" title="branch not covered" >null, d</span>oc.metadata.created_at || <span class="branch-1 cbranch-no" title="branch not covered" >null,</span>
-        doc.metadata.source_name || <span class="branch-1 cbranch-no" title="branch not covered" >null, d</span>oc.metadata.parent_doc_id || null,
-        doc.metadata.chunk_index ?? null, doc.metadata.shared ?? true,
-        doc.keywords,
-      ]
+      values
     );
   }
 }
@@ -231,7 +261,7 @@ export async function saveRagDocuments(docs: RagDocument[]): Promise&lt;void&gt;
 export async function loadRagDocuments(): Promise&lt;RagDocument[]&gt; {
   <span class="missing-if-branch" title="else path not taken" >E</span>if (!isPgAvailable()) return [];
   const <span class="cstat-no" title="statement not covered" >pool = getPool();</span>
-  const result = <span class="cstat-no" title="statement not covered" >await pool.query("SELECT * FROM rag_documents ORDER BY uploaded_at");</span>
+  const result = <span class="cstat-no" title="statement not covered" >await pool.query("SELECT * FROM rag_documents ORDER BY uploaded_at LIMIT 5000");</span>
 <span class="cstat-no" title="statement not covered" >  return result.rows.<span class="fstat-no" title="function not covered" >map(r</span>ow =&gt; (<span class="cstat-no" title="statement not covered" >{</span></span>
     id: row.id,
     text: row.text,
@@ -262,7 +292,7 @@ export async function deleteRagDocumentsByPrefix(idPrefix: string): Promise&lt;n
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-07-18T07:07:27.353Z
+                at 2026-07-18T07:31:19.644Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
