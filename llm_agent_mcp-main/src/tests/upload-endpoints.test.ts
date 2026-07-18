@@ -3,6 +3,8 @@ import request from "supertest";
 import { initDataLake, isPgAvailable, getPool } from "../db/data-lake.js";
 import { removeDocumentsByPrefix } from "../rag.js";
 import type { Express } from "express";
+import { writeFileSync, unlinkSync } from "fs";
+import path from "path";
 
 const TEST_TABLE = `test_upload_${Date.now()}`;
 
@@ -53,14 +55,16 @@ describe("Upload endpoints — /api/admin/upload-csv, files, etc.", () => {
             if (!app) return;
 
             const csvContent = "date,amount,customer_id\n2024-01-01,100,c1\n2024-02-01,200,c2";
+            const csvPath = path.join("/tmp", `${TEST_TABLE}.csv`);
+            writeFileSync(csvPath, csvContent, "utf8");
+
             const res = await request(app)
                 .post("/api/admin/upload-csv")
-                .send({
-                    filename: `${TEST_TABLE}.csv`,
-                    csvContent,
-                    tableName: TEST_TABLE,
-                    description: "Test upload",
-                });
+                .attach("file", csvPath)
+                .field("tableName", TEST_TABLE)
+                .field("description", "Test upload");
+
+            unlinkSync(csvPath);
 
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty("success", true);

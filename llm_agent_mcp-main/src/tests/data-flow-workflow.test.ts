@@ -77,14 +77,16 @@ describe("Complete Data Flow & Workflow", () => {
             if (!app) return;
 
             const csvContent = "date,amount,customer_id\n2024-01-01,100,c1\n2024-02-01,200,c2";
+            const csvPath = path.join("/tmp", `${TEST_TABLE}.csv`);
+            fs.writeFileSync(csvPath, csvContent, "utf8");
+
             const res = await request(app)
                 .post("/api/admin/upload-csv")
-                .send({
-                    filename: `${TEST_TABLE}.csv`,
-                    csvContent,
-                    tableName: TEST_TABLE,
-                    description: "Flow test upload",
-                });
+                .attach("file", csvPath)
+                .field("tableName", TEST_TABLE)
+                .field("description", "Flow test upload");
+
+            fs.unlinkSync(csvPath);
 
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);

@@ -278,5 +278,25 @@
     "status": "pending",
     "threadId": "thread_1784013797517",
     "timestamp": "2026-07-14T07:23:32.215Z"
+  },
+  {
+    "id": "feedback_1784353617964",
+    "userId": "user-admin-001",
+    "message": "Test query 1784353616424",
+    "response": "test response",
+    "rating": "negative",
+    "status": "pending",
+    "threadId": "thread_1784353616424",
+    "timestamp": "2026-07-18T05:46:57.964Z"
+  },
+  {
+    "id": "feedback_1784354291472",
+    "userId": "user-admin-001",
+    "message": "Test query 1784354275301",
+    "response": "test response",
+    "rating": "negative",
+    "status": "pending",
+    "threadId": "thread_1784354275301",
+    "timestamp": "2026-07-18T05:58:11.472Z"
   }
 ]
