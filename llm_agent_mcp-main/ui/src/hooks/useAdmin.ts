@@ -10,7 +10,7 @@ export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<Previ
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   // KPI target
   const [adjustMetric, setAdjustMetric]         = useState<"sales" | "users" | "churn_rate">("sales");
-  const [newTargetValue, setNewTargetValue]       = useState<number>(200_000_000);
+  const [newTargetValue, setNewTargetValue]       = useState<number>(0);
   const [isUpdatingTarget, setIsUpdatingTarget]   = useState(false);
   const [salesUpdateSuccess, setSalesUpdateSuccess] = useState<string | null>(null);
 
