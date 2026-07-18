@@ -1,5 +1,6 @@
 import { getRepository } from "../db/kpi-repository.js";
 import { getCatalog, executeSql, quoteIdent } from "../db/data-lake.js";
+import { FINANCE_COMBINED_TABLE } from "../db/ingestion.js";
 
 export type KpiMetricName = "sales" | "users" | "churn_rate";
 
@@ -99,7 +100,7 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
           COUNT(*) AS ${qNiitGuilgee},
           MIN(date) AS ${qEhlekhOgnoo},
           MAX(date) AS ${qDuusakhOgnoo}
-        FROM finance_combined
+        FROM ${FINANCE_COMBINED_TABLE}
         WHERE category IN ('орлого', 'зарлага')
       `, true, "system");
       if (summaryResult && summaryResult.length > 0) {
@@ -108,7 +109,7 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
         const totalExpense = Number(s[qNiitZarlag] || 0);
         const profit = totalIncome - totalExpense;
         sections.push(
-          `Санхүүгийн хураангуй (finance_combined хүснэгтээс):\n` +
+          `Санхүүгийн хураангуй (${FINANCE_COMBINED_TABLE} хүснэгтээс):\n` +
           `  Нийт орлого: ${totalIncome.toLocaleString()} ₮\n` +
           `  Нийт зарлага: ${totalExpense.toLocaleString()} ₮\n` +
           `  Үйл ажиллагааны ашиг: ${profit.toLocaleString()} ₮\n` +
@@ -125,8 +126,8 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
       const qXuvi = quoteIdent("хувь");
       const expenseByCategory = await executeSql(`
         SELECT subcategory, SUM(amount) AS ${qNiit},
-          ROUND(SUM(amount) * 100.0 / NULLIF((SELECT SUM(amount) FROM finance_combined WHERE category = 'зарлага'), 0), 1) AS ${qXuvi}
-        FROM finance_combined
+          ROUND(SUM(amount) * 100.0 / NULLIF((SELECT SUM(amount) FROM ${FINANCE_COMBINED_TABLE} WHERE category = 'зарлага'), 0), 1) AS ${qXuvi}
+        FROM ${FINANCE_COMBINED_TABLE}
         WHERE category = 'зарлага'
         GROUP BY subcategory
         ORDER BY ${qNiit} DESC
@@ -145,7 +146,7 @@ export async function buildFinanceKpiContext(query: string): Promise<string> {
       const qNiitIncome = quoteIdent("нийт");
       const incomeByCategory = await executeSql(`
         SELECT subcategory, SUM(amount) AS ${qNiitIncome}
-        FROM finance_combined
+        FROM ${FINANCE_COMBINED_TABLE}
         WHERE category = 'орлого'
         GROUP BY subcategory
         ORDER BY ${qNiitIncome} DESC

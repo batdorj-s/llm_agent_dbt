@@ -23,6 +23,7 @@ import {
   estimateTokens,
   chunkText,
 } from "./knowledge-base.js";
+import { saveRagDocuments, deleteRagDocumentsByPrefix } from "./doc-persistence.js";
 
 // ── Self-query filter type ────────────────────────────────────
 
@@ -533,6 +534,11 @@ export async function removeDocumentsByPrefix(idPrefix: string): Promise<number>
     console.log(`[SemanticSearch] BM25 index rebuilt after removal: ${getBm25Index()?.docCount} documents`);
   }
 
+  // Delete from database
+  try { await deleteRagDocumentsByPrefix(idPrefix); } catch (err) {
+    console.warn(`[RAG] Failed to delete persisted documents:`, (err as Error).message);
+  }
+
   if (removed > 0) {
     console.log(`[RAG] Removed ${removed} documents with id prefix "${idPrefix}"`);
     clearRagResultCache();
@@ -579,6 +585,11 @@ export async function addDocumentToCatalog(
 
   addKnowledgeDocuments(docs);
   console.log(`[RAG] Added ${docs.length} document(s): ${id} (${metadata.category})`);
+
+  // Persist to database (survives restarts)
+  try { await saveRagDocuments(docs); } catch (err) {
+    console.warn(`[RAG] Failed to persist documents to database:`, (err as Error).message);
+  }
 
   // Rebuild BM25 index
   if (getKnowledgeDocuments().length > 0) {

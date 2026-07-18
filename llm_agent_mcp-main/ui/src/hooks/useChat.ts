@@ -25,27 +25,26 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
   const attemptRecovery = useCallback(async (agentMsgId: string, partialText: string) => {
     setIsRecovering(true);
     try {
-      // Wait briefly for server to finish persisting
       await new Promise(r => setTimeout(r, 2000));
-      // Poll up to 3 times with backoff
       for (let attempt = 0; attempt < 3; attempt++) {
-        const res = await fetch(`/api/conversations?limit=1`, {
+        const res = await fetch(`/api/conversations?limit=5`, {
           headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         });
         const data = await res.json();
         if (data.success && data.data?.length > 0) {
-          const latest = data.data[0];
-          const msgRes = await fetch(`/api/conversations/${latest.id}/messages?limit=2`, {
-            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          });
-          const msgData = await msgRes.json();
-          if (msgData.success && msgData.data?.length > 0) {
-            const lastAssistant = [...msgData.data].reverse().find((m: { role: string }) => m.role === "assistant");
-            if (lastAssistant && lastAssistant.content && lastAssistant.content.length > partialText.length) {
-              // Server has the full response — replace partial
-              setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: lastAssistant.content } : m));
-              setIsRecovering(false);
-              return;
+          const matching = data.data.find((c: { threadId?: string }) => c.threadId === threadId);
+          if (matching) {
+            const msgRes = await fetch(`/api/conversations/${matching.id}/messages?limit=5`, {
+              headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            });
+            const msgData = await msgRes.json();
+            if (msgData.success && msgData.data?.length > 0) {
+              const lastAssistant = [...msgData.data].reverse().find((m: { role: string }) => m.role === "assistant");
+              if (lastAssistant && lastAssistant.content && lastAssistant.content.length > partialText.length) {
+                setMessages(p => p.map(m => m.id === agentMsgId ? { ...m, text: lastAssistant.content } : m));
+                setIsRecovering(false);
+                return;
+              }
             }
           }
         }
@@ -53,12 +52,11 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
       }
     } catch { /* recovery is best-effort */ }
     setIsRecovering(false);
-    // If recovery failed, keep the partial text and mark connection lost
     setMessages(p => p.map(m => m.id === agentMsgId ? {
       ...m,
       text: m.text + "\n\n*Холболт тасарсан. Дахин оролдохын тулд зүүн дээрх товчийг дарна уу.*",
     } : m));
-  }, [token]);
+  }, [token, threadId]);
 
   // #17: Monitor online/offline status
   const checkOnline = useCallback(() => {

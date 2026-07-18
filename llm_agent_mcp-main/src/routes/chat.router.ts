@@ -162,21 +162,19 @@ chatRouter.post("/stream", async (req, res) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     });
 
-    clearInterval(heartbeatTimer);
-    res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);
-
-    // #14: Partial persistence — persist assistant response AFTER streaming completes
-    // #7: Auto-naming — update title only on first message
+    // #14: Persist assistant response BEFORE sending done event so recovery can find it
     try {
       if (conversationId) {
         await addMessage(conversationId, "assistant", fullResponse);
-        // Auto-name: only set title on first message (when title is still null or threadId)
         if (isNewConversation) {
           const title = autoTitle(message);
           await updateConversationTitle(conversationId, userId, title);
         }
       }
     } catch { /* best-effort */ }
+
+    clearInterval(heartbeatTimer);
+    res.write(`data: ${JSON.stringify({ type: "done", full: fullResponse, threadId: threadIdFinal })}\n\n`);
   } catch (err: unknown) {
     clearInterval(heartbeatTimer);
     const msg = err instanceof Error ? err.message : "Unknown streaming error";

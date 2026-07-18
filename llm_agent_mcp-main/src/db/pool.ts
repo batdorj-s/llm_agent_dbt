@@ -242,6 +242,37 @@ export async function initDataLake(): Promise<void> {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash)`);
 
       await pool.query(`
+        CREATE TABLE IF NOT EXISTS rate_limiter (
+          key TEXT NOT NULL,
+          expires_at TIMESTAMPTZ NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      try {
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_rate_limiter_key_expires ON rate_limiter (key, expires_at)`);
+      } catch {}
+      try {
+        await pool.query(`ALTER TABLE rate_limiter ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
+      } catch {}
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS rag_documents (
+          id TEXT PRIMARY KEY,
+          text TEXT NOT NULL,
+          category TEXT NOT NULL,
+          department TEXT DEFAULT 'general',
+          author TEXT,
+          created_at TEXT,
+          source_name TEXT,
+          parent_doc_id TEXT,
+          chunk_index INTEGER,
+          shared BOOLEAN DEFAULT true,
+          keywords TEXT[] DEFAULT '{}',
+          uploaded_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS kpi_targets (
           metric_name TEXT PRIMARY KEY,
           target_value REAL NOT NULL,

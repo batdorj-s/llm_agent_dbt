@@ -72,27 +72,24 @@ export function useAdmin(onRefresh: () => void, onPreviewOpen: (p: Partial<Previ
     e.preventDefault();
     if (!csvFile || !tableNameInput.trim() || !tableDescInput.trim() || isUploadingCsv) return;
     setIsUploadingCsv(true); setCsvUploadMessage(null);
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const csvContent = event.target?.result as string;
-      try {
-        const res = await fetch("/api/admin/upload-csv", {
-          method: "POST", headers: { "Content-Type": "application/json", ...authHeaders },
-          body: JSON.stringify({ filename: csvFile.name, csvContent, tableName: tableNameInput, description: tableDescInput }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Upload failed");
-        setCsvUploadMessage(`Success: Table '${tableNameInput}' uploaded!`);
-        if (data.preview) {
-          onPreviewOpen({ data: data.preview, columns: data.columns ?? [], tableName: tableNameInput });
-        }
-        setCsvFile(null); setTableNameInput(""); setTableDescInput("");
-        onRefresh(); fetchUploadedFiles();
-      } catch (err: unknown) { setCsvUploadMessage(`Error: ${err instanceof Error ? err.message : err}`); }
-      finally { setIsUploadingCsv(false); }
-    };
-    reader.onerror = () => { setCsvUploadMessage("Error reading file."); setIsUploadingCsv(false); };
-    reader.readAsText(csvFile);
+    const formData = new FormData();
+    formData.append("file", csvFile);
+    formData.append("tableName", tableNameInput);
+    formData.append("description", tableDescInput);
+    try {
+      const res = await fetch("/api/admin/upload-csv", {
+        method: "POST", headers: authHeaders, body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setCsvUploadMessage(`Success: Table '${tableNameInput}' uploaded!`);
+      if (data.preview) {
+        onPreviewOpen({ data: data.preview, columns: data.columns ?? [], tableName: tableNameInput });
+      }
+      setCsvFile(null); setTableNameInput(""); setTableDescInput("");
+      onRefresh(); fetchUploadedFiles();
+    } catch (err: unknown) { setCsvUploadMessage(`Error: ${err instanceof Error ? err.message : err}`); }
+    finally { setIsUploadingCsv(false); }
   };
 
   const handleUploadExcel = async (e: React.FormEvent) => {

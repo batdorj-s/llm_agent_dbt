@@ -13,6 +13,7 @@ import {
   type BM25Index,
 } from "./semantic-search.js";
 import { getChromaCollection } from "./chroma-client.js";
+import { saveRagDocuments, loadRagDocuments } from "./doc-persistence.js";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -255,6 +256,33 @@ export async function setupKnowledgeBase(): Promise<boolean> {
     }
   } catch (err) {
     console.warn("[RAG] Failed to load approved feedback on startup:", (err as Error).message);
+  }
+
+  // Load user-uploaded documents from PostgreSQL (survive restarts)
+  try {
+    const persistedDocs = await loadRagDocuments();
+    const existingIds = new Set(_knowledgeDocuments.map(d => d.id));
+    let loaded = 0;
+    for (const doc of persistedDocs) {
+      if (!existingIds.has(doc.id)) {
+        _knowledgeDocuments.push(doc);
+        existingIds.add(doc.id);
+        loaded++;
+      }
+    }
+    if (loaded > 0) {
+      console.log(`[RAG] Loaded ${loaded} persisted documents from database`);
+    }
+  } catch (err) {
+    console.warn("[RAG] Failed to load persisted documents:", (err as Error).message);
+  }
+
+  // Persist all documents to database
+  try {
+    await saveRagDocuments(_knowledgeDocuments);
+    console.log(`[RAG] Persisted ${_knowledgeDocuments.length} documents to database`);
+  } catch (err) {
+    console.warn("[RAG] Failed to persist documents to database:", (err as Error).message);
   }
 
   // ChromaDB

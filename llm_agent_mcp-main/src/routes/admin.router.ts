@@ -312,7 +312,7 @@ router.get("/files/:id/download", requireAuth, requirePermission("admin:upload")
 });
 
 // ── Upload CSV ───────────────────────────────────────────────
-router.post("/upload-csv", requireAuth, requirePermission("admin:upload"), async (req, res) => {
+router.post("/upload-csv", requireAuth, requirePermission("admin:upload"), upload.single("file"), async (req, res) => {
   const userId = getUserId(req);
 
   const uploadLimit = await uploadLimiter.check(userId);
@@ -320,17 +320,16 @@ router.post("/upload-csv", requireAuth, requirePermission("admin:upload"), async
     return res.status(429).json({ error: uploadLimit.message, resetInMs: uploadLimit.resetInMs });
   }
 
-  const { filename, csvContent, tableName, description } = req.body;
-  if (!filename || !csvContent || !tableName || !description) {
-    return res.status(400).json({ error: "filename, csvContent, tableName, and description are required" });
+  const { tableName, description } = req.body;
+  if (!req.file || !tableName || !description) {
+    return res.status(400).json({ error: "file, tableName, and description are required" });
   }
 
   const sanitizedTableName = tableName.trim().replace(/[^a-zA-Z0-9_]/g, "");
-  const tempFilePath = path.join("/tmp", `csv_${Date.now()}_${filename}`);
+  const tempPath = req.file.path;
 
   try {
-    await fs.promises.writeFile(tempFilePath, csvContent, "utf8");
-    await seedCsv(tempFilePath, sanitizedTableName, userId, description, true, "private");
+    await seedCsv(tempPath, sanitizedTableName, userId, description, true, "private");
     console.log(`[Upload] CSV seeding done for '${sanitizedTableName}'`);
 
     const { preview, columns: resultCols, dbtStatus } = await processUploadedTable(
@@ -350,7 +349,7 @@ router.post("/upload-csv", requireAuth, requirePermission("admin:upload"), async
     log("error", `CSV Upload Error: ${err instanceof Error ? err.message : String(err)}`, req);
     res.status(500).json({ error: err instanceof Error ? err.message : "CSV upload failed" });
   } finally {
-    fs.promises.unlink(tempFilePath).catch(() => {});
+    if (req.file) fs.promises.unlink(req.file.path).catch(() => {});
   }
 });
 

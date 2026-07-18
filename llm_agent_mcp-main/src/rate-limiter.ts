@@ -1,14 +1,17 @@
 /**
- * rate-limiter.ts — Sliding-window rate limiter with Redis or in-memory backend.
+ * rate-limiter.ts — Sliding-window rate limiter with Redis, PostgreSQL, or in-memory backend.
  *
- * If REDIS_URL is set, uses Redis (safe for multi-instance deployments).
- * Otherwise falls back to in-memory (development / single-instance only).
+ * Backend priority:
+ *   1. Redis (if REDIS_URL is set)
+ *   2. PostgreSQL (if DATABASE_URL is configured and available)
+ *   3. In-memory (development / single-instance only, lost on restart)
  *
  * Each RateLimiter instance owns its own in-memory store.
  * All instances share a single Redis connection when Redis is configured.
  */
 
 import type { Redis as RedisClient } from "ioredis";
+import { getPool, isPgAvailable } from "./db/pool.js";
 
 export interface RateLimiterOptions {
   maxRequests: number;
@@ -128,6 +131,68 @@ async function redisCheck(client: RedisClient, key: string, maxRequests: number,
 }
 
 // ─────────────────────────────────────────────────────────────
+// PostgreSQL backend (persists across restarts, shared across instances)
+// ─────────────────────────────────────────────────────────────
+
+class PostgresBackend {
+  async check(key: string, maxRequests: number, windowMs: number): Promise<RateLimitResult> {
+    if (!isPgAvailable()) return { allowed: false, remaining: 0, resetInMs: 0, message: "Backend unavailable" };
+    const pool = getPool();
+    const now = new Date();
+    const cutoff = new Date(Date.now() - windowMs);
+
+    try {
+      await pool.query("DELETE FROM rate_limiter WHERE expires_at < $1", [cutoff]);
+      const result = await pool.query(
+        "SELECT COUNT(*) AS cnt, MIN(expires_at) AS oldest FROM rate_limiter WHERE key = $1 AND expires_at > $2",
+        [key, cutoff]
+      );
+      const count = Number(result.rows[0]?.cnt ?? 0);
+
+      if (count >= maxRequests) {
+        const oldestMs = result.rows[0]?.oldest ? new Date(result.rows[0].oldest as string).getTime() : Date.now();
+        const resetInMs = Math.max(0, windowMs - (Date.now() - (oldestMs - windowMs)));
+        return {
+          allowed: false, remaining: 0, resetInMs,
+          message: `Rate limit exceeded. Try again in ${Math.ceil(resetInMs / 1000)}s (limit: ${maxRequests} req/${windowMs / 1000}s).`,
+        };
+      }
+
+      const expiresAt = new Date(Date.now() + windowMs);
+      await pool.query(
+        "INSERT INTO rate_limiter (key, expires_at) VALUES ($1, $2)",
+        [key, expiresAt]
+      );
+      return { allowed: true, remaining: maxRequests - count - 1, resetInMs: windowMs };
+    } catch {
+      return { allowed: false, remaining: 0, resetInMs: 0, message: "Rate limiter backend error" };
+    }
+  }
+
+  async reset(key: string): Promise<void> {
+    if (!isPgAvailable()) return;
+    try {
+      await getPool().query("DELETE FROM rate_limiter WHERE key = $1", [key]);
+    } catch { /* ignore */ }
+  }
+
+  async stats(key: string, maxRequests: number, windowMs: number): Promise<{ requests: number; remaining: number }> {
+    if (!isPgAvailable()) return { requests: 0, remaining: maxRequests };
+    try {
+      const cutoff = new Date(Date.now() - windowMs);
+      const result = await getPool().query(
+        "SELECT COUNT(*) AS cnt FROM rate_limiter WHERE key = $1 AND expires_at > $2",
+        [key, cutoff]
+      );
+      const count = Number(result.rows[0]?.cnt ?? 0);
+      return { requests: count, remaining: Math.max(0, maxRequests - count) };
+    } catch {
+      return { requests: 0, remaining: maxRequests };
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // Public RateLimiter class
 // ─────────────────────────────────────────────────────────────
 
@@ -135,6 +200,7 @@ export class RateLimiter {
   private readonly maxRequests: number;
   private readonly windowMs: number;
   private readonly mem = new MemoryBackend();
+  private readonly pg = new PostgresBackend();
 
   constructor(options: RateLimiterOptions) {
     this.maxRequests = options.maxRequests;
@@ -144,12 +210,14 @@ export class RateLimiter {
   async check(key: string): Promise<RateLimitResult> {
     const redis = await getRedisClient();
     if (redis) return redisCheck(redis, key, this.maxRequests, this.windowMs);
+    if (isPgAvailable()) return this.pg.check(key, this.maxRequests, this.windowMs);
     return this.mem.check(key, this.maxRequests, this.windowMs);
   }
 
   async reset(key: string): Promise<void> {
     const redis = await getRedisClient();
     if (redis) { await redis.del(key); return; }
+    if (isPgAvailable()) { await this.pg.reset(key); return; }
     this.mem.reset(key);
   }
 
@@ -161,11 +229,17 @@ export class RateLimiter {
       const count = await redis.zcard(key);
       return { requests: count, remaining: Math.max(0, this.maxRequests - count) };
     }
+    if (isPgAvailable()) return this.pg.stats(key, this.maxRequests, this.windowMs);
     return this.mem.stats(key, this.maxRequests, this.windowMs);
   }
 
   startCleanup(intervalMs = 300_000): NodeJS.Timeout {
-    return setInterval(() => this.mem.cleanup(this.windowMs), intervalMs);
+    return setInterval(() => {
+      this.mem.cleanup(this.windowMs);
+      if (isPgAvailable()) {
+        getPool().query("DELETE FROM rate_limiter WHERE expires_at < NOW() - interval '1 hour'").catch(() => {});
+      }
+    }, intervalMs);
   }
 }
 
