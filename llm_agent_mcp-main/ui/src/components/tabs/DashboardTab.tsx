@@ -121,6 +121,7 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
           <EditableLinkGroup links={[]} />
         </div>
         <AdminPanel
+          token={token}
           user={user}
           adjustMetric={admin.adjustMetric} newTargetValue={admin.newTargetValue}
           isUpdatingTarget={admin.isUpdatingTarget} salesUpdateSuccess={admin.salesUpdateSuccess}

@@ -51,6 +51,7 @@ import sharingRouter from "./routes/sharing.router.js";
 import unifiedSearchRouter from "./routes/unified-search.router.js";
 import notificationRouter from "./routes/notification.router.js";
 import historyRouter from "./routes/history.router.js";
+import financeMapperRouter from "./routes/finance-mapper.router.js";
 import multer from "multer";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
@@ -256,6 +257,7 @@ app.use("/api",             sharingRouter);        // /api/teams, /api/sharing
 app.use("/api",             unifiedSearchRouter);  // /api/search
 app.use("/api",             notificationRouter);   // /api/notifications/*
 app.use("/api",             historyRouter);        // /api/history
+app.use("/api",             financeMapperRouter);  // /api/finance-mapper/*
 
 // ── Production security hardening ──────────────────────────
 app.use((_req, res, next) => {

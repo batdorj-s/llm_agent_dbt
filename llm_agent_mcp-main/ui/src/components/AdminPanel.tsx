@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { Activity, FileText, Trash2 } from "lucide-react";
+import { Activity, FileText, Trash2, ArrowLeftRight } from "lucide-react";
 import { UploadedFile } from "./types";
+import { FinanceMapper } from "./FinanceMapper";
 
 interface AdminPanelProps {
+  token: string;
   user: { email: string; role: string } | null;
   adjustMetric: "sales" | "users" | "churn_rate";
   newTargetValue: number;
@@ -44,6 +46,7 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel = ({
+  token,
   user,
   adjustMetric,
   newTargetValue,
@@ -82,6 +85,7 @@ export const AdminPanel = ({
   onDeleteFile,
 }: AdminPanelProps) => {
   const [datasetFormat, setDatasetFormat] = useState<"csv" | "excel">("csv");
+  const [mapperOpen, setMapperOpen] = useState(false);
   if (!user) return null;
 
   const isCsv = datasetFormat === "csv";
@@ -186,6 +190,21 @@ export const AdminPanel = ({
           </button>
         </form>
         {docUploadMessage && <p className="text-[9px] text-foreground/60 mt-1 max-w-full break-words">{docUploadMessage}</p>}
+      </div>
+
+      {/* FINANCE AUTO-MAPPER */}
+      <div className="border-t border-border pt-4">
+        {mapperOpen ? (
+          <FinanceMapper token={token} onClose={() => setMapperOpen(false)} />
+        ) : (
+          <button
+            onClick={() => setMapperOpen(true)}
+            className="w-full flex items-center justify-between py-1.5 bg-foreground/5 hover:bg-foreground/10 rounded px-2 text-[10px] font-bold text-foreground/70 hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span><ArrowLeftRight className="w-3 h-3 inline mr-1" />Auto-Mapper</span>
+            <span className="text-[8px] text-foreground/40">⟶</span>
+          </button>
+        )}
       </div>
 
       {/* FILE MANAGER */}
