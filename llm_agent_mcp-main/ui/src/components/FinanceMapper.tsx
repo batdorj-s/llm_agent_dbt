@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { Upload, CheckCircle, XCircle, Loader2, ArrowLeftRight } from "lucide-react";
+import { Upload, CheckCircle, XCircle, Loader2, ArrowLeftRight, Download } from "lucide-react";
 
 interface MappingStep {
   original: string | null;
@@ -58,6 +58,30 @@ export const FinanceMapper: React.FC<FinanceMapperProps> = ({ token, onClose }) 
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
       setState("error");
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!result) return;
+    const filename = result.file_path.split("/").pop();
+    if (!filename) return;
+
+    try {
+      const response = await fetch(`/api/finance-mapper/download/${filename}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download failed");
     }
   };
 
@@ -175,12 +199,21 @@ export const FinanceMapper: React.FC<FinanceMapperProps> = ({ token, onClose }) 
             </div>
           )}
 
-          <button
-            onClick={reset}
-            className="w-full py-1.5 bg-background border border-border hover:bg-foreground/5 text-foreground rounded text-[10px] font-bold cursor-pointer transition-colors"
-          >
-            Map another file
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleDownload}
+              className="flex-1 py-1.5 bg-foreground text-background hover:opacity-80 rounded text-[10px] font-bold cursor-pointer transition-all"
+            >
+              <Download className="w-3 h-3 inline mr-1" />
+              Download
+            </button>
+            <button
+              onClick={reset}
+              className="flex-1 py-1.5 bg-background border border-border hover:bg-foreground/5 text-foreground rounded text-[10px] font-bold cursor-pointer transition-colors"
+            >
+              Map another file
+            </button>
+          </div>
         </div>
       )}
 

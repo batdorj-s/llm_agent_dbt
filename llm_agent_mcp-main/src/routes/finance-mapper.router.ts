@@ -6,6 +6,7 @@ import { upload } from "./shared.js";
 
 const router = Router();
 
+const DATA_DIR = path.resolve("data");
 const MAPPER_PY = path.resolve("finance-mapper/mapper.py");
 const PYTHON_BIN = path.resolve("finance-mapper/.venv/bin/python");
 
@@ -55,6 +56,24 @@ router.post("/finance-mapper/upload", upload.single("file"), async (req, res) =>
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
+});
+
+router.get("/finance-mapper/download/:filename", (req, res) => {
+  const filename = req.params.filename;
+
+  if (!filename.startsWith("sar_") || !filename.endsWith(".xlsx")) {
+    res.status(400).json({ error: "Invalid filename" });
+    return;
+  }
+
+  const filePath = path.join(DATA_DIR, filename);
+
+  if (!fs.existsSync(filePath)) {
+    res.status(404).json({ error: "File not found" });
+    return;
+  }
+
+  res.download(filePath, filename);
 });
 
 export default router;
