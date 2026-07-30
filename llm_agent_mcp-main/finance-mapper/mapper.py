@@ -17,6 +17,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -254,6 +255,157 @@ def transform(df: pd.DataFrame, mapping_result: dict) -> pd.DataFrame:
     return df
 
 
+# ── Text-to-Table: Process Natural Language ──────────────────────────
+
+
+def get_latest_sar_path(data_dir: Path) -> Optional[Path]:
+    """Return the latest sar_N.xlsx path, or None if none exist."""
+    os.makedirs(data_dir, exist_ok=True)
+    pattern = re.compile(r"sar_(\d+)\.xlsx")
+    max_n = 0
+    latest = None
+    for f in os.listdir(data_dir):
+        m = pattern.match(f)
+        if m:
+            n = int(m.group(1))
+            if n > max_n:
+                max_n = n
+                latest = data_dir / f
+    return latest
+
+
+def process_text_input(text_content: str) -> dict:
+    """Extract structured financial data from natural language text."""
+    groq_key = os.getenv("GROQ_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    if groq_key:
+        client = OpenAI(
+            api_key=groq_key,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        model = "llama-3.3-70b-versatile"
+    elif openai_key:
+        client = OpenAI(api_key=openai_key)
+        model = "gpt-4o-mini"
+    else:
+        raise ValueError("No LLM API key found. Set GROQ_API_KEY or OPENAI_API_KEY in .env")
+
+    today = "2026-07-31"
+    prompt = f"""You are an expert financial data extraction assistant.
+
+Analyze the following natural language sentence/context:
+"{text_content}"
+
+Extract financial transaction details and map them to this exact target schema:
+{TARGET_SCHEMA}
+(columns: Өдөр, Харилцагч, Дүн, Ангилал, Дэд ангилал, Тайлбар).
+
+Rules:
+1. If date is not mentioned, use today's date: {today}.
+2. Extract customer name (Харилцагч) — the entity/person spending or receiving.
+3. Extract amount (Дүн) — numeric only; strip currency symbols (₮$€£), commas, spaces.
+4. Infer category (Ангилал) from context — common values: Зарлага (purchase/expense), Орлого (income/receipt), Дотоод шилжүүлэг (internal transfer). Default to Зарлага for most purchases.
+5. Infer subcategory (Дэд ангилал) from context — e.g. Оффис, Түрээс, Хүнс, Тээвэр, Касс, ҮАЗ, Цалин, Хэрэгсэл, Салбар шилжүүлэг, Зээл, Бусад.
+6. Description (Тайлбар) — the full original text.
+7. Every field must have a value — no nulls.
+
+For the explanation array, identify which specific keywords in the input text were used to extract each field. Be detailed and specific.
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "extracted_data": {{
+    "Өдөр": "{today}",
+    "Харилцагч": "Customer name",
+    "Дүн": 45000.0,
+    "Ангилал": "Зарлага",
+    "Дэд ангилал": "Оффис",
+    "Тайлбар": "Full original text"
+  }},
+  "explanation": [
+    {{"original": "keyword from text", "target": "Өдөр", "note": "How date was determined"}},
+    {{"original": "keyword from text", "target": "Харилцагч", "note": "Identified as customer name"}},
+    {{"original": "keyword from text", "target": "Дүн", "note": "Monetary amount extracted"}},
+    {{"original": "keyword from text", "target": "Ангилал", "note": "Category inference reasoning"}},
+    {{"original": "keyword from text", "target": "Дэд ангилал", "note": "Subcategory inference reasoning"}},
+    {{"original": "full text", "target": "Тайлбар", "note": "Full text stored as description"}}
+  ]
+}}
+
+Make explanation items specific to the actual input text — show real keywords found."""
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a financial data extraction AI. Output ONLY valid JSON. No explanations, no markdown.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.1,
+        max_tokens=1500,
+    )
+
+    raw = response.choices[0].message.content
+    if not raw:
+        raise ValueError("Empty response from LLM")
+
+    parsed = json.loads(raw)
+    if "extracted_data" not in parsed:
+        raise ValueError(f"LLM returned unexpected structure: {list(parsed.keys())}")
+
+    return parsed
+
+
+def text_main(text_content: str) -> None:
+    """Text-to-Table pipeline: extract -> append to sar_N.xlsx -> emit result."""
+    try:
+        result = process_text_input(text_content)
+        extracted = result["extracted_data"]
+        explanation = result.get("explanation", [])
+
+        # Ensure numeric amount
+        extracted["Дүн"] = pd.to_numeric(extracted.get("Дүн", 0), errors="coerce")
+
+        # Find latest sar file to append, or create new
+        latest = get_latest_sar_path(DATA_DIR)
+
+        new_row = pd.DataFrame([extracted])
+
+        if latest is not None:
+            existing = pd.read_excel(latest)
+            df = pd.concat([existing, new_row], ignore_index=True)
+            output_path = latest
+        else:
+            df = new_row
+            output_path = resolve_next_filename(DATA_DIR)
+
+        df.to_excel(output_path, index=False, engine="openpyxl")
+
+        # Preview after (last 3 rows)
+        preview_after = df.tail(3).to_dict(orient="records")
+
+        emit_result({
+            "status": "success",
+            "file_path": str(output_path),
+            "mapping_explanation": explanation,
+            "preview_data": {
+                "before": [{"input_text": text_content}],
+                "after": preview_after,
+            },
+        })
+
+    except Exception as e:
+        emit_result({
+            "status": "error",
+            "message": str(e),
+            "error_type": type(e).__name__,
+        })
+        sys.exit(1)
+
+
 # ── Step 4: Save ─────────────────────────────────────────────────────
 
 
@@ -335,6 +487,13 @@ def main(input_path: str):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        emit_result({"status": "error", "message": "Usage: mapper.py <input_file_path>"})
+        emit_result({"status": "error", "message": "Usage: mapper.py <input_file_path> or mapper.py --text (read text from stdin)"})
         sys.exit(1)
-    main(sys.argv[1])
+    if sys.argv[1] == "--text":
+        text = sys.stdin.read().strip()
+        if not text:
+            emit_result({"status": "error", "message": "No text provided via stdin"})
+            sys.exit(1)
+        text_main(text)
+    else:
+        main(sys.argv[1])

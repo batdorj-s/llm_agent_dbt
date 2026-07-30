@@ -58,6 +58,51 @@ router.post("/finance-mapper/upload", upload.single("file"), async (req, res) =>
   }
 });
 
+router.post("/finance-mapper/text", async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || typeof text !== "string" || !text.trim()) {
+      res.status(400).json({ error: "Text input is required" });
+      return;
+    }
+
+    const cwd = path.resolve(".");
+    const child = spawn(PYTHON_BIN, [MAPPER_PY, "--text"], {
+      cwd,
+      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    // Send text via stdin (safe, no shell escaping issues)
+    child.stdin.write(text);
+    child.stdin.end();
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        console.error("[finance-mapper/text] Python stderr:", stderr);
+        console.error("[finance-mapper/text] Python stdout:", stdout);
+        res.status(500).json({ error: "Text mapping failed", details: stderr || stdout });
+        return;
+      }
+
+      try {
+        const result = JSON.parse(stdout);
+        res.json(result);
+      } catch {
+        res.status(500).json({ error: "Invalid response from mapper", raw: stdout });
+      }
+    });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
 router.get("/finance-mapper/download/:filename", (req, res) => {
   const filename = req.params.filename;
 
