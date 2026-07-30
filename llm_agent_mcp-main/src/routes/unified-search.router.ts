@@ -31,16 +31,30 @@ function loadGlossaryTerms(): Array<{ title: string; description: string; catego
     try {
       const raw = fs.readFileSync(filePath, "utf-8");
       const parsed = yaml.parse(raw);
-      const docs = parsed?.documents || parsed || [];
-      for (const doc of Array.isArray(docs) ? docs : [docs]) {
-        if (doc.title || doc.name || doc.metric_name) {
-          terms.push({
-            title: doc.title || doc.name || doc.metric_name || "",
-            description: doc.description || doc.definition || "",
-            category: doc.category || doc.type || "general",
-            keywords: doc.synonyms || doc.tags || [],
-          });
-        }
+
+      // Try common top-level keys in priority order
+      let entries: any[] = [];
+      if (Array.isArray(parsed?.documents)) {
+        entries = parsed.documents;
+      } else if (Array.isArray(parsed?.terms)) {
+        entries = parsed.terms;
+      } else if (Array.isArray(parsed?.metrics)) {
+        entries = parsed.metrics;
+      } else if (Array.isArray(parsed)) {
+        entries = parsed;
+      }
+
+      for (const doc of entries) {
+        // Resolve title from various possible field names
+        const title = doc.title || doc.name || doc.metric_name || doc.term || doc.label || doc.id || "";
+        if (!title) continue;
+
+        terms.push({
+          title,
+          description: doc.description || doc.definition || doc.text || "",
+          category: doc.category || doc.type || doc.subcategory || "general",
+          keywords: doc.synonyms || doc.tags || doc.keywords || [],
+        });
       }
     } catch { /* skip unparseable */ }
   }

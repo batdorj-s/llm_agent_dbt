@@ -31,6 +31,7 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     // viewer permissions
     "dashboard:read",
     "kpi:read",
+    "metrics:read",
     "report:read",
     "chat:send",
     "conversation:read",
@@ -57,6 +58,7 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "kpi:anomaly",
     "kpi:whatif",
     "report:read",
+    "metrics:read",
     "chat:send",
     "conversation:read",
     "conversation:create",

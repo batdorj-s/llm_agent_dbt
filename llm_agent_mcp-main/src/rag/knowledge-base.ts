@@ -155,6 +155,43 @@ export function chunkText(
   return chunks;
 }
 
+// ── Passport loader ──────────────────────────────────────────
+
+const PASSPORTS_DIR = path.join(process.cwd(), "docs", "passports");
+
+function loadPassports(): RagDocument[] {
+  const docs: RagDocument[] = [];
+  if (!fs.existsSync(PASSPORTS_DIR)) {
+    console.warn(`[RAG] Passports directory not found at ${PASSPORTS_DIR}`);
+    return docs;
+  }
+  const files = fs.readdirSync(PASSPORTS_DIR).filter(f => f.endsWith(".md"));
+  for (const file of files) {
+    try {
+      const tableName = path.basename(file, ".md");
+      const content = fs.readFileSync(path.join(PASSPORTS_DIR, file), "utf-8");
+      docs.push({
+        id: `passport_${tableName}`,
+        text: content,
+        metadata: {
+          category: "data_catalog",
+          department: "analytics",
+          author: "system",
+          source_name: `passport_${tableName}`,
+          shared: true,
+        },
+        keywords: ["passport", tableName],
+      });
+    } catch (err) {
+      console.warn(`[RAG] Failed to load passport ${file}:`, (err as Error).message);
+    }
+  }
+  if (docs.length > 0) {
+    console.log(`[RAG] Loaded ${docs.length} passport(s) from ${PASSPORTS_DIR}`);
+  }
+  return docs;
+}
+
 // ── YAML loaders ──────────────────────────────────────────────
 
 export function loadKnowledgeBase(): RagDocument[] {
@@ -227,6 +264,19 @@ export async function setupKnowledgeBase(): Promise<boolean> {
 
   const dbtMetricDocs = syncDbtMetricsToRag();
   _knowledgeDocuments.push(...dbtMetricDocs);
+
+  // Load passports
+  const passportDocs = loadPassports();
+  let passportAdded = 0;
+  for (const doc of passportDocs) {
+    if (!_knowledgeDocuments.some(d => d.id === doc.id)) {
+      _knowledgeDocuments.push(doc);
+      passportAdded++;
+    }
+  }
+  if (passportAdded > 0) {
+    console.log(`[RAG] Added ${passportAdded} passport document(s) to knowledge base`);
+  }
 
   // Load approved feedback
   try {

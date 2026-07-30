@@ -8,8 +8,8 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 // PDF-safe: Helvetica uses WinAnsi which cannot encode Cyrillic/Mongolian characters
 // Strip non-Latin chars so pdf-lib doesn't throw
-function sanitizePdfText(s: string): string {
-  return s.replace(/[^\x20-\x7E]/g, "?");
+function sanitizePdfText(s: string | null | undefined): string {
+  return s ? s.replace(/[^\x20-\x7E]/g, "?") : "";
 }
 
 function formatCurrencyPdf(value: number): string {
@@ -64,7 +64,9 @@ async function getFinanceReportData(userId: string, startDate?: string, endDate?
 
   const totalIncome  = Number(incomeRes.rows[0]?.total || 0);
   const totalExpense = Number(expenseRes.rows[0]?.total || 0);
-  const history = (monthlyRes?.rows ?? []).map((r: any) => ({ month: r.month, revenue: Number(r.revenue || 0) }));
+  const history = (monthlyRes?.rows ?? [])
+    .filter((r: any) => r.month)
+    .map((r: any) => ({ month: r.month, revenue: Number(r.revenue || 0) }));
 
   return { totalIncome, totalExpense, netProfit: totalIncome - totalExpense, history };
 }
@@ -170,7 +172,7 @@ export async function generateReportPdf(userId: string, startDate?: string, endD
 
       page.drawRectangle({ x, y: yBar, width: barWidth, height: barH, color: rgb(0.23, 0.51, 0.96) });
       // Label
-      const label = h.month.length > 3 ? h.month.slice(0, 3) : h.month;
+      const label = (h.month?.length > 3 ? h.month.slice(0, 3) : h.month) || "";
       page.drawText(sanitizePdfText(label), { x: x - 1, y: chartBottom - chartHeight - 8, size: 6, font, color: rgb(0.4, 0.4, 0.4) });
     }
 

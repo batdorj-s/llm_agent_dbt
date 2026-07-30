@@ -621,12 +621,19 @@ export async function addDocumentToCatalog(
 // ── Passport helpers ──────────────────────────────────────────
 
 export async function getPassportByTableName(tableName: string): Promise<string | null> {
+  // Try ChromaDB first
   const col = await getChromaCollection();
-  if (!col) return null;
-  try {
-    const result = await col.get({ ids: [`passport_${tableName}`] });
-    return result.documents?.[0] ?? null;
-  } catch { return null; }
+  if (col) {
+    try {
+      const result = await col.get({ ids: [`passport_${tableName}`] });
+      if (result.documents?.[0]) return result.documents[0];
+    } catch { /* fall through to in-memory */ }
+  }
+
+  // Fallback: search in-memory documents
+  const docs = getKnowledgeDocuments();
+  const match = docs.find(d => d.id === `passport_${tableName}`);
+  return match?.text ?? null;
 }
 
 export function parsePassportQuestions(passportMarkdown: string): string[] {
