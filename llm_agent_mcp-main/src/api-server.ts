@@ -239,7 +239,7 @@ app.use("/api/dashboard",   dashboardRouter);
 app.use("/api",             dashboardRouter);   // /api/computed-metrics, /api/export-pdf|export-xlsx
 app.use("/api/report",      dashboardRouter);   // /api/report/export-pdf|export-xlsx
 app.use("/api",             alertsRouter);
-app.use("/api/whatif",      whatifRouter);
+app.use("/api",             whatifRouter);       // /api/whatif
 app.use("/api",             conversationsRouter);  // /api/conversations, /api/conversations/search, ...
 app.use("/api/admin",       adminRouter);
 app.use("/api/feedback",    feedbackRouter);
@@ -253,7 +253,7 @@ app.use("/api",             schedulerRouter);      // /api/scheduler
 app.use("/api",             sharingRouter);        // /api/teams, /api/sharing
 app.use("/api",             unifiedSearchRouter);  // /api/search
 app.use("/api",             notificationRouter);   // /api/notifications/*
-app.use("/api",             historyRouter);        // /api/history
+app.use("/api/history",     historyRouter);      // /api/history, /api/history/stats
 app.use("/api",             financeMapperRouter);  // /api/finance-mapper/*
 
 // ── Production security hardening ──────────────────────────
