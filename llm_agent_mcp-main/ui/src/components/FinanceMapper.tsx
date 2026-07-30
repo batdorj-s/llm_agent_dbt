@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useRef } from "react";
-import { Upload, CheckCircle, XCircle, Loader2, ArrowLeftRight, Download, Type } from "lucide-react";
+import React, { useState, useRef, useCallback } from "react";
+import { Upload, CheckCircle, XCircle, Loader2, ArrowLeftRight, Download, Type, FileText } from "lucide-react";
 
 interface MappingStep {
   original: string | null;
@@ -32,9 +32,12 @@ export const FinanceMapper: React.FC<FinanceMapperProps> = ({ token, onClose }) 
   const [mode, setMode] = useState<InputMode>("file");
   const [file, setFile] = useState<File | null>(null);
   const [inputText, setInputText] = useState<string>("");
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [result, setResult] = useState<MapperResult | null>(null);
   const [error, setError] = useState<string>("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const docFileRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async () => {
     if (!file) return;
@@ -63,6 +66,59 @@ export const FinanceMapper: React.FC<FinanceMapperProps> = ({ token, onClose }) 
       setState("error");
     }
   };
+
+  const handleDocUpload = async () => {
+    if (!docFile) return;
+    setState("uploading");
+    setError("");
+
+    const fd = new FormData();
+    fd.append("file", docFile);
+
+    try {
+      const res = await fetch("/api/finance-mapper/document", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        setResult(data);
+        setState("done");
+      } else {
+        setError(data.error || data.details || "Document mapping failed");
+        setState("error");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+      setState("error");
+    }
+  };
+
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }, []);
+
+  const onDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }, []);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) {
+      const ext = droppedFile.name.split(".").pop()?.toLowerCase();
+      if (ext === "docx" || ext === "txt") {
+        setDocFile(droppedFile);
+      }
+    }
+  }, []);
 
   const handleTextSubmit = async () => {
     if (!inputText.trim()) return;
@@ -119,10 +175,12 @@ export const FinanceMapper: React.FC<FinanceMapperProps> = ({ token, onClose }) 
   const reset = () => {
     setState("idle");
     setFile(null);
+    setDocFile(null);
     setInputText("");
     setResult(null);
     setError("");
     if (fileRef.current) fileRef.current.value = "";
+    if (docFileRef.current) docFileRef.current.value = "";
   };
 
   const tabClass = (tab: InputMode) =>
@@ -193,6 +251,43 @@ export const FinanceMapper: React.FC<FinanceMapperProps> = ({ token, onClose }) 
                 <Type className="w-3 h-3 inline mr-1" />
                 Текстийг хөрвүүлэх
               </button>
+
+              <div className="flex items-center gap-2 text-[9px] text-foreground/30">
+                <div className="flex-1 h-px bg-border" />
+                <span>эсвэл .docx / .txt файл оруулах</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+
+              <div
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+                className={`relative border border-dashed rounded p-3 text-center transition-colors cursor-pointer ${
+                  dragOver
+                    ? "border-foreground/40 bg-foreground/8"
+                    : "border-border hover:border-foreground/30 bg-background/50"
+                } text-foreground`}
+              >
+                <input
+                  ref={docFileRef}
+                  type="file"
+                  accept=".docx,.txt"
+                  onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <FileText className="w-4 h-4 mx-auto mb-1 text-foreground/40" />
+                <span className="text-[10px] text-foreground/60 block truncate">
+                  {docFile ? docFile.name : "Drop a .docx or .txt file here, or click to select"}
+                </span>
+              </div>
+              <button
+                onClick={handleDocUpload}
+                disabled={!docFile}
+                className="w-full py-1.5 bg-foreground text-background hover:opacity-80 rounded text-[10px] font-bold cursor-pointer transition-all disabled:opacity-30"
+              >
+                <FileText className="w-3 h-3 inline mr-1" />
+                Баримтаас хөрвүүлэх
+              </button>
             </div>
           )}
 
@@ -225,7 +320,7 @@ export const FinanceMapper: React.FC<FinanceMapperProps> = ({ token, onClose }) 
             <span className="text-[10px] font-bold text-green-600">Mapped successfully!</span>
           </div>
 
-          {mode === "text" && result.preview_data.before?.[0]?.input_text && (
+          {mode === "text" && result.preview_data.before?.[0] && Boolean(result.preview_data.before[0].input_text) && (
             <div className="bg-background/50 border border-border/60 rounded p-2">
               <span className="text-[8px] font-bold text-foreground/40 uppercase block mb-1">Input text</span>
               <p className="text-[9px] text-foreground/60 italic leading-relaxed">

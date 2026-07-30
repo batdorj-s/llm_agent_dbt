@@ -23,6 +23,11 @@ import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
 
+try:
+    from docx import Document as DocxDocument
+except ImportError:
+    DocxDocument = None
+
 # ── Config ────────────────────────────────────────────────────────────
 
 TARGET_SCHEMA = [
@@ -485,9 +490,46 @@ def main(input_path: str):
         sys.exit(1)
 
 
+# ── Document-to-Table: Read .docx / .txt ─────────────────────────────
+
+
+def read_document(file_path: str) -> str:
+    ext = Path(file_path).suffix.lower()
+    if ext == ".docx":
+        if DocxDocument is None:
+            raise ImportError("python-docx is not installed. Run: pip install python-docx")
+        doc = DocxDocument(file_path)
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+        if not paragraphs:
+            raise ValueError("No text content found in the .docx file")
+        return "\n".join(paragraphs)
+    elif ext == ".txt":
+        with open(file_path, "r", encoding="utf-8") as f:
+            text = f.read().strip()
+        if not text:
+            raise ValueError("No text content found in the .txt file")
+        return text
+    else:
+        raise ValueError(f"Unsupported document type: {ext}. Use .docx or .txt")
+
+
+def document_main(file_path: str) -> None:
+    """Document-to-Table pipeline: read file -> extract -> append -> emit."""
+    try:
+        text = read_document(file_path)
+        text_main(text)
+    except Exception as e:
+        emit_result({
+            "status": "error",
+            "message": str(e),
+            "error_type": type(e).__name__,
+        })
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        emit_result({"status": "error", "message": "Usage: mapper.py <input_file_path> or mapper.py --text (read text from stdin)"})
+        emit_result({"status": "error", "message": "Usage: mapper.py <input_file_path> or mapper.py --text (read text from stdin) or mapper.py --doc <file_path>"})
         sys.exit(1)
     if sys.argv[1] == "--text":
         text = sys.stdin.read().strip()
@@ -495,5 +537,10 @@ if __name__ == "__main__":
             emit_result({"status": "error", "message": "No text provided via stdin"})
             sys.exit(1)
         text_main(text)
+    elif sys.argv[1] == "--doc":
+        if len(sys.argv) < 3:
+            emit_result({"status": "error", "message": "Usage: mapper.py --doc <file_path>"})
+            sys.exit(1)
+        document_main(sys.argv[2])
     else:
         main(sys.argv[1])
