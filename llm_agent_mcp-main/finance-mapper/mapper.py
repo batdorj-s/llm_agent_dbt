@@ -100,27 +100,55 @@ def detect_mapping(columns: list[str], sample_rows: list[dict]) -> dict:
 
     sample_json = json.dumps(sample_rows[:3], ensure_ascii=False)
 
-    prompt = f"""You are a precise data schema mapper. Map the input columns to the target schema.
+    # Collect unique (Ангилал-like, Тайлбар-like) pairs for subcategory inference
+    cat_col = next((c for c in columns if any(k in c.lower() for k in ["type", "category", "kind", "төрөл", "ангилал"])), None)
+    note_col = next((c for c in columns if any(k in c.lower() for k in ["note", "desc", "тайлбар", "дэлгэрэнгүй"])), None)
 
-Input columns: {columns}
-Sample data (first 3 rows): {sample_json}
+    unique_pairs = []
+    if cat_col or note_col:
+        seen = set()
+        for row in sample_rows[:5]:
+            cat_val = str(row.get(cat_col, "") or "") if cat_col else ""
+            note_val = str(row.get(note_col, "") or "") if note_col else ""
+            pair = (cat_val, note_val)
+            if pair not in seen and (cat_val or note_val):
+                seen.add(pair)
+                unique_pairs.append({"category": cat_val, "description": note_val})
 
-Target schema (6 columns):
+    unique_json = json.dumps(unique_pairs, ensure_ascii=False) if unique_pairs else "[]"
+
+    prompt = f"""You are an expert financial data mapping and categorization assistant.
+I have raw financial data with these columns: {columns}
+Here is a sample of the data: {sample_json}
+
+Map the raw columns to the target schema (6 columns):
 1. "Өдөр" — Date (any format: '5-Jan', 'YYYY-MM-DD', '2026-01-05', etc.)
 2. "Харилцагч" — Customer or counterparty name
 3. "Дүн" — Monetary amount (integer or float)
 4. "Ангилал" — Transaction category
-5. "Дэд ангилал" — Subcategory (use null if not found)
+5. "Дэд ангилал" — Subcategory: If the raw data has an explicit column, map it directly. IF NOT, infer using the 'inferred_subcategories' ruleset below.
 6. "Тайлбар" — Description or note (use null if not found)
+
+Additionally, if no column matches 'Дэд ангилал', generate an 'inferred_subcategories' ruleset.
+Here are the unique (category, description) pairs from the data:
+{unique_json}
+
+Assign each pair a logical subcategory (e.g. 'Оффис', 'Түрээс', 'Касс', 'ҮАЗ', 'Цалин', 'Хүнс', 'Тээвэр', 'Хэрэгсэл', 'Салбар шилжүүлэг', 'Зээл').
+If a pair clearly matches a subcategory by keyword, use it. Otherwise use 'Бусад'.
 
 Return ONLY valid JSON with NO extra text:
 {{
   "mapping": [
-    {{"original": "input_col_name", "target": "Өдөр", "note": "why mapped"}},
+    {{"original": "input_col_name", "target": "Өдөр", "note": "why mapped or inferred"}},
     ...
   ],
   "date_format": "Detected date format like DD-Mon-YYYY or YYYY-MM-DD",
-  "amount_column": "name of the monetary amount column"
+  "amount_column": "name of the monetary amount column",
+  "inferred_subcategories": {{
+    "Касс": "касс,cash",
+    "Түрээс": "rent,lease,түрээс",
+    "Цалин": "salary,цалин,payroll"
+  }}
 }}
 
 Rules:
@@ -128,14 +156,16 @@ Rules:
 - If a target column has no match, set target to null for that original column.
 - If input columns have no match in target, set target to null.
 - Output column order must match target schema order.
-- The mapping list length must equal number of input columns."""
+- The mapping list length must equal number of input columns.
+- If Дэд ангилал is not matched to any input column, include 'inferred_subcategories' as a keyword-to-subcategory mapping.
+- The inferred_subcategories keys are subcategory names, values are comma-separated lowercase keywords. If any keyword appears in the category or description text, assign that subcategory."""
 
     response = client.chat.completions.create(
         model=model,
         messages=[
             {
                 "role": "system",
-                "content": "You are a data schema mapper. Output ONLY valid JSON matching the requested structure. No explanations, no markdown.",
+                "content": "You are a financial data mapper and categorization AI. Output ONLY valid JSON. No explanations, no markdown.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -202,6 +232,21 @@ def transform(df: pd.DataFrame, mapping_result: dict) -> pd.DataFrame:
         .fillna(0)
     )
 
+    # Apply inferred subcategories if Дэд ангилал has no explicit source column
+    inferred = mapping_result.get("inferred_subcategories", {})
+    if inferred and "Ангилал" in df.columns and "Тайлбар" in df.columns:
+        def infer_subcat(row: pd.Series) -> str:
+            cat = str(row.get("Ангилал", "") or "").lower()
+            note = str(row.get("Тайлбар", "") or "").lower()
+            text = f"{cat} {note}"
+            for subcat, keywords in inferred.items():
+                for kw in str(keywords).split(","):
+                    if kw.strip().lower() in text:
+                        return subcat
+            return "Бусад"
+
+        df["Дэд ангилал"] = df.apply(infer_subcat, axis=1)
+
     # Category, subcategory, description: string
     for col in ["Харилцагч", "Ангилал", "Дэд ангилал", "Тайлбар"]:
         df[col] = df[col].astype(str)
@@ -246,10 +291,14 @@ def main(input_path: str):
         matched_targets = {m["target"] for m in mapping_result["mapping"] if m["target"]}
         for col in TARGET_SCHEMA:
             if col not in matched_targets:
+                inferred_note = "will be empty"
+                if col == "Дэд ангилал" and mapping_result.get("inferred_subcategories"):
+                    subcats = list(mapping_result["inferred_subcategories"].keys())
+                    inferred_note = f"inferred from category/description — {', '.join(subcats[:5])}"
                 mapping_explanation.append({
                     "original": None,
                     "target": col,
-                    "note": f"No matching input column — will be empty"
+                    "note": f"No matching input column — {inferred_note}"
                 })
 
         # Preview before
