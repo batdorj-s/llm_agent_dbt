@@ -234,16 +234,13 @@ app.get("/api/status", (_req, res) => {
 app.use("/api/chat",        chatRouter);
 app.use("/api/auth",        authRouter);
 app.use("/api",             kpiRouter);       // /api/kpi/:metric, /api/kpi-history
-app.use("/api/finance-charts", financeRouter);
-app.use("/api/finance-audit",  financeRouter);
-app.use("/api/table-passport", financeRouter);
-app.use("/api/finance-reports", financeRouter);
+app.use("/api",             financeRouter);  // /api/finance-charts, /api/finance-audit, /api/table-passport, /api/finance-reports
 app.use("/api/dashboard",   dashboardRouter);
 app.use("/api",             dashboardRouter);   // /api/computed-metrics, /api/export-pdf|export-xlsx
 app.use("/api/report",      dashboardRouter);   // /api/report/export-pdf|export-xlsx
 app.use("/api/alerts",      alertsRouter);
 app.use("/api/whatif",      whatifRouter);
-app.use("/api/conversations", conversationsRouter);
+app.use("/api",             conversationsRouter);  // /api/conversations, /api/conversations/search, ...
 app.use("/api/admin",       adminRouter);
 app.use("/api/feedback",    feedbackRouter);
 app.use("/api/export",      exportRouter);
