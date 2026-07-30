@@ -168,7 +168,6 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
 
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-fade-in-up">
               <PageHeaderContent currentUser={{
-                avatar: user?.email?.charAt(0).toUpperCase(),
                 name: user?.email?.split("@")[0] || "Хэрэглэгч",
               }} />
               <ExtraContent />

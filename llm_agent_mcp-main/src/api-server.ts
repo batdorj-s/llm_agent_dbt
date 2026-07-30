@@ -238,7 +238,7 @@ app.use("/api",             financeRouter);  // /api/finance-charts, /api/financ
 app.use("/api/dashboard",   dashboardRouter);
 app.use("/api",             dashboardRouter);   // /api/computed-metrics, /api/export-pdf|export-xlsx
 app.use("/api/report",      dashboardRouter);   // /api/report/export-pdf|export-xlsx
-app.use("/api/alerts",      alertsRouter);
+app.use("/api",             alertsRouter);
 app.use("/api/whatif",      whatifRouter);
 app.use("/api",             conversationsRouter);  // /api/conversations, /api/conversations/search, ...
 app.use("/api/admin",       adminRouter);

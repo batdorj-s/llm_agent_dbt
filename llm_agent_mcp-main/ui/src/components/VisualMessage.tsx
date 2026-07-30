@@ -437,7 +437,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
       {/* Ant-design-pro SalesCard style: horizontal_bar gets a rank list on the right */}
       {effectiveType === "horizontal_bar" && rows.length > 0 ? (
         <div className="flex gap-3">
-          <div className="flex-1 h-52 relative">
+          <div className="flex-1 relative" style={{ height: 208 }}>
             <ResponsiveContainer width="100%" height="100%">
               {renderChartContent(effectiveType)}
             </ResponsiveContainer>
@@ -448,7 +448,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
           </div>
         </div>
       ) : (
-      <div className="h-52 w-full relative">
+      <div className="w-full relative" style={{ height: 208 }}>
         <ResponsiveContainer width="100%" height="100%">
           {renderChartContent(effectiveType)}
         </ResponsiveContainer>
