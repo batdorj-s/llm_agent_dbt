@@ -16,10 +16,16 @@ router.post("/finance-mapper/upload", upload.single("file"), async (req, res) =>
       return;
     }
 
-    const filePath = req.file.path;
+    const tmpPath = req.file.path;
+    const ext = path.extname(req.file.originalname) || ".csv";
+    const filePath = tmpPath + ext;
 
+    fs.renameSync(tmpPath, filePath);
+
+    const cwd = path.resolve(".");
     const child = spawn(PYTHON_BIN, [MAPPER_PY, filePath], {
-      env: { ...process.env },
+      cwd,
+      env: { ...process.env, PYTHONUNBUFFERED: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -34,7 +40,8 @@ router.post("/finance-mapper/upload", upload.single("file"), async (req, res) =>
 
       if (code !== 0) {
         console.error("[finance-mapper] Python stderr:", stderr);
-        res.status(500).json({ error: "Mapping failed", details: stderr });
+        console.error("[finance-mapper] Python stdout:", stdout);
+        res.status(500).json({ error: "Mapping failed", details: stderr || stdout });
         return;
       }
 
