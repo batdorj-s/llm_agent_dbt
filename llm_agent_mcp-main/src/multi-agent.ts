@@ -35,6 +35,10 @@ function routerCondition(state: AgentState): string {
     return state.nextAgent === "END" || !state.nextAgent ? "__end__" : state.nextAgent;
 }
 
+function financeRouterCondition(state: AgentState): string {
+    return state.nextAgent === "TechAgent" ? "TechAgent" : "__end__";
+}
+
 const workflow = new StateGraph(AgentStateAnnotation)
     .addNode("Supervisor", supervisorNode)
     .addNode("FinanceAgent", financeAgentNode)
@@ -47,7 +51,10 @@ const workflow = new StateGraph(AgentStateAnnotation)
         "DataScientistAgent": "DataScientistAgent",
         "__end__": "__end__"
     })
-    .addEdge("FinanceAgent", "__end__")
+    .addConditionalEdges("FinanceAgent", financeRouterCondition, {
+        "TechAgent": "TechAgent",
+        "__end__": "__end__"
+    })
     .addEdge("TechAgent", "__end__")
     .addEdge("DataScientistAgent", "__end__");
 

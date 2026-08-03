@@ -79,6 +79,13 @@ class MemoryBackend {
 let _redisClient: RedisClient | null = null;
 let _redisResolved = false;
 
+let _memoryFallbackWarned = false;
+function warnMemoryFallbackOnce(): void {
+  if (_memoryFallbackWarned) return;
+  _memoryFallbackWarned = true;
+  console.warn("[rate-limiter] Neither Redis nor PostgreSQL available — using in-memory store (lost on restart, not shared across instances).");
+}
+
 async function getRedisClient(): Promise<RedisClient | null> {
   if (_redisResolved) return _redisClient;
   _redisResolved = true;
@@ -211,6 +218,7 @@ export class RateLimiter {
     const redis = await getRedisClient();
     if (redis) return redisCheck(redis, key, this.maxRequests, this.windowMs);
     if (isPgAvailable()) return this.pg.check(key, this.maxRequests, this.windowMs);
+    warnMemoryFallbackOnce();
     return this.mem.check(key, this.maxRequests, this.windowMs);
   }
 

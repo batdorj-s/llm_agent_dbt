@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 
 describe("Alerts Service Utility Functions", () => {
   let alertsModule: any;

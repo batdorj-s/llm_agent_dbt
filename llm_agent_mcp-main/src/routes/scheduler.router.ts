@@ -12,6 +12,7 @@ import crypto from "crypto";
 import fs from "fs";
 import cron from "node-cron";
 import { getPool } from "../db/pool.js";
+import { assertSelectOnly } from "../db/sql-utils.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { log } from "./shared.js";
 
@@ -64,7 +65,7 @@ router.get("/scheduler/reports", requirePermission("report:read"), async (req, r
   }
 });
 
-router.post("/scheduler/reports", requirePermission("report:read"), async (req, res) => {
+router.post("/scheduler/reports", requirePermission("report:write"), async (req, res) => {
   try {
     const { name, description, query, format, cron_expression, recipients } = req.body;
 
@@ -81,6 +82,13 @@ router.post("/scheduler/reports", requirePermission("report:read"), async (req, 
 
     if (format && !VALID_FORMATS.includes(format)) {
       res.status(400).json({ error: `Invalid format. Valid: ${VALID_FORMATS.join(", ")}` });
+      return;
+    }
+
+    try {
+      assertSelectOnly(query);
+    } catch (err) {
+      res.status(400).json({ error: `Invalid query: ${(err as Error).message}` });
       return;
     }
 
@@ -104,7 +112,7 @@ router.post("/scheduler/reports", requirePermission("report:read"), async (req, 
   }
 });
 
-router.put("/scheduler/reports/:id", requirePermission("report:read"), async (req, res) => {
+router.put("/scheduler/reports/:id", requirePermission("report:write"), async (req, res) => {
   try {
     const { name, description, query, format, cron_expression, recipients, is_active } = req.body;
 
@@ -119,6 +127,15 @@ router.put("/scheduler/reports/:id", requirePermission("report:read"), async (re
     if (format && !VALID_FORMATS.includes(format)) {
       res.status(400).json({ error: `Invalid format. Valid: ${VALID_FORMATS.join(", ")}` });
       return;
+    }
+
+    if (query !== undefined) {
+      try {
+        assertSelectOnly(query);
+      } catch (err) {
+        res.status(400).json({ error: `Invalid query: ${(err as Error).message}` });
+        return;
+      }
     }
 
     const pool = getPool();
@@ -161,7 +178,7 @@ router.put("/scheduler/reports/:id", requirePermission("report:read"), async (re
   }
 });
 
-router.delete("/scheduler/reports/:id", requirePermission("report:read"), async (req, res) => {
+router.delete("/scheduler/reports/:id", requirePermission("report:write"), async (req, res) => {
   try {
     const pool = getPool();
     const result = await pool.query("DELETE FROM scheduled_reports WHERE id = $1 RETURNING id", [req.params.id]);

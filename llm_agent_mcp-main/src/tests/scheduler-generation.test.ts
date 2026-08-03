@@ -1,5 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const mockExecuteSql = vi.fn(async (query: string, _readOnly?: boolean, _userId?: string) => {
+  if (query === "SELECT * FROM test") {
+    return [
+      { name: "Alice", sales: 100 },
+      { name: "Bob", sales: 200 },
+    ];
+  }
+  if (query === "SELECT * FROM csv_test") {
+    return [{ name: "Doe, John", city: "NYC" }];
+  }
+  if (query === "SELECT * FROM json_test") {
+    return [{ id: 1, value: "test" }];
+  }
+  return [];
+});
+
+vi.mock("../db/sql-utils.js", () => ({
+  executeSql: (query: string, readOnly: boolean, userId: string) => mockExecuteSql(query, readOnly, userId),
+}));
+
 describe("Scheduler Report Generation", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -7,15 +27,7 @@ describe("Scheduler Report Generation", () => {
 
   it("should generate CSV buffer from query results", async () => {
     const scheduler = await import("../services/scheduler.js");
-    const mockPool = {
-      query: vi.fn().mockResolvedValue({
-        rows: [
-          { name: "Alice", sales: 100 },
-          { name: "Bob", sales: 200 },
-        ],
-      }),
-    };
-    const { buffer, rowCount } = await (scheduler as any).generateCsv("SELECT * FROM test", mockPool);
+    const { buffer, rowCount } = await (scheduler as any).generateCsv("SELECT * FROM test");
     expect(rowCount).toBe(2);
     expect(buffer).toBeInstanceOf(Buffer);
     expect(buffer.toString()).toContain("name,sales");
@@ -25,12 +37,7 @@ describe("Scheduler Report Generation", () => {
 
   it("should generate JSON buffer from query results", async () => {
     const scheduler = await import("../services/scheduler.js");
-    const mockPool = {
-      query: vi.fn().mockResolvedValue({
-        rows: [{ id: 1, value: "test" }],
-      }),
-    };
-    const { buffer, rowCount } = await (scheduler as any).generateJson("SELECT * FROM test", mockPool);
+    const { buffer, rowCount } = await (scheduler as any).generateJson("SELECT * FROM json_test");
     expect(rowCount).toBe(1);
     expect(buffer).toBeInstanceOf(Buffer);
     const parsed = JSON.parse(buffer.toString());
@@ -40,20 +47,14 @@ describe("Scheduler Report Generation", () => {
 
   it("should generate empty CSV for empty results", async () => {
     const scheduler = await import("../services/scheduler.js");
-    const mockPool = {
-      query: vi.fn().mockResolvedValue({ rows: [] }),
-    };
-    const { buffer, rowCount } = await (scheduler as any).generateCsv("SELECT * FROM empty", mockPool);
+    const { buffer, rowCount } = await (scheduler as any).generateCsv("SELECT * FROM empty");
     expect(rowCount).toBe(0);
     expect(buffer).toBeInstanceOf(Buffer);
   });
 
   it("should generate empty JSON for empty results", async () => {
     const scheduler = await import("../services/scheduler.js");
-    const mockPool = {
-      query: vi.fn().mockResolvedValue({ rows: [] }),
-    };
-    const { buffer, rowCount } = await (scheduler as any).generateJson("SELECT * FROM empty", mockPool);
+    const { buffer, rowCount } = await (scheduler as any).generateJson("SELECT * FROM empty");
     expect(rowCount).toBe(0);
     expect(buffer).toBeInstanceOf(Buffer);
     const parsed = JSON.parse(buffer.toString());
@@ -63,15 +64,16 @@ describe("Scheduler Report Generation", () => {
 
   it("should escape CSV values with commas", async () => {
     const scheduler = await import("../services/scheduler.js");
-    const mockPool = {
-      query: vi.fn().mockResolvedValue({
-        rows: [{ name: "Doe, John", city: "NYC" }],
-      }),
-    };
-    const { buffer } = await (scheduler as any).generateCsv("SELECT * FROM test", mockPool);
+    const { buffer } = await (scheduler as any).generateCsv("SELECT * FROM csv_test");
     const content = buffer.toString();
     expect(content).toContain('"Doe, John"');
     expect(content).toContain("NYC");
+  });
+
+  it("should route every generation call through read-only executeSql", async () => {
+    const scheduler = await import("../services/scheduler.js");
+    await (scheduler as any).generateCsv("SELECT * FROM test");
+    expect(mockExecuteSql).toHaveBeenCalledWith("SELECT * FROM test", true, "scheduler");
   });
 
   it("should return correct format label", async () => {

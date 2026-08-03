@@ -4,7 +4,6 @@ import { buildFinanceKpiContext } from "../tools/enterprise-tools.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "../db/data-lake.js";
 import { prompts } from "./prompts.js";
 import { type AgentState, type AgentConfig, buildContextSummary, trimMessages } from "./agentState.js";
-import { techAgentNode } from "./techAgentNode.js";
 import { createLogger } from "./logger.js";
 import fs from "fs";
 import path from "path";
@@ -61,7 +60,7 @@ export async function financeAgentNode(state: AgentState, config?: AgentConfig):
         log.info("Data query detected — delegating to TechAgent (bypassing RAG).");
         if (onEvent) onEvent({ type: "thinking", step: "delegation", agent: "TechAgent", message: "Data query — delegating to TechAgent" });
         if (onChunk) onChunk("(Finance Agent → Tech Agent)\nМэдээллийн сангаас дата шүүж байна...\n\n");
-        return techAgentNode(state, config);
+        return { nextAgent: "TechAgent" };
     }
 
     const llm = await createLLM({ temperature: 0 });

@@ -60,7 +60,7 @@ router.post("/notifications/preferences", requirePermission("notification:write"
 router.delete("/notifications/preferences/:channel", requirePermission("notification:write"), async (req, res) => {
   try {
     const userId = (req as any).user?.userId;
-    const { channel } = req.params;
+    const channel = req.params.channel as string;
     if (!VALID_CHANNELS.includes(channel)) {
       res.status(400).json({ error: `Invalid channel: ${channel}` });
       return;

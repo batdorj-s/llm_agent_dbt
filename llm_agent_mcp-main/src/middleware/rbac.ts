@@ -42,6 +42,7 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "quality:create",
     "quality:write",
     // analyst additions
+    "report:write",
     "kpi:anomaly",
     "kpi:whatif",
     "export:csv",
@@ -58,6 +59,7 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "kpi:anomaly",
     "kpi:whatif",
     "report:read",
+    "report:write",
     "metrics:read",
     "chat:send",
     "conversation:read",

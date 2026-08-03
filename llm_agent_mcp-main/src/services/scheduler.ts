@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { getPool } from "../db/pool.js";
-import { getPool as getDataLakePool } from "../db/data-lake.js";
+import { executeSql } from "../db/sql-utils.js";
 
 let schedulerTask: ReturnType<typeof cron.schedule> | null = null;
 
@@ -24,8 +24,8 @@ function getFormatLabel(format: string): string {
   return map[format] || "pdf";
 }
 
-async function generateCsv(query: string, pool: any): Promise<{ buffer: Buffer; rowCount: number }> {
-  const { rows } = await pool.query(query);
+async function generateCsv(query: string): Promise<{ buffer: Buffer; rowCount: number }> {
+  const rows = await executeSql(query, true, "scheduler");
   if (!rows || rows.length === 0) {
     return { buffer: Buffer.from("\uFEFF"), rowCount: 0 };
   }
@@ -47,8 +47,8 @@ async function generateCsv(query: string, pool: any): Promise<{ buffer: Buffer; 
   return { buffer: Buffer.from("\uFEFF" + csvRows.join("\n")), rowCount: rows.length };
 }
 
-async function generateJson(query: string, pool: any): Promise<{ buffer: Buffer; rowCount: number }> {
-  const { rows } = await pool.query(query);
+async function generateJson(query: string): Promise<{ buffer: Buffer; rowCount: number }> {
+  const rows = await executeSql(query, true, "scheduler");
   const json = JSON.stringify({ data: rows, count: rows.length, generatedAt: new Date().toISOString() }, null, 2);
   return { buffer: Buffer.from(json), rowCount: rows.length };
 }
@@ -94,15 +94,13 @@ export function startScheduler(): void {
 
           switch (format) {
             case "csv": {
-              const dataPool = getDataLakePool();
-              const r = await generateCsv(report.query, dataPool);
+              const r = await generateCsv(report.query);
               buffer = r.buffer;
               rowCount = r.rowCount;
               break;
             }
             case "json": {
-              const dataPool = getDataLakePool();
-              const r = await generateJson(report.query, dataPool);
+              const r = await generateJson(report.query);
               buffer = r.buffer;
               rowCount = r.rowCount;
               break;

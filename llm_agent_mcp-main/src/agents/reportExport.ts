@@ -3,13 +3,25 @@ import { computeMetrics } from "./reportMetrics.js";
 import { getRepository } from "../db/kpi-repository.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { buildMntAmountExpr } from "../utils/sqlHelpers.js";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import * as fontkitModule from "fontkit";
+import { readFileSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
+// fontkit is published as CommonJS with `export =`; resolve the actual object
+// regardless of whether the bundler surfaces it as the namespace or `.default`.
+function getFontkit(): any {
+  const ns: any = fontkitModule;
+  return typeof ns.create === "function" ? ns : ns.default ?? ns;
+}
 
-// PDF-safe: Helvetica uses WinAnsi which cannot encode Cyrillic/Mongolian characters
-// Strip non-Latin chars so pdf-lib doesn't throw
+const fontDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets", "fonts");
+
+// PDF-safe: Noto Sans (embedded with fontkit subsetting) supports Cyrillic/Mongolian,
+// so only control characters are stripped (pdf-lib cannot render them).
 function sanitizePdfText(s: string | null | undefined): string {
-  return s ? s.replace(/[^\x20-\x7E]/g, "?") : "";
+  return s ? s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ").replace(/\r?\n/g, " ") : "";
 }
 
 function formatCurrencyPdf(value: number): string {
@@ -88,8 +100,9 @@ export async function generateReportPdf(userId: string, startDate?: string, endD
       ]);
 
   const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  doc.registerFontkit(getFontkit());
+  const font = await doc.embedFont(readFileSync(path.join(fontDir, "NotoSans-Regular.ttf")), { subset: true });
+  const bold = await doc.embedFont(readFileSync(path.join(fontDir, "NotoSans-Bold.ttf")), { subset: true });
 
   const page = doc.addPage([612, 792]);
   const { width } = page.getSize();

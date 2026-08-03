@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 
 describe("RBAC Middleware", () => {
   let hasPermission: any, requirePermission: any, requireRole: any, getPermissions: any;
@@ -22,6 +22,25 @@ describe("RBAC Middleware", () => {
 
     it("returns true for analyst permission on analyst role", () => {
       expect(hasPermission("analyst", "kpi:anomaly")).toBe(true);
+    });
+
+    it("returns true for report:write on analyst role (scheduler CRUD)", () => {
+      expect(hasPermission("analyst", "report:write")).toBe(true);
+    });
+
+    it("returns true for report:write on admin role", () => {
+      expect(hasPermission("admin", "report:write")).toBe(true);
+    });
+
+    it("returns false for report:write on viewer role", () => {
+      expect(hasPermission("viewer", "report:write")).toBe(false);
+    });
+
+    it("analyst keeps conversation and quality permissions (regression guard)", () => {
+      expect(hasPermission("analyst", "conversation:create")).toBe(true);
+      expect(hasPermission("analyst", "conversation:delete")).toBe(true);
+      expect(hasPermission("analyst", "quality:create")).toBe(true);
+      expect(hasPermission("analyst", "glossary:read")).toBe(true);
     });
 
     it("returns true for viewer permissions on admin role", () => {

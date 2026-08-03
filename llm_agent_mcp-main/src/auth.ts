@@ -57,7 +57,9 @@ export const DEFAULT_ROLE: UserRole = "admin";
 /**
  * Express middleware: extracts userId and role from JWT Bearer token.
  * Returns 401 if no valid token is present (production).
- * Dev fallback: allows unauthenticated requests with DEFAULT_USER_ID when NODE_ENV !== "production".
+ * Dev fallback: unauthenticated requests resolve to DEFAULT_USER_ID only when
+ * NODE_ENV !== "production" AND ALLOW_DEV_AUTH === "true". Set ALLOW_DEV_AUTH
+ * explicitly so dev admin access is never granted by accident.
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   // Public routes that never require auth (read-only dashboard data, auth, health)
@@ -77,7 +79,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return next();
   }
 
-  const isDev = process.env.NODE_ENV !== "production";
+  const isDev = process.env.NODE_ENV !== "production" && process.env.ALLOW_DEV_AUTH === "true";
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     if (isDev) {

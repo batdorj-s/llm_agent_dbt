@@ -57,7 +57,7 @@ describe("Dashboard Builder Agent", () => {
     }));
     const { buildDashboard: bd } = await import("../agents/dashboardBuilder.js");
     const result = await bd({}, "show dashboard", "user-1");
-    expect(result.messages[0].content).toContain("Идэвхтэй хүснэгт олдсонгүй");
+    expect(result.messages![0].content).toContain("Идэвхтэй хүснэгт олдсонгүй");
   });
 
   it("handles LLM failure gracefully", async () => {
