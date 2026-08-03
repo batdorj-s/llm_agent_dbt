@@ -165,7 +165,7 @@ export function syncDbtModelsToRag(): RagDocument[] {
 interface DbtRunResult {
   results: Array<{
     unique_id: string;
-    status: "pass" | "fail" | "error";
+    status: string;
     failures: number;
     message?: string;
     compiled_code?: string;
@@ -212,18 +212,14 @@ function modelNameFromDependsOn(dependsOn: string[] | undefined): string | null 
   return null;
 }
 
-export function syncDbtTestResultsToRag(): RagDocument[] {
+export function buildDbtTestRagDocs(
+  results: DbtRunResult["results"],
+  testNodes: DbtTestNode[]
+): { passed: number; failed: number; skipped: number; docs: RagDocument[] } {
   const docs: RagDocument[] = [];
-  const manifest = loadManifest();
-  const runResults = loadRunResults();
-
-  if (!runResults) return docs;
-
-  const testNodes = manifest
-    ? (Object.values(manifest.nodes).filter(
-        (n): n is DbtTestNode => n.resource_type === "test"
-      ) as DbtTestNode[])
-    : [];
+  let passed = 0;
+  let failed = 0;
+  let skipped = 0;
 
   const testNodeMap = new Map<string, DbtTestNode>();
   for (const node of testNodes) {
@@ -231,21 +227,28 @@ export function syncDbtTestResultsToRag(): RagDocument[] {
     testNodeMap.set(`test.data_transformations.${node.name}`, node);
   }
 
-  let passed = 0;
-  let failed = 0;
-
-  for (const result of runResults.results) {
+  for (const result of results) {
     const uid = result.unique_id;
     const status = result.status;
 
-    if (status === "pass") {
+    // run_results.json also contains model/source executions (status "success");
+    // only dbt test nodes (unique_id "test.<package>.<name>") are quality
+    // assertions — model runs must not be counted as failed tests.
+    if (!uid.startsWith("test.")) continue;
+
+    if (status === "pass" || status === "warn") {
       passed++;
+      continue;
+    }
+
+    if (status === "skipped") {
+      skipped++;
       continue;
     }
 
     failed++;
 
-    const testNode = testNodes.find((n) => uid.includes(n.name));
+    const testNode = testNodeMap.get(uid) || testNodes.find((n) => uid.includes(n.name));
     const modelName = testNode
       ? modelNameFromDependsOn(testNode.depends_on?.nodes)
       : null;
@@ -288,24 +291,45 @@ export function syncDbtTestResultsToRag(): RagDocument[] {
     });
   }
 
-  docs.push({
-    id: `dbt_test_summary`,
-    text: `dbt Test Summary: ${passed + failed} total, ${passed} passed, ${failed} failed.`,
-    metadata: {
-      category: "previous_analysis",
-      department: "analytics",
-      source_name: "dbt Test Results",
-      author: "dbt",
-      created_at: new Date().toISOString(),
-      shared: true,
-    },
-    keywords: ["dbt_warning", "data quality", "test summary", passed > 0 ? "tests_passed" : "", failed > 0 ? "tests_failed" : ""].filter(Boolean),
-  });
+  if (passed + failed + skipped > 0) {
+    docs.push({
+      id: `dbt_test_summary`,
+      text: `dbt Test Summary: ${passed + failed + skipped} total, ${passed} passed, ${failed} failed${skipped > 0 ? `, ${skipped} skipped` : ""}.`,
+      metadata: {
+        category: "previous_analysis",
+        department: "analytics",
+        source_name: "dbt Test Results",
+        author: "dbt",
+        created_at: new Date().toISOString(),
+        shared: true,
+      },
+      keywords: ["dbt_warning", "data quality", "test summary", passed > 0 ? "tests_passed" : "", failed > 0 ? "tests_failed" : ""].filter(Boolean),
+    });
+  }
 
-  if (failed > 0) {
+  return { passed, failed, skipped, docs };
+}
+
+export function syncDbtTestResultsToRag(): RagDocument[] {
+  const manifest = loadManifest();
+  const runResults = loadRunResults();
+
+  if (!runResults) return [];
+
+  const testNodes = manifest
+    ? (Object.values(manifest.nodes).filter(
+        (n): n is DbtTestNode => n.resource_type === "test"
+      ) as DbtTestNode[])
+    : [];
+
+  const { passed, failed, skipped, docs } = buildDbtTestRagDocs(runResults.results, testNodes);
+
+  if (passed + failed + skipped === 0) {
+    console.log("[dbt-sync] No dbt test results found in run_results.json — run 'dbt test' to enable quality warnings");
+  } else if (failed > 0) {
     console.log(`[dbt-sync] WARNING: ${failed}/${passed + failed} dbt tests FAILED — generated ${docs.length} RAG warning documents`);
   } else {
-    console.log(`[dbt-sync] All ${passed} dbt tests passed — generated summary document`);
+    console.log(`[dbt-sync] All ${passed} dbt tests passed${skipped > 0 ? ` (${skipped} skipped)` : ""} — generated summary document`);
   }
 
   return docs;

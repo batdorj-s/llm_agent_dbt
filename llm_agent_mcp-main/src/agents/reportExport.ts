@@ -9,11 +9,13 @@ import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
+type FontkitLike = Parameters<PDFDocument["registerFontkit"]>[0];
+
 // fontkit is published as CommonJS with `export =`; resolve the actual object
 // regardless of whether the bundler surfaces it as the namespace or `.default`.
-function getFontkit(): any {
-  const ns: any = fontkitModule;
-  return typeof ns.create === "function" ? ns : ns.default ?? ns;
+function getFontkit(): FontkitLike {
+  const ns = fontkitModule as unknown as Partial<FontkitLike> & { default?: FontkitLike };
+  return (typeof ns.create === "function" ? ns : ns.default) as FontkitLike;
 }
 
 const fontDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets", "fonts");

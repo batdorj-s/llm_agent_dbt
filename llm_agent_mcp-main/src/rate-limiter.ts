@@ -145,7 +145,6 @@ class PostgresBackend {
   async check(key: string, maxRequests: number, windowMs: number): Promise<RateLimitResult> {
     if (!isPgAvailable()) return { allowed: false, remaining: 0, resetInMs: 0, message: "Backend unavailable" };
     const pool = getPool();
-    const now = new Date();
     const cutoff = new Date(Date.now() - windowMs);
 
     try {
