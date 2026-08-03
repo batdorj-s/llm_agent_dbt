@@ -11,7 +11,7 @@ export async function generateSchemaYml(tableName: string, columns: string[]): P
   const stgColumns = columns.map(name => {
     const low = name.toLowerCase();
     const tests: Array<string | Record<string, unknown>> = [];
-    if (low === "order_id" || low === "customer_id") {
+    if (low === "order_id") {
       tests.push("unique");
     }
     if (low === "order_id" || low === "customer_id" || low === "order_date") {

@@ -4,7 +4,9 @@ with sales as (
 
 select
     customer_id,
-    segment,
+    -- A customer may appear in multiple segments; pick a deterministic
+    -- representative so the customer-level grain stays one row per customer.
+    max(segment) as segment,
     min(order_date) as first_order_date,
     max(order_date) as last_order_date,
     count(distinct order_id) as total_orders,
@@ -12,4 +14,4 @@ select
     sum(profit) as total_profit_contribution,
     avg(profit_margin_pct) as avg_customer_margin
 from sales
-group by 1, 2
+group by 1

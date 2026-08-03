@@ -123,7 +123,7 @@ const EMBEDDER_RETRY_COOLDOWN_MS = 30_000; // 30 секундын дараа д�
 const EMBEDDER_MAX_RETRIES = 3;
 let embedderRetryCount = 0;
 
-async function getGeminiEmbedder(): Promise<any> {
+export async function getGeminiEmbedder(): Promise<any> {
   // Амжилтгүй болсон бол retry cooldown хүлээх
   if (!geminiEmbedder && embedderInitAttempted) {
     const now = Date.now();
