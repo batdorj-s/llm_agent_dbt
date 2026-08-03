@@ -60,6 +60,13 @@ function runDbtIfAvailable() {
   } catch (err) {
     console.warn("[Setup] dbt run failed — KPI repository will use raw-table fallback:", (err as Error).message);
   }
+  try {
+    console.log("[Setup] Running dbt tests for data quality...");
+    runDbt(["test", "--profiles-dir", "."]);
+    console.log("[Setup] dbt test complete [OK]");
+  } catch (err) {
+    console.warn("[Setup] dbt test reported failures — data quality warning docs will be generated:", (err as Error).message);
+  }
 }
 
 export function runDbtForTable(inputTable: string, columns?: string[], mapping?: Record<string, string | null>): void {
