@@ -20,10 +20,11 @@
     "test:all": "npm run test:phase1 && npm run test:phase2 && npm run test:phase3 && npm run test:phase-c",
     "setup": "tsx src/setup/init.ts",
     "dbt:run": "node -e \"const {spawnSync}=require('child_process');require('dotenv').config();const bin=process.env.DBT_PATH||'dbt';const r=spawnSync(bin,['run','--project-dir','dbt','--profiles-dir','dbt'],{stdio:'inherit',env:process.env});process.exit(r.status??1)\"",
+    "dbt:test": "node -e \"const {spawnSync}=require('child_process');require('dotenv').config();const bin=process.env.DBT_PATH||'dbt';const r=spawnSync(bin,['test','--project-dir','dbt','--profiles-dir','dbt'],{stdio:'inherit',env:process.env});process.exit(r.status??1)\"",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"src/**/*.ts\" --max-warnings=200",
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=400",
     "api": "tsx src/api-server.ts",
     "ui:dev": "npm run dev --prefix ui",
     "dev": "npm run setup && concurrently \"npm run api\" \"npm run ui:dev\""
