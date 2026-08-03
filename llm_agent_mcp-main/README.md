@@ -10,72 +10,89 @@
 
 ```mermaid
 graph TD
-    subgraph "Frontend (Next.js ui/")"
-        UI[Dashboard / Chat UI]
-        Components[ActionCard, CodeBlock, ChatMessage, VisualMessage, etc.]
-    end
+  subgraph UI[Client Layer]
+    Browser(Browser) -->|"serves React app, mounts dashboard"| NextUI[Next.js UI<br/>port 3000]
+  end
 
-    subgraph "Orchestration (src/multi-agent.ts — 98 lines)"
-        Graph[StateGraph.compile]
-        State[(AgentState messages, nextAgent)]
-        Supervisor[supervisorNode.ts — Keyword + LLM routing]
-    end
+  subgraph API[API Gateway :3001]
+    NextUI -->|'"/api/:path*" proxy rewrite → NEXT_PUBLIC_API_URL'| Api[Express API Server<br/>helmet + cors + json 5mb]
+    Api -->|"passes request"| Jwt[Auth Middleware<br/>requireAuth / requirePermission]
+    Jwt -->|"verifyToken() — JWT, hard-fail in prod"| AuthSvc[JWT Auth<br/>src/auth.ts]
+    Jwt -->|"role + permission gate (RBAC)"| Rbac[RBAC Middleware<br/>src/middleware/rbac.ts]
+    Jwt -->|"agentLimiter.check(userId) → 429"| RateLim[Rate Limiter<br/>src/rate-limiter.ts]
+    Jwt -->|"routes dispatch"| Routers[REST Routers<br/>chat · auth · admin/upload · kpi · finance<br/>dashboard · alerts · whatif · conversations<br/>glossary · data-quality · lineage · scheduler<br/>sharing · unified-search · notifications<br/>history · feedback · metrics · api-keys]
+    Api -->|"serves spec"| Swagger[/api-docs<br/>Swagger UI/]
+  end
 
-    subgraph "Agent Nodes (src/agents/)"
-        Finance[financeAgentNode.ts — RAG + KPI lookup]
-        Tech[techAgentNode.ts — SQL gen + Python + Dashboard]
-        DS[data-scientist.ts — Forecast + Statistics + ML]
-        subgraph "TechAgent internals"
-            SQL[sqlGeneration.ts — SQL helpers + retry + stats]
-            Python[pythonExecution.ts — E2B/local sandbox]
-            Dashboard[dashboardBuilder.ts — widget gen + queries]
-        end
-    end
+  subgraph ORCH[Multi-Agent Orchestration — LangGraph StateGraph]
+    Routers -->|"POST /api/chat · POST /api/chat/stream (SSE)"| MultiAgent[runMultiAgent / runMultiAgentStream<br/>src/multi-agent.ts + MemorySaver checkpointer]
+    MultiAgent -->|"invoke graph (thread_id)"| Supervisor[Supervisor Node<br/>keyword routing → LLM RouteSchema → keyword fallback]
+    Supervisor -->|"FinanceAgent"| Finance[FinanceAgent<br/>RAG + live KPI context]
+    Supervisor -->|"TechAgent"| Tech[TechAgent<br/>SQL gen → exec → explain]
+    Supervisor -->|"DataScientistAgent"| DS[DataScientistAgent<br/>forecast / regression / clustering]
+    Supervisor -->|"END (greeting)"| End(END)
+    Finance -->|"fallthrough on failure"| Tech
+    Tech -->|"finish"| End
+    DS -->|"finish"| End
+  end
 
-    subgraph "Data & Tool Layer"
-        DL[(PostgreSQL Data Lake)]
-        Vector[(ChromaDB Vector Store)]
-        MCP[MCP execute_sql → Data Lake]
-        Sandbox[E2B API / Local python3 Sandbox]
-        KPI[KPI Repository — Supabase / SQLite]
-    end
+  subgraph RAG[Retrieval Layer]
+    Finance -->|"searchKnowledgeBase / selfQueryTransform"| Hybrid[Hybrid Search<br/>self-query + query expansion + cache]
+    Hybrid -->|"ChromaDB query (nResults, where filter)"| ChromaClient[Chroma Client<br/>getChromaCollection singleton]
+    Hybrid -->|"run internal fusion: Chroma + BM25 + recency scoring"| Hybrid
+    Hybrid -->|"BM25 index over docs"| Semantic[Semantic Search<br/>gemini-embedding-001 · cosine · BATCH_SIZE 50]
+    Semantic -->|"embedDocuments / embedQuery"| GeminiEF{{Gemini Embeddings API}}
+    ChromaClient -->|"add/query vectors + documents"| Chroma[(ChromaDB<br/>enterprise-kb)]
+    ChromaClient -->|"null → in-memory fallback (NODE_ENV=test / unreachable)"| Semantic
+    Knowledge[Knowledge Base<br/>setupKnowledgeBase · chunking] -->|"persist/load docs"| RagDocs[(PostgreSQL<br/>rag_documents)]
+    Knowledge -->|"index when count=0"| ChromaClient
+    DbtSync[DBT-Sync<br/>src/dbt-sync.ts] -->|"manifest + run_results → quality RAG docs"| RagDocs
+  end
 
-    subgraph "Infrastructure"
-        LLM[LLM Provider — groq→gemini→anthropic→openai]
-        Trace[Langfuse Observability]
-        JWT[JWT Auth — hard fail in production]
-        CI[GitHub Actions — npm ci → typecheck → test]
-    end
+  subgraph AGENTS[Agent Tool Layer]
+    Finance -->|"buildFinanceKpiContext (live data)"| KpiRepo[KPI Repository<br/>Supabase / SQLite factory]
+    Tech -->|"deterministic SQL → LLM retry (MAX 2) → fallback query"| SqlGen[SQL Generation<br/>src/agents/sqlGeneration.ts]
+    SqlGen -->|"executeSql (read-only tx)"| DataLake[(PostgreSQL Data Lake<br/>catalog + marts · read-only)]
+    Tech -->|"runPythonCode"| Sandbox[Python Sandbox<br/>E2B / local python3]
+    DS -->|"forecast SQL via executeSql"| DataLake
+    DS -->|"stats/ML Python"| Sandbox
+    Tech -->|"dashboardBuilder → widget SQL"| DataLake
+  end
 
-    UI -->|User Query| Graph
-    State --> Supervisor
-    Supervisor --> Finance
-    Supervisor --> Tech
-    Supervisor --> DS
-    Supervisor -->|END + active catalog → override| Tech
+  subgraph DBT[dbt Pipeline]
+    DataLake -->|"superstore_sales · stg · int · marts"| DbtRun[dbt run + test<br/>npm run dbt:run / dbt:test]
+    DbtRun -->|"writes run_results.json + manifest.json"| DbtTarget[dbt target/]
+    DbtTarget -->|"read on boot"| DbtSync
+    DbtSync -->|"runs internal pass: failed/skipped test summary"| DbtSync
+  end
 
-    Finance -->|Semantic Search| Vector
-    Finance -->|KPI query| KPI
-    Finance -->|fallthrough| Tech
+  subgraph LLM[LLM Provider Failover]
+    Supervisor -->|"invokeWithFallback (structured output)"| Llm[LLM Router<br/>groq → gemini → anthropic → openai]
+    Finance -->|"invokeWithFallback"| Llm
+    Tech -->|"invokeWithFallback"| Llm
+    Llm -->|"429 / quota → next provider"| Groq{{Groq API}}
+    Llm -->|"failover"| Gemini{{Gemini API}}
+    Llm -->|"failover"| Claude{{Anthropic API}}
+    Llm -->|"failover"| OpenAi{{OpenAI API}}
+  end
 
-    Tech --> SQL
-    Tech --> Python
-    Tech --> Dashboard
-    SQL -->|execute_sql| MCP
-    MCP --> DL
-    Python --> Sandbox
-    Dashboard -->|widget SQL| MCP
+  subgraph SERVICES[Support Services]
+    Scheduler[Scheduler Service<br/>report generation · cron] -->|"triggers"| Tech
+    Notif[Notifications Service<br/>src/services/notifications.ts] -->|"events"| NextUI
+    AlertSvc[Alerts Service<br/>src/services/alerts.ts] -->|"polls data quality"| DataLake
+    ConvSvc[Conversation Service<br/>src/services/conversation.ts] -->|"persist messages/titles"| RagDocs
+    Export[Export Service<br/>PDF/XLSX via reportExport] -->|"dashboard router"| NextUI
+  end
 
-    DS -->|forecast SQL| MCP
-    DS -->|Python code| Sandbox
+  subgraph OBS[Observability]
+    Tracer[Langfuse Tracer<br/>src/observability/tracer.ts] -.->|"CallbackHandler + traceToolCall"| MultiAgent
+    Tracer -.->|"tool traces"| SqlGen
+    Tracer -.->|"tool traces"| Sandbox
+  end
 
-    LLM -.->|invokeWithFallback| Finance
-    LLM -.->|invokeWithFallback| Tech
-    LLM -.->|invokeWithFallback| DS
-
-    Trace -.-> Graph
-    Trace -.-> MCP
-    Trace -.-> Sandbox
+  Admin[Admin Upload<br/>CSV/Excel/DOC] -->|"POST /api/admin/upload-*"| Routers
+  Routers -->|"ingest → data_lake_catalog"| DataLake
+  Routers -->|"DOC → RAG documents"| RagDocs
 ```
 
 ### 2. Module hierarchy (файлын бүтэц)
