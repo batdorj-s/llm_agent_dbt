@@ -8,15 +8,21 @@ let collection: any = null;
 export async function getChromaCollection(): Promise<any> {
   if (collection) return collection;
 
-  const hasChromaUrl = process.env.CHROMA_URL;
-  const hasOpenAIKey = process.env.OPENAI_API_KEY &&
-    process.env.OPENAI_API_KEY !== "your_openai_api_key_here";
+  const hasChromaUrl = !!process.env.CHROMA_URL;
+  const hasOpenAIKey = !!(process.env.OPENAI_API_KEY &&
+    process.env.OPENAI_API_KEY !== "your_openai_api_key_here");
 
-  if (!hasChromaUrl || !hasOpenAIKey) return null;
+  console.debug(`[VectorDB][Debug] getChromaCollection() → CHROMA_URL=${hasChromaUrl} | OPENAI_API_KEY=${hasOpenAIKey}`);
+
+  if (!hasChromaUrl || !hasOpenAIKey) {
+    console.debug(`[VectorDB][Debug] ChromaDB disabled (${!hasChromaUrl ? "missing CHROMA_URL" : "missing OPENAI_API_KEY"}) — in-memory fallback`);
+    return null;
+  }
 
   try {
     const { ChromaClient, OpenAIEmbeddingFunction } = await import("chromadb") as any;
 
+    console.debug(`[VectorDB][Debug] Connecting to ChromaDB at ${process.env.CHROMA_URL} (embedder: text-embedding-3-small)...`);
     chromaClient = new ChromaClient({ path: process.env.CHROMA_URL });
 
     const embedder = new OpenAIEmbeddingFunction({

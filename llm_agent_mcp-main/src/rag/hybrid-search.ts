@@ -327,13 +327,20 @@ export async function searchKnowledgeBaseWithFilter(
       const chromaResults: Array<{ documents: string[][]; metadatas: unknown[][]; distances: number[][] }> = [];
       const queryPromises = allQueries.slice(0, 2).map(async (q) => {
         try {
-              const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("ChromaDB query timeout")), 5000));
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            const timer = setTimeout(() => reject(new Error("ChromaDB query timeout")), 5000);
+            timer.unref(); // don't keep the event loop alive after the query resolves
+          });
+          console.debug(`[RAG][Debug] ChromaDB query: "${q}" nResults=${limit * 2}`);
           const r = await Promise.race([
             col.query({ queryTexts: [q], nResults: limit * 2, where: chromaWhere }),
             timeoutPromise,
           ]);
           return r as { documents: string[][]; metadatas: unknown[][]; distances: number[][] };
-        } catch { return null; }
+        } catch (err) {
+          console.debug(`[RAG][Debug] ChromaDB query failed: "${q}" → ${(err as Error).message}`);
+          return null;
+        }
       });
       const queryResults = await Promise.all(queryPromises);
       for (const r of queryResults) { if (r) chromaResults.push(r); }
@@ -356,6 +363,7 @@ export async function searchKnowledgeBaseWithFilter(
           }
         }
       }
+      console.debug(`[RAG][Debug] Mode=ChromaDB | embedded ${allQueries.length} query variant(s): ${allQueries.map(q => `"${q}"`).join(", ")}`);
       console.log(`[RAG] ChromaDB returned ${mergedDocs.length} results (from ${allQueries.length} queries)`);
       if (mergedDocs.length > 0) {
         const matched: Array<{ text: string; meta: Record<string, unknown>; score: number }> = [];
@@ -367,9 +375,10 @@ export async function searchKnowledgeBaseWithFilter(
           const allowed = shared || (userId
             ? (!author || author === "admin" || author === "system" || author === userId)
             : (!author || author === "admin" || author === "system"));
-          if (allowed) {
+          const categoryAllowed = categories.includes(String(meta.category));
+          if (allowed && categoryAllowed) {
             const distance = mergedDistances[i] ?? 0.5;
-            const vectorScore = 1 - distance;
+            const vectorScore = Math.max(0, 1 - distance); // clamp cosine distance → similarity to [0,1]
             const keywordScore = queryWords.reduce((acc, word) => {
               if (Array.isArray(meta.keywords) && meta.keywords.includes(word)) return acc + 0.3;
               if (text.toLowerCase().includes(word)) return acc + 0.1;
@@ -382,6 +391,7 @@ export async function searchKnowledgeBaseWithFilter(
         });
         matched.sort((a, b) => b.score - a.score);
         const topMatches = matched.slice(0, limit);
+        console.debug(`[RAG][Debug] ChromaDB Top-${topMatches.length}: ${topMatches.map(m => `${m.meta.source_name || m.meta.id}:${m.score.toFixed(4)}`).join(" | ")}`);
         if (topMatches.length > 0) {
           const formatted = topMatches.map(m => {
             const source = m.meta.source_name ? `[Source: ${m.meta.source_name}]` : "";
@@ -399,6 +409,7 @@ export async function searchKnowledgeBaseWithFilter(
   }
 
   // ── In-memory path ─────────────────────────────────────────
+  console.debug(`[RAG][Debug] Mode=In-Memory | ChromaDB unavailable/empty — using BM25${getBm25Index()?.docCount ? ` (${getBm25Index()?.docCount} docs indexed)` : " (no BM25 index → legacy keyword)"}`);
   let resultDocs: RagDocument[] = [];
 
   const idx = getBm25Index();
@@ -411,6 +422,7 @@ export async function searchKnowledgeBaseWithFilter(
         const weighted = applyRecencyWeighting(docs, scores);
         weighted.sort((a, b) => b.score - a.score);
         resultDocs = weighted.map(w => w.doc);
+        console.debug(`[RAG][Debug] In-Memory (hybrid) Top-${weighted.length}: ${weighted.map(w => `${w.doc.metadata.source_name || w.doc.id}:${w.score.toFixed(4)}`).join(" | ")}`);
         console.log(`[RAG] Hybrid search returned ${resultDocs.length} results (semantic+BM25+recency) for ${agentRole}`);
       }
     } catch (err) {
@@ -421,6 +433,7 @@ export async function searchKnowledgeBaseWithFilter(
       const weighted = applyRecencyWeighting(docs, scores);
       weighted.sort((a, b) => b.score - a.score);
       resultDocs = weighted.map(w => w.doc);
+      console.debug(`[RAG][Debug] In-Memory (BM25 fallback) Top-${weighted.length}: ${weighted.map(w => `${w.doc.metadata.source_name || w.doc.id}:${w.score.toFixed(4)}`).join(" | ")}`);
     }
   } else {
     const legacyResults = legacyKeywordSearch(query, limit * 2, categories, userId);
@@ -428,6 +441,7 @@ export async function searchKnowledgeBaseWithFilter(
     const weighted = applyRecencyWeighting(legacyResults, scores);
     weighted.sort((a, b) => b.score - a.score);
     resultDocs = weighted.slice(0, limit).map(w => w.doc);
+    console.debug(`[RAG][Debug] In-Memory (legacy keyword) Top-${weighted.slice(0, limit).length}: ${weighted.slice(0, limit).map(w => `${w.doc.metadata.source_name || w.doc.id}:${w.score.toFixed(4)}`).join(" | ")}`);
   }
 
   // Post-filters
@@ -455,6 +469,7 @@ export async function searchKnowledgeBaseWithFilter(
     metadatas: [resultDocs.map(r => r.metadata)],
   };
   setRagCachedResult(cacheKey, result);
+  console.debug(`[RAG][Debug] In-Memory Top-${resultDocs.length} (in order): ${resultDocs.map(r => `${r.metadata.source_name || r.id}`).join(" | ")}`);
   console.log(`[RAG] Returning ${resultDocs.length} results for ${agentRole}`);
   return result;
 }
