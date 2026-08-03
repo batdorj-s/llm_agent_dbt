@@ -11,6 +11,11 @@ datalake.db
 uploads/
 *.csv
 
+# Runtime artifacts
+generated_reports/
+data/failed-queries.json
+dbg*.ts
+
 # Build outputs
 ui/.next/
 dist/
