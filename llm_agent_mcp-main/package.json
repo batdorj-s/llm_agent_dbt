@@ -19,7 +19,7 @@
     "test:agent-mcp": "tsx src/agent-with-mcp.ts",
     "test:all": "npm run test:phase1 && npm run test:phase2 && npm run test:phase3 && npm run test:phase-c",
     "setup": "tsx src/setup/init.ts",
-    "dbt:run": "cd dbt && dbt run",
+    "dbt:run": "node -e \"const {spawnSync}=require('child_process');require('dotenv').config();const bin=process.env.DBT_PATH||'dbt';const r=spawnSync(bin,['run','--project-dir','dbt','--profiles-dir','dbt'],{stdio:'inherit',env:process.env});process.exit(r.status??1)\"",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "typecheck": "tsc --noEmit",

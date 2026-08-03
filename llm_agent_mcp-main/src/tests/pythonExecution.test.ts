@@ -38,6 +38,6 @@ describe("Python Execution Agent", () => {
 
     const mod = await import("../agents/pythonExecution.js");
     const result = await mod.executeTechPythonAgent({}, "analyze", undefined, "user-1");
-    expect(result.messages[0].content).toContain("алдаа");
+    expect(result.messages![0].content).toContain("алдаа");
   });
 });

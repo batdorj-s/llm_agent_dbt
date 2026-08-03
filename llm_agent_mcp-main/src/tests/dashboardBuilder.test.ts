@@ -80,6 +80,6 @@ describe("Dashboard Builder Agent", () => {
     }));
     const { buildDashboard: bd } = await import("../agents/dashboardBuilder.js");
     const result = await bd({}, "show dashboard", "user-1");
-    expect(result.messages[0].content).toContain("алдаа");
+    expect(result.messages![0].content).toContain("алдаа");
   });
 });
