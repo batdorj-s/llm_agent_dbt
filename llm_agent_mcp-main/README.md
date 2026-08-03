@@ -98,7 +98,7 @@ src/
     kpi-repository.ts         ← Supabase/SQLite factory pattern
   tools/
     enterprise-tools.ts       ← MCP tools (executeSql, buildFinanceKpiContext, etc.)
-  tests/                      ← 111 tests across 8 files
+  tests/                      ← 699 tests across 54 files
   observability/
     tracer.ts                 ← Langfuse init + CallbackHandler + traceToolCall
 ```
@@ -218,7 +218,7 @@ cd ui && npm install --legacy-peer-deps && cd ..
 ## 3. Тест ажиллуулах
 
 ```bash
-# Бүх тест (111 тест, 8 файл)
+# Бүх тест (699 тест, 54 файл)
 npm test
 
 # TypeScript typecheck
@@ -264,6 +264,45 @@ npm run dev
 - `ResultPreview.tsx` — JSON массиваас HTML table render
 - `VisualMessage.tsx` — Recharts chart (line/bar/pie) render
 - `types.ts` — TypeScript type definitions
+
+---
+
+## 6. ChromaDB Production Verification
+
+Энэ хэсэг нь ChromaDB-г production / remote орчноосоо (өөрийн машинаас) шалгах manual командуудыг багтаана. Доорх командууд нь локал орчинд баталгаажсан.
+
+### 6.1 ChromaDB хүртээмж шалгах (ямар ч машинаас)
+
+```bash
+# 1) Alive-check — тоон timestamp буцаавал амьд байна
+curl -s http://<CHROMA_HOST>:8000/api/v2/heartbeat
+
+# 2) Collections жагсаалт — enterprise-kb байх ёстой
+curl -s http://<CHROMA_HOST>:8000/api/v2/tenants/default_tenant/databases/default_database/collections
+
+# 3) Документ count — хүлээгдэв: 207 (эсвэл re-index-ын дараах бодит тоо)
+curl -s http://<CHROMA_HOST>:8000/api/v2/tenants/default_tenant/databases/default_database/collections/<COLLECTION_ID>/count
+```
+
+- Chroma Cloud / auth-тай сервер бол `-H "X-Chroma-Token: <token>"` header нэмнэ.
+- `GET /api/v1/*` нь `501 Unimplemented` ("v1 API is deprecated") буцаана — **зөвхөн v2 API** ашиглана.
+- Collection ID-г 2-р алхамын үр дүнгээс авна.
+
+### 6.2 RAG query нь ChromaDB-р явж байгаа эсэх
+
+```bash
+# API серверээс бодит query хийх
+curl -s http://<APP_HOST>:3001/api/chat -X POST -H "Content-Type: application/json" \
+  -d '{"message":"profit margin formula"}'
+
+# API серверийн лог-т Mode=ChromaDB байгаа эсэх
+grep "Mode=ChromaDB" <APP_LOG>
+```
+
+Хүлээгдэх үр дүн: `[RAG][Debug] Mode=ChromaDB | embedded ...` — query бодитоор ChromaDB vector search-оор явсан баталгаа.
+
+- `Mode=ChromaDB` харагдахгүй бол ChromaDB хүртээмжгүй → boot лог-т `ChromaDB unavailable, using in-memory fallback` гарч in-memory fallback идэвхжсэн байна.
+- `NODE_ENV=test` үед ChromaDB зориуд skip болно (`ChromaDB skipped in NODE_ENV=test`) — тестийн орчны үр дүн production баталгаа болохгүй.
 
 ---
 
