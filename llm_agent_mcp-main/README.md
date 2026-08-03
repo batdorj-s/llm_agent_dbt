@@ -15,7 +15,7 @@ graph TD
   end
 
   subgraph API[API Gateway :3001]
-    NextUI -->|'"/api/:path*" proxy rewrite → NEXT_PUBLIC_API_URL'| Api[Express API Server<br/>helmet + cors + json 5mb]
+    NextUI -->|"/api proxy rewrite to NEXT_PUBLIC_API_URL"| Api[Express API Server<br/>helmet + cors + json 5mb]
     Api -->|"passes request"| Jwt[Auth Middleware<br/>requireAuth / requirePermission]
     Jwt -->|"verifyToken() — JWT, hard-fail in prod"| AuthSvc[JWT Auth<br/>src/auth.ts]
     Jwt -->|"role + permission gate (RBAC)"| Rbac[RBAC Middleware<br/>src/middleware/rbac.ts]
