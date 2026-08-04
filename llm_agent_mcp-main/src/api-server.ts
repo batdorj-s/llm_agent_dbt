@@ -31,6 +31,7 @@ import { requireAuth } from "./auth.js";
 import { initConversationSchema } from "./services/conversation.js";
 import { log } from "./routes/shared.js";
 import { REQUEST_TIMEOUT_MS } from "./routes/shared.js";
+import { initSentry, captureError } from "./observability/sentry.js";
 import authRouter from "./routes/auth.router.js";
 import kpiRouter from "./routes/kpi.router.js";
 import financeRouter from "./routes/finance.router.js";
@@ -59,7 +60,18 @@ import swaggerJsdoc from "swagger-jsdoc";
 dotenv.config();
 
 const app = express();
-app.use(helmet());
+// Top-of-stack headers: Permissions-Policy isn't managed by helmet 8.
+// Must run BEFORE routes — post-route middleware never fires for completed responses.
+app.use((_req, res, next) => {
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
+app.use(
+  helmet({
+    xFrameOptions: { action: "deny" },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  })
+);
 app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
 app.use(express.json({ limit: "5mb" }));
 
@@ -257,14 +269,9 @@ app.use("/api/history",     historyRouter);      // /api/history, /api/history/s
 app.use("/api",             financeMapperRouter);  // /api/finance-mapper/*
 
 // ── Production security hardening ──────────────────────────
-app.use((_req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("X-XSS-Protection", "1; mode=block");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  next();
-});
+// Note: response headers (X-Frame-Options, Referrer-Policy, Permissions-Policy,
+// X-Content-Type-Options) are set via helmet() at the TOP of the middleware stack —
+// post-route middleware never runs for responses completed by route handlers.
 
 // ─────────────────────────────────────────────────────────────
 // Centralized error handler
@@ -283,6 +290,7 @@ app.use((err: Error & { code?: string; statusCode?: number }, _req: express.Requ
     return;
   }
   console.error("[API] Unhandled error:", err);
+  captureError(err);
   const isDev = process.env.NODE_ENV !== "production";
   res.status(500).json({
     error: "Internal server error",
@@ -321,6 +329,15 @@ function validateEnv(): string[] {
 
 const PORT = process.env.API_PORT || 3001;
 async function start() {
+  initSentry();
+  process.on("unhandledRejection", (reason) => {
+    console.error("[API] Unhandled rejection:", reason);
+    captureError(reason);
+  });
+  process.on("uncaughtException", (err) => {
+    console.error("[API] Uncaught exception:", err);
+    captureError(err);
+  });
   const envWarnings = validateEnv();
   for (const w of envWarnings) console.warn(`[env] ${w}`);
   try { await ensureProjectReady(); }

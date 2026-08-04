@@ -19,6 +19,9 @@ dbg*.ts
 
 # Build outputs
 ui/.next/
+ui/playwright-report/
+ui/test-results/
+ui/e2e/.auth/
 dist/
 
 # OS files

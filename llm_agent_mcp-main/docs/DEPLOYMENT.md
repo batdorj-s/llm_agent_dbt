@@ -180,11 +180,46 @@ curl -fsS http://localhost:3001/api/health
       limits survive restarts
 - [ ] Daily DB backup cron + at least one restore drill performed
 
+## Observability
+
+- **LangGraph checkpointer** — conversation/agent thread state persists in
+  Postgres (`PostgresSaver`, tables `checkpoints` / `checkpoint_writes` /
+  `checkpoint_blobs`, auto-created by `.setup()` on first request). Set
+  `LANGGRAPH_CHECKPOINTER=memory` to force in-memory (dev); `admin` clear
+  conversation-memory API now clears Postgres threads too.
+- **Sentry** — optional crash/error tracking. Set `SENTRY_DSN` to enable;
+  captured in the centralized API error handler plus `unhandledRejection` /
+  `uncaughtException`. Sampling via `SENTRY_TRACES_SAMPLE_RATE`.
+- **Langfuse** — LLM tracing when `LANGFUSE_SECRET_KEY` / `LANGFUSE_PUBLIC_KEY`
+  are set.
+
+## E2E tests (Playwright, in `ui/`)
+
+Suite lives in `ui/e2e/` (config `ui/playwright.config.ts`). It reuses running
+API + UI servers locally (`reuseExistingServer`) or boots both in CI. One
+viewer user is created per day via global setup (login-first to respect the
+3/hour registration rate limit).
+
+```bash
+cd ui
+npx playwright test            # auth, RBAC, security headers, guest controls
+# LLM-critical-flow spec is skipped unless explicitly enabled (real API cost):
+RUN_LLM_E2E=1 npx playwright test e2e/llm.spec.ts
+```
+
+Set `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` to also run the admin-access spec.
+Playwright artifacts are gitignored (`ui/test-results/`, `ui/playwright-report/`,
+`ui/e2e/.auth/`).
+
 ## Known limitations (accepted for single-instance launch)
 
-- LangGraph conversation state lives in-memory (`MemorySaver`) — thread history
-  is lost on restart. Move to a Postgres/Redis checkpointer before scaling out.
-- `node-cron` runs in-process; a second app instance would duplicate scheduled
-  reports without the claim lock already added (claims are now atomic via
-  `FOR UPDATE SKIP LOCKED`).
-- No APM / error tracker (Sentry). Add before a public multi-tenant launch.
+- `node-cron` runs in-process; scheduled-report claims are atomic
+  (`FOR UPDATE SKIP LOCKED`), so a second instance will not double-run — but
+  only the in-process scheduler executes, so multi-instance scheduling still
+  needs an external scheduler.
+- Rate limiting is Redis-backed when `REDIS_URL` is set; without Redis it falls
+  back to per-instance memory (fine for single instance, resets on restart).
+- Security headers (X-Frame-Options DENY, Referrer-Policy,
+  Permissions-Policy) are applied via helmet at the top of the middleware
+  stack — do not move them below route registration; post-route middleware is
+  skipped for completed responses.

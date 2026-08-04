@@ -1,4 +1,6 @@
-import { StateGraph, MemorySaver } from "@langchain/langgraph";
+import { StateGraph, MemorySaver, BaseCheckpointSaver } from "@langchain/langgraph";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { Pool } from "pg";
 import { dataScientistNode } from "./agents/data-scientist.js";
 import { financeAgentNode } from "./agents/financeAgentNode.js";
 import { techAgentNode } from "./agents/techAgentNode.js";
@@ -8,15 +10,72 @@ import { initTracing } from "./observability/tracer.js";
 import { AgentStateAnnotation, type AgentState, type UserRole, type ThinkingEvent } from "./agents/agentState.js";
 export type { UserRole, NextAgent, AgentState, ThinkingEvent } from "./agents/agentState.js";
 import { getCatalog, getActiveCatalogEntry, buildSchemaDefinition } from "./db/data-lake.js";
+import { buildSslConfig } from "./db/pool.js";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const checkpointer = new MemorySaver();
+function createCheckpointer(): BaseCheckpointSaver {
+    const mode = process.env.LANGGRAPH_CHECKPOINTER ?? "auto";
+    const usePostgres = mode === "postgres" || (mode === "auto" && process.env.NODE_ENV !== "test" && !!process.env.DATABASE_URL);
+    if (usePostgres && process.env.DATABASE_URL) {
+        try {
+            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: buildSslConfig(process.env.DATABASE_URL) });
+            console.log("[Checkpointer] Using PostgresSaver (persistent thread state)");
+            return new PostgresSaver(pool, undefined, { schema: "public" });
+        } catch (err) {
+            console.warn(`[Checkpointer] Failed to create PostgresSaver: ${err instanceof Error ? err.message : String(err)} — falling back to MemorySaver`);
+        }
+    }
+    if (process.env.NODE_ENV !== "test") {
+        console.warn("[Checkpointer] Using in-memory MemorySaver — thread state resets on restart. Set DATABASE_URL (or LANGGRAPH_CHECKPOINTER=postgres) for persistence.");
+    }
+    return new MemorySaver();
+}
+
+const checkpointer = createCheckpointer();
+
+let checkpointerSetupPromise: Promise<void> | null = null;
+
+interface PostgresSaverInternals {
+    isSetup: boolean;
+    options: { schema: string };
+    pool: Pool;
+}
+
+function pgSaverInternals(saver: BaseCheckpointSaver): PostgresSaverInternals | null {
+    return saver instanceof PostgresSaver ? (saver as unknown as PostgresSaverInternals) : null;
+}
+
+async function ensureCheckpointerReady(): Promise<void> {
+    const internal = pgSaverInternals(checkpointer);
+    if (!internal || internal.isSetup) return;
+    if (!checkpointerSetupPromise) {
+        checkpointerSetupPromise = (checkpointer as PostgresSaver).setup().catch((err) => {
+            checkpointerSetupPromise = null;
+            throw err;
+        });
+    }
+    return checkpointerSetupPromise;
+}
 
 export async function clearConversationMemory() {
     try {
-        const storage = checkpointer.storage;
+        const internal = pgSaverInternals(checkpointer);
+        if (internal) {
+            const schema = internal.options?.schema ?? "public";
+            const result = await internal.pool.query(`SELECT DISTINCT thread_id FROM "${schema}".checkpoints`);
+            for (const row of result.rows as Array<{ thread_id: string }>) {
+                try {
+                    await checkpointer.deleteThread(row.thread_id);
+                } catch {
+                    // ignore individual thread deletion errors
+                }
+            }
+            return;
+        }
+
+        const storage = (checkpointer as MemorySaver).storage;
         if (!storage) return;
 
         for (const threadId of Object.keys(storage)) {
@@ -61,6 +120,7 @@ const workflow = new StateGraph(AgentStateAnnotation)
 export const multiAgentApp = workflow.compile({ checkpointer });
 
 export async function runMultiAgent(query: string, userRole: UserRole, threadId: string, visualRequest: boolean = false, userId?: string): Promise<string> {
+    await ensureCheckpointerReady();
     const tracing = initTracing();
     const config: Record<string, any> = { configurable: { thread_id: threadId } };
     if (tracing.handler) config.callbacks = [tracing.handler];
@@ -86,6 +146,7 @@ export async function runMultiAgentStream(
     userId?: string,
     onEvent?: (event: ThinkingEvent) => void
 ): Promise<void> {
+    await ensureCheckpointerReady();
     const tracing = initTracing();
     const config: Record<string, any> = { configurable: { thread_id: threadId, onChunk, onEvent } };
     if (tracing.handler) config.callbacks = [tracing.handler];
@@ -106,6 +167,7 @@ export async function runMultiAgentSecure(
     const auth = verifyToken(authToken);
     if (!auth.success || !auth.payload) throw new Error(`Authentication failed: ${auth.error}`);
     const { userId, role } = auth.payload;
+    await ensureCheckpointerReady();
     const result = await multiAgentApp.invoke(
         { messages: [{ role: "user", content: query }], userRole: role, userId },
         { configurable: { thread_id: threadId } }

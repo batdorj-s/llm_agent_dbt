@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "e2e": "playwright test",
+    "e2e:llm": "RUN_LLM_E2E=1 playwright test e2e/llm.spec.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",
