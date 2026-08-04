@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #09090b;
@@ -39,6 +41,19 @@
   --animate-fade-in-up: fadeInUp 0.2s ease-out;
   --animate-slide-in-right: slideInRight 0.2s ease-out;
   --animate-scale-in: scaleIn 0.15s ease-out;
+  --animate-logo-pulse: logoPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes logoPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.85;
+  }
 }
 
 @keyframes fadeInUp {

@@ -56,6 +56,7 @@ export const Header = ({ serverStatus, isLoggedIn, user, theme, onToggleTheme, o
   return (
     <header className="border-b border-border bg-background px-4 sm:px-6 py-3 flex items-center justify-between transition-colors duration-200">
       <div className="flex items-center gap-2">
+        <img src="/logo.svg" alt="Шинжээч.ai лого" className="h-5 w-auto dark:invert" />
         <span className="font-bold text-foreground text-sm tracking-tight">Шинжээч.ai</span>
         <span className="text-[10px] text-foreground/50 font-mono hidden sm:inline">v1.3</span>
       </div>

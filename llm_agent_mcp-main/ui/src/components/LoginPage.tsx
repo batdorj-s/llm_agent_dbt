@@ -37,6 +37,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
+          <img src="/logo.svg" alt="Шинжээч.ai" className="h-14 w-auto mx-auto mb-3 dark:invert" />
           <h1 className="text-2xl font-bold text-foreground">Шинжээч.ai</h1>
           <p className="text-xs text-foreground/40 mt-1">Өгөгдлийн шинжилгээний платформ</p>
         </div>

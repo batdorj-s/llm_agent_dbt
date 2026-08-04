@@ -102,10 +102,21 @@ export const AvatarDropdown: React.FC<AvatarDropdownProps> = ({
       icon: <Palette className="w-3.5 h-3.5" />,
       label: theme === "light" ? "Харанхуй горим" : "Гэрэлт горим",
     },
+    {
+      key: "logout-divider",
+      divider: true,
+    },
+    {
+      key: "logout",
+      icon: <LogOut className="w-3.5 h-3.5" />,
+      label: "Гарах",
+      danger: true,
+    },
   ];
 
   const handleItemClick = (key: string) => {
     if (key === "theme") onToggleTheme();
+    if (key === "logout") onLogout();
   };
 
   return (

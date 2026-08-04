@@ -1,9 +1,12 @@
 import React from "react";
-import { Loader2 } from "lucide-react";
 
 const PageLoading: React.FC = () => (
   <div className="pt-[100px] text-center">
-    <Loader2 className="w-8 h-8 text-foreground/30 animate-spin mx-auto" />
+    <img
+      src="/logo.svg"
+      alt="Шинжээч.ai"
+      className="mx-auto h-16 w-auto dark:invert animate-logo-pulse"
+    />
   </div>
 );
 
