@@ -16,6 +16,8 @@ generated_reports/
 backups/
 data/failed-queries.json
 dbg*.ts
+dbt/schemas/
+finance-mapper/.venv/
 
 # Build outputs
 ui/.next/

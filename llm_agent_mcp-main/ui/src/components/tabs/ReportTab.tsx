@@ -7,9 +7,10 @@ import { FinanceReportView } from "../FinanceReportView";
 interface ReportTabProps {
   reportMode: "finance" | "sales";
   setReportMode: (v: "finance" | "sales") => void;
+  token: string;
 }
 
-const ReportTabInner: React.FC<ReportTabProps> = ({ reportMode, setReportMode }) => {
+const ReportTabInner: React.FC<ReportTabProps> = ({ reportMode, setReportMode, token }) => {
   return (
     <main key="tab-report" className="flex-1 flex flex-col overflow-hidden min-h-0 animate-fade-in-up">
       <div className="border-b border-border px-6 py-2 flex items-center gap-2 bg-sidebar/30">
@@ -26,7 +27,7 @@ const ReportTabInner: React.FC<ReportTabProps> = ({ reportMode, setReportMode })
         </div>
       </div>
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-        {reportMode === "finance" ? <FinanceReportView /> : <ReportView />}
+        {reportMode === "finance" ? <FinanceReportView token={token} /> : <ReportView token={token} />}
       </div>
     </main>
   );

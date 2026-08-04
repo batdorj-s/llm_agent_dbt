@@ -110,7 +110,7 @@ function ReportSkeleton() {
   );
 }
 
-function ExportButton({ label, endpoint, icon }: { label: string; endpoint: string; icon: React.ReactNode }) {
+function ExportButton({ label, endpoint, token, icon }: { label: string; endpoint: string; token: string; icon: React.ReactNode }) {
   const [isExporting, setIsExporting] = useState(false);
   const handleExport = async () => {
     if (isExporting) return;
@@ -118,6 +118,7 @@ function ExportButton({ label, endpoint, icon }: { label: string; endpoint: stri
     try {
       const res = await fetch(endpoint, {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
@@ -252,7 +253,7 @@ function deriveReportsFromCharts(data: FinanceChartsResponse): FinanceReportsRes
   return { isFinance: true, incomeStatement, expenseBreakdown, cashFlow };
 }
 
-export const FinanceReportView = () => {
+export const FinanceReportView = ({ token }: { token: string }) => {
   const [data, setData] = useState<FinanceChartsResponse | null>(null);
   const [metrics, setMetrics] = useState<ComputedMetrics | null>(null);
   const [reports, setReports] = useState<FinanceReportsResponse | null>(null);
@@ -321,8 +322,8 @@ export const FinanceReportView = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <ExportButton label="PDF" endpoint="/api/report/export-pdf" icon={<Download className="w-3 h-3" />} />
-            <ExportButton label="Excel" endpoint="/api/report/export-xlsx" icon={<FileSpreadsheet className="w-3 h-3" />} />
+            <ExportButton label="PDF" endpoint="/api/report/export-pdf" token={token} icon={<Download className="w-3 h-3" />} />
+            <ExportButton label="Excel" endpoint="/api/report/export-xlsx" token={token} icon={<FileSpreadsheet className="w-3 h-3" />} />
           </div>
         </div>
 

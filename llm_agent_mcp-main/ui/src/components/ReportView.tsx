@@ -56,7 +56,7 @@ function TrendBadge({ rate, direction }: { rate: number; direction: "up" | "down
   );
 }
 
-function ExportButton({ label, endpoint, icon }: { label: string; endpoint: string; icon: React.ReactNode }) {
+function ExportButton({ label, endpoint, token, icon }: { label: string; endpoint: string; token: string; icon: React.ReactNode }) {
   const [isExporting, setIsExporting] = useState(false);
   const handleExport = async () => {
     if (isExporting) return;
@@ -64,6 +64,7 @@ function ExportButton({ label, endpoint, icon }: { label: string; endpoint: stri
     try {
       const res = await fetch(endpoint, {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
@@ -93,7 +94,7 @@ function ExportButton({ label, endpoint, icon }: { label: string; endpoint: stri
 
 type ReportTemplate = "summary" | "detailed";
 
-export const ReportView = () => {
+export const ReportView = ({ token }: { token: string }) => {
   const [data, setData] = useState<ReportData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -178,8 +179,8 @@ export const ReportView = () => {
                 Дэлгэрэнгүй
               </button>
             </div>
-            <ExportButton label="PDF" endpoint="/api/report/export-pdf" icon={<Download className="w-3 h-3" />} />
-            <ExportButton label="Excel" endpoint="/api/report/export-xlsx" icon={<FileSpreadsheet className="w-3 h-3" />} />
+            <ExportButton label="PDF" endpoint="/api/report/export-pdf" token={token} icon={<Download className="w-3 h-3" />} />
+            <ExportButton label="Excel" endpoint="/api/report/export-xlsx" token={token} icon={<FileSpreadsheet className="w-3 h-3" />} />
           </div>
         </div>
 
