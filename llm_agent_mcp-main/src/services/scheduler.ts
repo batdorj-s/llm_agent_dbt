@@ -75,13 +75,27 @@ export function startScheduler(): void {
       const pool = getPool();
       const now = new Date().toISOString();
 
+      // Claim due reports atomically: FOR UPDATE SKIP LOCKED + an immediate
+      // next_run_at sentinel prevents a second instance (or an overlapping
+      // tick) from generating the same report twice. The real next_run_at is
+      // written after successful generation; on failure the claim is reset so
+      // the next tick retries.
+      const sentinel = new Date(Date.now() + 60 * 60 * 1000).toISOString();
       const result = await pool.query(
-        `SELECT id, name, query, format, cron_expression, recipients, created_by
-         FROM scheduled_reports
-         WHERE is_active = true AND (next_run_at IS NULL OR next_run_at <= $1)
-         ORDER BY next_run_at ASC NULLS FIRST
-         LIMIT 10`,
-        [now]
+        `WITH due AS (
+           SELECT id
+           FROM scheduled_reports
+           WHERE is_active = true AND (next_run_at IS NULL OR next_run_at <= $1)
+           ORDER BY next_run_at ASC NULLS FIRST
+           LIMIT 10
+           FOR UPDATE SKIP LOCKED
+         )
+         UPDATE scheduled_reports s
+         SET next_run_at = $2
+         FROM due
+         WHERE s.id = due.id
+         RETURNING s.id, s.name, s.query, s.format, s.cron_expression, s.recipients, s.created_by`,
+        [now, sentinel]
       );
 
       for (const report of result.rows) {
@@ -157,6 +171,11 @@ export function startScheduler(): void {
           }
         } catch (err: unknown) {
           console.error(`[scheduler] Failed to generate report ${report.id}:`, (err as Error).message);
+          try {
+            await pool.query(`UPDATE scheduled_reports SET next_run_at = $1 WHERE id = $2`, [now, report.id]);
+          } catch (resetErr) {
+            console.error(`[scheduler] Failed to reset claim for report ${report.id}:`, (resetErr as Error).message);
+          }
         }
       }
     } catch (err: unknown) {

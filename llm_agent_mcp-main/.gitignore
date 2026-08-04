@@ -13,6 +13,7 @@ uploads/
 
 # Runtime artifacts
 generated_reports/
+backups/
 data/failed-queries.json
 dbg*.ts
 

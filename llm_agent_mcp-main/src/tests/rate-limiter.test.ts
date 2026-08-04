@@ -11,14 +11,14 @@ describe("RateLimiter", () => {
     });
 
     it("allows requests up to the limit", async () => {
-        const limiter = new RateLimiter({ maxRequests: 3, windowMs: 60_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 3, windowMs: 60_000 });
         expect(await limiter.check("k1")).toEqual({ allowed: true, remaining: 2, resetInMs: 60_000 });
         expect(await limiter.check("k1")).toEqual({ allowed: true, remaining: 1, resetInMs: 60_000 });
         expect(await limiter.check("k1")).toEqual({ allowed: true, remaining: 0, resetInMs: 60_000 });
     });
 
     it("blocks when limit is exceeded", async () => {
-        const limiter = new RateLimiter({ maxRequests: 2, windowMs: 60_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 2, windowMs: 60_000 });
         await limiter.check("k1");
         await limiter.check("k1");
         const result = await limiter.check("k1");
@@ -28,7 +28,7 @@ describe("RateLimiter", () => {
     });
 
     it("resets after window elapses", async () => {
-        const limiter = new RateLimiter({ maxRequests: 2, windowMs: 60_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 2, windowMs: 60_000 });
         await limiter.check("k1");
         await limiter.check("k1");
         expect((await limiter.check("k1")).allowed).toBe(false);
@@ -40,7 +40,7 @@ describe("RateLimiter", () => {
     });
 
     it("maintains separate windows per key", async () => {
-        const limiter = new RateLimiter({ maxRequests: 2, windowMs: 60_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 2, windowMs: 60_000 });
         expect((await limiter.check("a")).allowed).toBe(true);
         expect((await limiter.check("a")).allowed).toBe(true);
         expect((await limiter.check("a")).allowed).toBe(false);
@@ -50,7 +50,7 @@ describe("RateLimiter", () => {
     });
 
     it("reset clears state for a key", async () => {
-        const limiter = new RateLimiter({ maxRequests: 1, windowMs: 60_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 1, windowMs: 60_000 });
         await limiter.check("k1");
         expect((await limiter.check("k1")).allowed).toBe(false);
         await limiter.reset("k1");
@@ -58,7 +58,7 @@ describe("RateLimiter", () => {
     });
 
     it("stats returns correct count and remaining", async () => {
-        const limiter = new RateLimiter({ maxRequests: 5, windowMs: 60_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 5, windowMs: 60_000 });
         expect(await limiter.stats("unknown")).toEqual({ requests: 0, remaining: 5 });
         await limiter.check("k1");
         await limiter.check("k1");
@@ -66,7 +66,7 @@ describe("RateLimiter", () => {
     });
 
     it("sliding window evicts old entries", async () => {
-        const limiter = new RateLimiter({ maxRequests: 3, windowMs: 10_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 3, windowMs: 10_000 });
 
         await limiter.check("k1"); // t=0
         vi.advanceTimersByTime(5_000);
@@ -79,7 +79,7 @@ describe("RateLimiter", () => {
     });
 
     it("startCleanup removes stale keys", async () => {
-        const limiter = new RateLimiter({ maxRequests: 2, windowMs: 10_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 2, windowMs: 10_000 });
         const interval = limiter.startCleanup(1_000);
 
         await limiter.check("stale");
@@ -93,7 +93,7 @@ describe("RateLimiter", () => {
     });
 
     it("startCleanup keeps active entries but prunes expired timestamps", async () => {
-        const limiter = new RateLimiter({ maxRequests: 5, windowMs: 10_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 5, windowMs: 10_000 });
         const interval = limiter.startCleanup(1_000);
 
         await limiter.check("active"); // t=0
@@ -109,14 +109,14 @@ describe("RateLimiter", () => {
     });
 
     it("handles maxRequests = 0 (block all)", async () => {
-        const limiter = new RateLimiter({ maxRequests: 0, windowMs: 60_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 0, windowMs: 60_000 });
         const result = await limiter.check("any");
         expect(result.allowed).toBe(false);
         expect(result.remaining).toBe(0);
     });
 
     it("handles large burst of requests", async () => {
-        const limiter = new RateLimiter({ maxRequests: 1000, windowMs: 60_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 1000, windowMs: 60_000 });
         for (let i = 0; i < 1000; i++) {
             expect((await limiter.check("burst")).allowed).toBe(true);
         }
@@ -125,7 +125,7 @@ describe("RateLimiter", () => {
     });
 
     it("send correct resetInMs for blocked request", async () => {
-        const limiter = new RateLimiter({ maxRequests: 2, windowMs: 10_000 });
+        const limiter = new RateLimiter({ backend: "memory", maxRequests: 2, windowMs: 10_000 });
         await limiter.check("k1"); // t=0
         await limiter.check("k1"); // t=0
         vi.advanceTimersByTime(4_000);

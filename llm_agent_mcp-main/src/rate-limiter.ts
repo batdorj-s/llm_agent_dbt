@@ -16,6 +16,8 @@ import { getPool, isPgAvailable } from "./db/pool.js";
 export interface RateLimiterOptions {
   maxRequests: number;
   windowMs?: number;
+  /** Force the per-instance in-memory store. Defaults to "auto" (Redis → PostgreSQL → memory). */
+  backend?: "auto" | "memory";
 }
 
 export interface RateLimitResult {
@@ -205,38 +207,46 @@ class PostgresBackend {
 export class RateLimiter {
   private readonly maxRequests: number;
   private readonly windowMs: number;
+  private readonly forceMemory: boolean;
   private readonly mem = new MemoryBackend();
   private readonly pg = new PostgresBackend();
 
   constructor(options: RateLimiterOptions) {
     this.maxRequests = options.maxRequests;
     this.windowMs    = options.windowMs ?? 60_000;
+    this.forceMemory = options.backend === "memory";
   }
 
   async check(key: string): Promise<RateLimitResult> {
-    const redis = await getRedisClient();
-    if (redis) return redisCheck(redis, key, this.maxRequests, this.windowMs);
-    if (isPgAvailable()) return this.pg.check(key, this.maxRequests, this.windowMs);
+    if (!this.forceMemory) {
+      const redis = await getRedisClient();
+      if (redis) return redisCheck(redis, key, this.maxRequests, this.windowMs);
+      if (isPgAvailable()) return this.pg.check(key, this.maxRequests, this.windowMs);
+    }
     warnMemoryFallbackOnce();
     return this.mem.check(key, this.maxRequests, this.windowMs);
   }
 
   async reset(key: string): Promise<void> {
-    const redis = await getRedisClient();
-    if (redis) { await redis.del(key); return; }
-    if (isPgAvailable()) { await this.pg.reset(key); return; }
+    if (!this.forceMemory) {
+      const redis = await getRedisClient();
+      if (redis) { await redis.del(key); return; }
+      if (isPgAvailable()) { await this.pg.reset(key); return; }
+    }
     this.mem.reset(key);
   }
 
   async stats(key: string): Promise<{ requests: number; remaining: number }> {
-    const redis = await getRedisClient();
-    if (redis) {
-      const cutoff = Date.now() - this.windowMs;
-      await redis.zremrangebyscore(key, "-inf", cutoff);
-      const count = await redis.zcard(key);
-      return { requests: count, remaining: Math.max(0, this.maxRequests - count) };
+    if (!this.forceMemory) {
+      const redis = await getRedisClient();
+      if (redis) {
+        const cutoff = Date.now() - this.windowMs;
+        await redis.zremrangebyscore(key, "-inf", cutoff);
+        const count = await redis.zcard(key);
+        return { requests: count, remaining: Math.max(0, this.maxRequests - count) };
+      }
+      if (isPgAvailable()) return this.pg.stats(key, this.maxRequests, this.windowMs);
     }
-    if (isPgAvailable()) return this.pg.stats(key, this.maxRequests, this.windowMs);
     return this.mem.stats(key, this.maxRequests, this.windowMs);
   }
 
