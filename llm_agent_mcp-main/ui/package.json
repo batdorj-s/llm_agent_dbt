@@ -14,6 +14,8 @@
     "e2e:llm": "RUN_LLM_E2E=1 playwright test e2e/llm.spec.ts"
   },
   "dependencies": {
+    "@refinedev/core": "^5.0.12",
+    "@refinedev/react-hook-form": "^5.0.4",
     "@tanstack/react-query": "^5.101.2",
     "html2canvas": "^1.4.1",
     "lightningcss": "^1.32.0",
