@@ -254,6 +254,7 @@ describe("Multi-Agent Integration — TechAgent Full Chain (deterministic SQL)",
         const sqlResult = { ok: true, columns: ["item_name", "total_revenue"], results: [{ item_name: "Laptop", total_revenue: 50000 }] };
         mockHandleExecuteSql.mockResolvedValue(sqlResult);
         mockCreateLLM.mockResolvedValue(createMockLLM("TechAgent", "user wants top 5 data"));
+        mockCreateLLMWithOrder.mockResolvedValue(createMockLLM("TechAgent", "user wants top 5 data"));
 
         const { multiAgentApp } = await import("../multi-agent.js");
         const result = await multiAgentApp.invoke(
