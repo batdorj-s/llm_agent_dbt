@@ -5,7 +5,7 @@
  * Non-admin users see the 403 page; unauthenticated users go to /admin/login.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -43,10 +43,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       router.replace("/admin/login");
       return;
     }
-    if (!isAdminRole(user?.role)) {
+    if (!isAdminRole(user?.role) && pathname !== "/admin/403") {
       router.replace("/admin/403");
     }
-  }, [isAuthLoading, isLoggedIn, token, user, router]);
+  }, [isAuthLoading, isLoggedIn, token, user, router, pathname]);
 
   if (isAuthLoading) {
     return (
@@ -56,8 +56,21 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isLoggedIn || !isAdminRole(user?.role)) {
+  // Non-admin / unauthenticated users get a bare container — only the
+  // 403 and login pages render their own content.
+  const allowSelfRendered =
+    pathname === "/admin/403" ||
+    (pathname === "/admin/login" && !isLoggedIn);
+  if (!isLoggedIn || token === "") {
+    if (allowSelfRendered) {
+      return <div className="min-h-screen bg-background">{children}</div>;
+    }
     return null;
+  }
+  if (!isAdminRole(user?.role)) {
+    return (
+      <div className="min-h-screen bg-background">{pathname === "/admin/403" ? children : null}</div>
+    );
   }
 
   return (

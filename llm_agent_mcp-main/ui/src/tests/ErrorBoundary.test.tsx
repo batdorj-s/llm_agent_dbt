@@ -32,40 +32,40 @@ describe("ErrorBoundary", () => {
         <ThrowError />
       </ErrorBoundary>,
     );
-    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("Алдаа гарлаа")).toBeInTheDocument();
     expect(
-      screen.getByText("Sorry, an error occurred on this page."),
+      screen.getByText("Уучлаарай, энэ хуудсанд алдаа гарлаа."),
     ).toBeInTheDocument();
-    expect(screen.getByText("Reload Page")).toBeInTheDocument();
-    expect(screen.getByText("Back Home")).toBeInTheDocument();
+    expect(screen.getByText("Хуудсыг дахин ачаалах")).toBeInTheDocument();
+    expect(screen.getByText("Нүүр хуудас")).toBeInTheDocument();
   });
 
-  it("shows Retry button and ChunkLoadError title for dynamic import failures", () => {
+  it("shows Дахин оролдох button and ChunkLoadError title for dynamic import failures", () => {
     render(
       <ErrorBoundary>
         <ThrowError message="Failed to fetch dynamically imported module" />
       </ErrorBoundary>,
     );
-    expect(screen.getByText("Failed to load page")).toBeInTheDocument();
-    expect(screen.getByText("Retry")).toBeInTheDocument();
+    expect(screen.getByText("Хуудас ачаалагдсангүй")).toBeInTheDocument();
+    expect(screen.getByText("Дахин оролдох")).toBeInTheDocument();
   });
 
-  it("Retry resets error state allowing children to render again", () => {
+  it("Дахин оролдох resets error state allowing children to render again", () => {
     // Render with chunk error first
     const { rerender } = render(
       <ErrorBoundary>
         <ThrowError message="Failed to fetch dynamically imported module" />
       </ErrorBoundary>,
     );
-    expect(screen.getByText("Failed to load page")).toBeInTheDocument();
+    expect(screen.getByText("Хуудас ачаалагдсангүй")).toBeInTheDocument();
 
-    // Rerender with safe child, then click Retry
+    // Rerender with safe child, then click Дахин оролдох
     rerender(
       <ErrorBoundary>
         <SafeChild text="After recovery" />
       </ErrorBoundary>,
     );
-    fireEvent.click(screen.getByText("Retry"));
+    fireEvent.click(screen.getByText("Дахин оролдох"));
     expect(screen.getByText("After recovery")).toBeInTheDocument();
   });
 
@@ -75,7 +75,7 @@ describe("ErrorBoundary", () => {
         <ThrowError />
       </ErrorBoundary>,
     );
-    const homeLink = screen.getByText("Back Home").closest("a");
+    const homeLink = screen.getByText("Нүүр хуудас").closest("a");
     expect(homeLink).toHaveAttribute("href", "/");
   });
 
@@ -89,7 +89,7 @@ describe("ErrorBoundary", () => {
     );
     expect(
       screen.getByText(
-        /Your network connection has been lost/,
+        /Таны интернет холболт тасарсан байна/,
       ),
     ).toBeInTheDocument();
   });

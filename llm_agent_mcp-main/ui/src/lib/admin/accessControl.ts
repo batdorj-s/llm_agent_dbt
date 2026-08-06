@@ -11,7 +11,7 @@ export const ADMIN_PERMISSION = "admin";
 
 export function createAdminAccessControl(getRole: () => string | null): AccessControlProvider {
   return {
-    can: async ({ resource, action }) => {
+    can: async () => {
       const role = getRole();
       const allowed = role === ADMIN_PERMISSION;
       return { can: allowed, reason: allowed ? undefined : "Admin эрх шаардлагатай" };

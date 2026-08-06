@@ -86,7 +86,7 @@ export function createAdminDataProvider(getToken: () => string): DataProvider {
       return { data: (body.data ?? body) as TData };
     },
 
-    async create<TData extends BaseRecord, TVariables = {}>({
+    async create<TData extends BaseRecord, TVariables = object>({
       resource,
       variables,
     }: CreateParams<TVariables>) {
@@ -100,7 +100,7 @@ export function createAdminDataProvider(getToken: () => string): DataProvider {
       return { data: (body.data ?? body) as TData };
     },
 
-    async update<TData extends BaseRecord, TVariables = {}>({
+    async update<TData extends BaseRecord, TVariables = object>({
       resource,
       id,
       variables,
@@ -115,7 +115,7 @@ export function createAdminDataProvider(getToken: () => string): DataProvider {
       return { data: (body.data ?? body) as TData };
     },
 
-    async deleteOne<TData extends BaseRecord, TVariables = {}>({
+    async deleteOne<TData extends BaseRecord, TVariables = object>({
       resource,
       id,
     }: DeleteOneParams<TVariables>) {

@@ -5,7 +5,7 @@ import React, { useRef, useState, useEffect } from "react";
 export type MenuItem = {
   key: string;
   icon?: React.ReactNode;
-  label: React.ReactNode;
+  label?: React.ReactNode;
   danger?: boolean;
   divider?: boolean;
 };
