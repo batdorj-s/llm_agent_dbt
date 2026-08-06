@@ -50,3 +50,27 @@ export function routeTierForAgent(nextAgent: string): ModelTier {
       return "fast";
   }
 }
+
+// ── Query-complexity classification (D1) ──────────────────────
+
+/**
+ * Signals that push a TechAgent (SQL) query into the "capable" tier — the
+ * stronger providers are measurably better at multi-table joins, window
+ * functions, and comparative time-series SQL.
+ */
+const COMPLEX_QUERY_SIGNALS: RegExp[] = [
+  /join|хамт\s+хүснэгт|хоёр\s+хүснэгт|холбоо/i,
+  /forecast|таамаглал|урьдчилан\s+таамаг|clustering|бүлэглэл|correlation|хамаарал|regression|регресс/i,
+  /anomaly|гажуудал|outlier|аномали|стандарт\s+хазайлт|z-score/i,
+  /trend|тренд|улирлын|seasonal|seasonality/i,
+  /өмнөх\s+жил|previous\s+year|last\s+year|yoy|year.over.year|жилийн\s+өсөлт/i,
+  /хөдөлгөөнт\s+дундаж|moving\s+average|rolling|цуврал\s+нийлбэр|running\s+total|cumulative|ytd/i,
+  /нийтийн\s+хувь|percent.of.total|пропорц|proportion/i,
+  /зэрэглэл|rank|топ\s+лист|top\s+list/i,
+  /давхар\s+харьцуулалт|multi.metric|олон\s+үзүүлэлт|ratio|харьцаа/i,
+];
+
+export function classifyModelTierForQuery(query: string): ModelTier {
+  const lower = query.toLowerCase();
+  return COMPLEX_QUERY_SIGNALS.some((signal) => signal.test(lower)) ? "capable" : "fast";
+}

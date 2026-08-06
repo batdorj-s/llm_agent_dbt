@@ -89,6 +89,15 @@ tech_agent_sql_gen: |
       - "хүйс" → "gender", "хот" → "city", "төлбөр" → "payment", "зардал" → "cost"
       - "тоо" → "quantity", "нэгжийн үнэ" → "unit_price", "борлуулалт"/"орлого" → "gross_income"/"sales"
       ALWAYS check actual column names in schema. If no match exists, use Rule 5's error format.
+  11. FEW-SHOT EXAMPLES: Follow these proven patterns (adjust to actual schema columns):
+      Q: "Нийтийн борлуулалтын хэдэн хувийг салбар бүр эзэлж байна вэ?"
+      A: SELECT "branch", SUM("gross_income") / (SELECT SUM("gross_income") FROM sales) * 100 AS pct FROM sales GROUP BY "branch" ORDER BY pct DESC
+      Q: "Хотын гүйлгээний нийт дүн хэд вэ?"
+      A: SELECT "city", SUM("amount") AS total FROM sales WHERE "city" ILIKE '%ulan%' GROUP BY "city"
+      Q: "Сүүлийн 30 хоногийн өдөр бүрийн хамгийн их борлуулалт?"
+      A: SELECT "date", MAX("gross_income") AS max_income FROM sales WHERE "date" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY "date" ORDER BY "date"
+      Q: "Текст 'Өдөр' баганыг жилээр бүлэглэж нийт дүн": 
+      A: SELECT EXTRACT(YEAR FROM TO_DATE("Өдөр", 'DD-Mon')) AS y, SUM("amount") AS total FROM sales GROUP BY y ORDER BY y
 
   ## Available Schema
   {catalog}

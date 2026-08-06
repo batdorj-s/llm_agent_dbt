@@ -16,6 +16,7 @@
     "test:phase-c": "tsx src/test-phase-c.ts",
     "test:gemini": "tsx src/test-gemini.ts",
     "test:mcp": "tsx src/test-client.ts",
+    "insights": "tsx scripts/feedback-insights.ts",
     "test:agent-mcp": "tsx src/agent-with-mcp.ts",
     "test:all": "npm run test:phase1 && npm run test:phase2 && npm run test:phase3 && npm run test:phase-c",
     "setup": "tsx src/setup/init.ts",

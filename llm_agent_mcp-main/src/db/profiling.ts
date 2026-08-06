@@ -10,9 +10,51 @@ import { buildSemanticGroups, formatSemanticGroups } from "../utils.js";
 export async function getColumnSamples(
   tableName: string,
   columns: string[],
-  limit: number = 3
+  limit: number = 5
 ): Promise<Record<string, string[]>> {
   if (!isPgAvailable() || columns.length === 0) return {};
+  try {
+    if (columns.length === 1) {
+      const col = columns[0];
+      const result = await getPool().query(
+        `SELECT DISTINCT "${col}" AS val FROM ${quoteIdent(tableName)} WHERE "${col}" IS NOT NULL AND "${col}" != '' ORDER BY "${col}" LIMIT $1`,
+        [limit]
+      );
+      return { [col]: result.rows.map((r: any) => String(r.val)).filter(Boolean) };
+    }
+    // Sample up to 2000 rows (vs. 100 before) so distinct values are more
+    // representative, then surface shorter (label-like) values first so enum
+    // columns such as "Орлого / Зарлага" appear in the schema context.
+    const result = await getPool().query(
+      `SELECT key, jsonb_agg(DISTINCT val) FILTER (WHERE val IS NOT NULL AND val::text != '') AS vals
+       FROM (SELECT row_to_json(t) AS r FROM (SELECT * FROM ${quoteIdent(tableName)} LIMIT 2000) sub) data,
+       jsonb_each_text(r::jsonb) AS cols(key, val)
+       GROUP BY key`
+    );
+    const samples: Record<string, string[]> = {};
+    for (const col of columns) {
+      const row = result.rows.find((r: any) => r.key === col);
+      const vals: string[] = row ? (row.vals as string[]).filter(Boolean) : [];
+      samples[col] = vals
+        .sort((a, b) => a.length - b.length)
+        .slice(0, limit);
+    }
+    return samples;
+  } catch {
+    // Fall back to the simple first-rows sample if the optimized query fails
+    // (e.g. on exotic table structures or older Postgres versions).
+    return getColumnSamplesSimple(tableName, columns, limit);
+  }
+}
+
+/**
+ * Simple first-rows column sampling fallback.
+ */
+async function getColumnSamplesSimple(
+  tableName: string,
+  columns: string[],
+  limit: number
+): Promise<Record<string, string[]>> {
   try {
     if (columns.length === 1) {
       const col = columns[0];
@@ -24,7 +66,7 @@ export async function getColumnSamples(
     }
     const result = await getPool().query(
       `SELECT key, jsonb_agg(DISTINCT val) FILTER (WHERE val IS NOT NULL AND val::text != '') AS vals
-       FROM (SELECT row_to_json(t) AS r FROM ${quoteIdent(tableName)} LIMIT 100) data,
+       FROM (SELECT row_to_json(t) AS r FROM ${quoteIdent(tableName)} LIMIT 200) data,
        jsonb_each_text(r::jsonb) AS cols(key, val)
        GROUP BY key`
     );

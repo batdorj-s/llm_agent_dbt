@@ -191,6 +191,61 @@ const SEMANTIC_WEIGHT = 0.55;
 const KEYWORD_WEIGHT = 0.30;
 const RECENCY_WEIGHT = 0.15;
 
+/**
+ * Minimum blended relevance score for a document to be injected into the LLM
+ * context. Below this, the document is more noise than signal — injecting it
+ * actively increases hallucination risk (RAG noise gate).
+ */
+export const RAG_MIN_RELEVANCE_SCORE = 0.20;
+
+/**
+ * Relevance gate that trims noise without starving the context. Results above
+ * the gate are preferred; when there are too few (e.g. tiny knowledge bases,
+ * or system/admin docs that deliberately ride along with weak scores), the rest
+ * is kept up to the limit so the model never loses legitimate context.
+ */
+function topWithRelevanceGate<T extends { score: number }>(ranked: T[], limit: number): T[] {
+  if (ranked.length === 0) return ranked;
+  const eligible = ranked.filter((r) => r.score >= RAG_MIN_RELEVANCE_SCORE);
+  if (eligible.length >= limit) return eligible.slice(0, limit);
+  return ranked.slice(0, Math.min(limit, ranked.length));
+}
+
+/**
+ * Pick the top documents while keeping at most one chunk per parent document,
+ * then re-fill with additional chunks if we still have capacity. This prevents
+ * a single long document from crowding out every other source (diversity).
+ */
+function pickDiverseMatches<T extends { score: number; parentId: string }>(
+  eligible: T[],
+  limit: number
+): T[] {
+  const top: T[] = [];
+  const seenParents = new Set<string>();
+
+  for (const item of eligible) {
+    if (top.length >= limit) break;
+    if (item.parentId && seenParents.has(item.parentId)) continue;
+    top.push(item);
+    if (item.parentId) seenParents.add(item.parentId);
+  }
+
+  // Re-fill with sibling chunks when the primary pass ran out of distinct parents.
+  if (top.length < limit) {
+    for (const item of eligible) {
+      if (top.length >= limit) break;
+      if (top.includes(item)) continue;
+      top.push(item);
+    }
+  }
+
+  return top;
+}
+
+function parentIdOf(meta: Record<string, unknown>): string {
+  return (meta.parent_doc_id as string) || (meta.id as string) || "";
+}
+
 function applyRecencyWeighting(
   docs: RagDocument[],
   scores: number[]
@@ -270,9 +325,10 @@ export async function searchKnowledgeBase(
   query: string,
   agentRole: string = "FinanceAgent",
   limit: number = 5,
-  userId?: string
+  userId?: string,
+  options?: { llm?: { invoke?: (input: string) => Promise<{ content?: string }> } }
 ): Promise<{ documents: string[][]; metadatas: unknown[][] }> {
-  return searchKnowledgeBaseWithFilter({ query, agentRole, limit, userId });
+  return searchKnowledgeBaseWithFilter({ query, agentRole, limit, userId, llm: options?.llm });
 }
 
 export async function searchKnowledgeBaseWithFilter(
@@ -282,9 +338,10 @@ export async function searchKnowledgeBaseWithFilter(
     limit?: number;
     filter?: SelfQueryFilter;
     userId?: string;
+    llm?: { invoke?: (input: string) => Promise<{ content?: string }> };
   }
 ): Promise<{ documents: string[][]; metadatas: unknown[][] }> {
-  const { query, agentRole, limit, filter, userId } = {
+  const { query, agentRole, limit, filter, userId, llm } = {
     agentRole: "FinanceAgent",
     limit: 5,
     ...params
@@ -306,9 +363,9 @@ export async function searchKnowledgeBaseWithFilter(
   }
   const departmentFilter = filter?.departments?.filter(Boolean) || [];
 
-  // Query expansion
+  // Query expansion (LLM-powered when the caller supplies a model)
   let expandedQueries: string[] = [];
-  try { expandedQueries = await expandQuery(query); } catch { /* optional */ }
+  try { expandedQueries = await expandQuery(query, llm); } catch { /* optional */ }
   const allQueries = [query, ...expandedQueries.filter(q => q !== query)];
 
   // ── ChromaDB path ──────────────────────────────────────────
@@ -390,7 +447,10 @@ export async function searchKnowledgeBaseWithFilter(
           }
         });
         matched.sort((a, b) => b.score - a.score);
-        const topMatches = matched.slice(0, limit);
+        const topMatches = pickDiverseMatches(
+          topWithRelevanceGate(matched, limit).map((m) => ({ ...m, parentId: parentIdOf(m.meta) })),
+          limit
+        );
         console.debug(`[RAG][Debug] ChromaDB Top-${topMatches.length}: ${topMatches.map(m => `${m.meta.source_name || m.meta.id}:${m.score.toFixed(4)}`).join(" | ")}`);
         if (topMatches.length > 0) {
           const formatted = topMatches.map(m => {
@@ -421,8 +481,11 @@ export async function searchKnowledgeBaseWithFilter(
         const scores = hybridResults.map(r => r.score);
         const weighted = applyRecencyWeighting(docs, scores);
         weighted.sort((a, b) => b.score - a.score);
-        resultDocs = weighted.map(w => w.doc);
-        console.debug(`[RAG][Debug] In-Memory (hybrid) Top-${weighted.length}: ${weighted.map(w => `${w.doc.metadata.source_name || w.doc.id}:${w.score.toFixed(4)}`).join(" | ")}`);
+        resultDocs = pickDiverseMatches(
+          topWithRelevanceGate(weighted, limit).map((w) => ({ doc: w.doc, score: w.score, parentId: parentIdOf(w.doc.metadata as unknown as Record<string, unknown>) })),
+          limit
+        ).map((w) => (w as { doc: RagDocument }).doc);
+        console.debug(`[RAG][Debug] In-Memory (hybrid) Top-${resultDocs.length}: ${resultDocs.map(w => `${w.metadata.source_name || w.id}`).join(" | ")}`);
         console.log(`[RAG] Hybrid search returned ${resultDocs.length} results (semantic+BM25+recency) for ${agentRole}`);
       }
     } catch (err) {
@@ -432,16 +495,19 @@ export async function searchKnowledgeBaseWithFilter(
       const scores = bm25Results.map(r => r.score);
       const weighted = applyRecencyWeighting(docs, scores);
       weighted.sort((a, b) => b.score - a.score);
-      resultDocs = weighted.map(w => w.doc);
-      console.debug(`[RAG][Debug] In-Memory (BM25 fallback) Top-${weighted.length}: ${weighted.map(w => `${w.doc.metadata.source_name || w.doc.id}:${w.score.toFixed(4)}`).join(" | ")}`);
+      resultDocs = pickDiverseMatches(
+        topWithRelevanceGate(weighted, limit).map((w) => ({ doc: w.doc, score: w.score, parentId: parentIdOf(w.doc.metadata as unknown as Record<string, unknown>) })),
+        limit
+      ).map((w) => (w as { doc: RagDocument }).doc);
+      console.debug(`[RAG][Debug] In-Memory (BM25 fallback) Top-${resultDocs.length}: ${resultDocs.map(w => `${w.metadata.source_name || w.id}`).join(" | ")}`);
     }
   } else {
     const legacyResults = legacyKeywordSearch(query, limit * 2, categories, userId);
     const scores = legacyResults.map((_, i) => limit * 2 - i);
     const weighted = applyRecencyWeighting(legacyResults, scores);
     weighted.sort((a, b) => b.score - a.score);
-    resultDocs = weighted.slice(0, limit).map(w => w.doc);
-    console.debug(`[RAG][Debug] In-Memory (legacy keyword) Top-${weighted.slice(0, limit).length}: ${weighted.slice(0, limit).map(w => `${w.doc.metadata.source_name || w.doc.id}:${w.score.toFixed(4)}`).join(" | ")}`);
+    resultDocs = topWithRelevanceGate(weighted, limit).map(w => w.doc);
+    console.debug(`[RAG][Debug] In-Memory (legacy keyword) Top-${resultDocs.length}: ${resultDocs.map(w => `${w.metadata.source_name || w.id}`).join(" | ")}`);
   }
 
   // Post-filters

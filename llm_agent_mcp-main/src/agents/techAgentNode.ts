@@ -1,8 +1,9 @@
-import { createLLM, invokeWithFallback, streamWithFallback } from "../llm-provider.js";
+import { invokeWithFallback, streamWithFallback, createLLMWithOrder } from "../llm-provider.js";
 import { getActiveCatalogEntry } from "../db/data-lake.js";
 import { searchKnowledgeBase, formatRagDocuments } from "../rag.js";
 import { handleExecuteSql, isPythonQuery } from "../tools/enterprise-tools.js";
 import { prompts } from "./prompts.js";
+import { classifyModelTierForQuery, getProviderOrder } from "./model-router.js";
 import { type AgentState, type AgentConfig, buildContextSummary, trimMessages } from "./agentState.js";
 import { extractCodeBlock, safeJsonParse } from "../utils.js";
 import {
@@ -23,6 +24,8 @@ import { createLogger } from "./logger.js";
 const log = createLogger("TechAgent");
 import { executeTechPythonAgent } from "./pythonExecution.js";
 import { buildDashboard } from "./dashboardBuilder.js";
+import { validateSqlResult, formatValidationFeedback } from "./sqlResultValidation.js";
+import { performConsistencyCheck } from "./selfConsistency.js";
 
 function generateQuerySuggestion(query: string, _entry: any): string {
     const lower = query.toLowerCase();
@@ -57,9 +60,14 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
     const query = state.sanitizedQuery || (state.messages[state.messages.length - 1]?.content ?? "");
     const userId = state.userId || "system";
 
+    // D1: complex queries (joins, window functions, comparative series) are
+    // routed to the stronger provider tier for measurably better SQL.
+    const modelTier = classifyModelTierForQuery(query);
+    const providerOrder = getProviderOrder(modelTier);
+
     if (onEvent) onEvent({ type: "thinking", step: "analysis", agent: "TechAgent", message: "Analyzing your data query..." });
 
-    const llm = await createLLM({ temperature: 0 });
+    const llm = await createLLMWithOrder({ temperature: 0, providerOrder });
     if (!llm) {
         const fallback = `(Tech Agent)\n[АНХААР] No LLM API key configured to generate dynamic SQL code.`;
         if (onChunk) onChunk(fallback);
@@ -95,7 +103,15 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
     log.info("Fetching RAG context for query...");
     let ragContext = "";
     try {
-        const ragResult = await searchKnowledgeBase(query, "TechAgent", 5, userId);
+        // B1: LLM-powered query expansion improves retrieval recall. The wrapper
+        // adapts the LangChain model to the minimal { invoke } shape expandQuery needs.
+        const ragLlm = {
+            invoke: async (input: string) => {
+                const res = await llm.invoke([{ role: "system", content: input }]);
+                return { content: typeof res?.content === "string" ? res.content : "" };
+            },
+        };
+        const ragResult = await searchKnowledgeBase(query, "TechAgent", 5, userId, { llm: ragLlm });
         const ragDocs = ragResult.documents?.[0] ?? [];
         const ragMetas = ragResult.metadatas?.[0] ?? [];
         if (ragDocs.length > 0) {
@@ -153,7 +169,7 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
             const codeGenResponse = await invokeWithFallback([
                 { role: "system", content: sqlGenPrompt },
                 { role: "user", content: userContent }
-            ], { temperature: 0, timeout: SQL_GEN_TIMEOUT_MS });
+            ], { temperature: 0, timeout: SQL_GEN_TIMEOUT_MS, providerOrder });
 
             const rawCode = codeGenResponse.content;
             let currentSql = extractCodeBlock(rawCode, "sql");
@@ -197,6 +213,17 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
                 if (isEmptyResult && attempts < MAX_SQL_RETRIES) {
                     feedback = prompts.empty_result_feedback as string;
                     log.info("Empty result detected, retrying with self-healing feedback...");
+                    continue;
+                }
+
+                // Self-healing: structurally suspicious results (NULL-heavy column,
+                // constant series, no numeric measures) — re-run with feedback.
+                const validationIssues = Array.isArray(parsedResults.data)
+                    ? validateSqlResult(parsedResults.data)
+                    : [];
+                if (validationIssues.length > 0 && attempts < MAX_SQL_RETRIES) {
+                    feedback = formatValidationFeedback(validationIssues);
+                    log.info(`Suspicious result detected (${validationIssues.length} issue(s)), retrying with feedback...`);
                     continue;
                 }
                 isSuccess = true;
@@ -260,6 +287,39 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
         void logSqlOutcome({ userId, query, outcome, attempts, tableName: activeEntry?.table_name });
     }
 
+    // A2: self-consistency vote for complex queries. When the first candidate
+    // looks suspiciously thin (< 5 rows), an independent second SQL is generated
+    // and its shape compared. Only adopted when column shapes match exactly.
+    let consistencyNote = "";
+    if (isSuccess && modelTier === "capable") {
+        try {
+            const vote = await performConsistencyCheck({
+                query,
+                firstSql: sqlCode,
+                firstResult: sandboxResult,
+                schemaContext: (prompts.tech_agent_sql_gen as string).replace("{catalog}", schemaContext || "(catalog unavailable)"),
+                ragContext,
+                providerOrder,
+                invoke: (messages, options) =>
+                    invokeWithFallback(messages, {
+                        temperature: options?.temperature ?? 0,
+                        timeout: options?.timeout ?? SQL_GEN_TIMEOUT_MS,
+                        providerOrder: options?.providerOrder as never[],
+                    }),
+                executeSql: (params) => handleExecuteSql({ query: params.query, userId: params.userId }),
+                userId,
+            });
+            if (vote.adopted) {
+                sqlCode = vote.sql;
+                sandboxResult = vote.text;
+                consistencyNote = "\n\n*[САНАЛЧИНГА] Үр дүнг хоёр дахь SQL-оор шалгаж, илүү бүрэн хариу сонгосон.*\n";
+                log.info("Consistency vote adopted an alternative SQL.");
+            }
+        } catch (consistencyErr) {
+            log.warn("Self-consistency check failed:", { error: (consistencyErr as Error).message });
+        }
+    }
+
     const dataStats = computeResultStats(sandboxResult);
     const qualityChecklist = prompts.data_quality_checklist || "";
     const contextSummary = buildContextSummary(state.messages);
@@ -274,7 +334,7 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
     ]);
 
     try {
-        const { stream } = await streamWithFallback(explainMessages, { temperature: 0, timeout: 60000 });
+        const { stream } = await streamWithFallback(explainMessages, { temperature: 0, timeout: 60000, providerOrder });
 
         if (onChunk) onChunk("\n\n");
         accumulatedText += "\n\n";
@@ -292,6 +352,10 @@ export async function techAgentNode(state: AgentState, config?: AgentConfig): Pr
     }
 
     accumulatedText = accumulatedText.replace(/<visual>[\s\S]*?<\/visual>/g, '');
+    if (consistencyNote) {
+        accumulatedText += consistencyNote;
+        if (onChunk) onChunk(consistencyNote);
+    }
     const visualTag = generateVisualTag(sandboxResult);
     if (visualTag) {
         accumulatedText += `\n\n${visualTag}`;
