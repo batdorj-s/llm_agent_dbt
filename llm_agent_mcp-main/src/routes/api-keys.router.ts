@@ -150,6 +150,87 @@ router.get("/admin/api-keys", requirePermission("admin:users"), async (req, res)
   }
 });
 
+/** Update an API key (name, active state, permissions, expiry) */
+router.patch("/admin/api-keys/:id", requirePermission("admin:users"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, isActive, permissions, expiresInDays } = req.body;
+
+    if (name !== undefined && (typeof name !== "string" || name.trim().length === 0)) {
+      res.status(400).json({ error: "name must be a non-empty string" });
+      return;
+    }
+    if (isActive !== undefined && typeof isActive !== "boolean") {
+      res.status(400).json({ error: "isActive must be a boolean" });
+      return;
+    }
+    if (permissions !== undefined && (!Array.isArray(permissions) || permissions.some(p => typeof p !== "string"))) {
+      res.status(400).json({ error: "permissions must be an array of strings" });
+      return;
+    }
+
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (name !== undefined) {
+      sets.push(`name = $${params.length + 1}`);
+      params.push(name.trim());
+    }
+    if (isActive !== undefined) {
+      sets.push(`is_active = $${params.length + 1}`);
+      params.push(isActive);
+    }
+    if (permissions !== undefined) {
+      sets.push(`permissions = $${params.length + 1}`);
+      params.push(permissions);
+    }
+    if (expiresInDays !== undefined) {
+      if (typeof expiresInDays !== "number" || !Number.isFinite(expiresInDays) || expiresInDays < 0) {
+        res.status(400).json({ error: "expiresInDays must be a non-negative number" });
+        return;
+      }
+      sets.push(`expires_at = $${params.length + 1}`);
+      params.push(expiresInDays === 0 ? null : new Date(Date.now() + expiresInDays * 86400000).toISOString());
+    }
+
+    if (sets.length === 0) {
+      res.status(400).json({ error: "At least one field to update is required" });
+      return;
+    }
+
+    params.push(id);
+    const result = await getPool().query(
+      `UPDATE api_keys SET ${sets.join(", ")} WHERE id = $${params.length}
+       RETURNING id, key_prefix, name, permissions, expires_at, is_active, last_used_at, created_at`,
+      params
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: "API key not found" });
+      return;
+    }
+
+    const row = result.rows[0];
+    log("info", `API key updated: ${id}`, req as any, { name: row.name, is_active: row.is_active });
+
+    res.json({
+      success: true,
+      data: {
+        id: row.id,
+        keyPrefix: row.key_prefix,
+        name: row.name,
+        permissions: row.permissions,
+        expiresAt: row.expires_at,
+        isActive: row.is_active,
+        lastUsedAt: row.last_used_at,
+        createdAt: row.created_at,
+      },
+    });
+  } catch (err) {
+    log("error", "Failed to update API key", req as any, { error: (err as Error).message });
+    res.status(500).json({ error: "Failed to update API key" });
+  }
+});
+
 /** Revoke an API key */
 router.delete("/admin/api-keys/:id", requirePermission("admin:users"), async (req, res) => {
   try {

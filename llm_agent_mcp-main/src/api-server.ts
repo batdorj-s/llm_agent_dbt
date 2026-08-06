@@ -40,6 +40,9 @@ import alertsRouter from "./routes/alerts.router.js";
 import whatifRouter from "./routes/whatif.router.js";
 import conversationsRouter from "./routes/conversations.router.js";
 import adminRouter from "./routes/admin.router.js";
+import adminUsersRouter from "./routes/admin-users.router.js";
+import adminDocumentsRouter from "./routes/admin-documents.router.js";
+import adminSummaryRouter from "./routes/admin-summary.router.js";
 import feedbackRouter from "./routes/feedback.router.js";
 import exportRouter from "./routes/export.router.js";
 import metricsRouter from "./routes/metrics.router.js";
@@ -254,6 +257,9 @@ app.use("/api",             alertsRouter);
 app.use("/api",             whatifRouter);       // /api/whatif
 app.use("/api",             conversationsRouter);  // /api/conversations, /api/conversations/search, ...
 app.use("/api/admin",       adminRouter);
+app.use("/api/admin",       adminUsersRouter);     // /api/admin/users
+app.use("/api/admin",       adminDocumentsRouter); // /api/admin/documents
+app.use("/api/admin",       adminSummaryRouter);   // /api/admin/summary
 app.use("/api/feedback",    feedbackRouter);
 app.use("/api/export",      exportRouter);
 app.use("/api/metrics",     metricsRouter);
