@@ -43,6 +43,8 @@ import adminRouter from "./routes/admin.router.js";
 import adminUsersRouter from "./routes/admin-users.router.js";
 import adminDocumentsRouter from "./routes/admin-documents.router.js";
 import adminSummaryRouter from "./routes/admin-summary.router.js";
+import adminAnalyticsRouter from "./routes/admin-analytics.router.js";
+import adminAnalysisRouter from "./routes/admin-analysis.router.js";
 import feedbackRouter from "./routes/feedback.router.js";
 import exportRouter from "./routes/export.router.js";
 import metricsRouter from "./routes/metrics.router.js";
@@ -260,6 +262,8 @@ app.use("/api/admin",       adminRouter);
 app.use("/api/admin",       adminUsersRouter);     // /api/admin/users
 app.use("/api/admin",       adminDocumentsRouter); // /api/admin/documents
 app.use("/api/admin",       adminSummaryRouter);   // /api/admin/summary
+app.use("/api/admin",       adminAnalyticsRouter);  // /api/admin/analytics
+app.use("/api/admin",       adminAnalysisRouter);   // /api/admin/analysis/*
 app.use("/api/feedback",    feedbackRouter);
 app.use("/api/export",      exportRouter);
 app.use("/api/metrics",     metricsRouter);

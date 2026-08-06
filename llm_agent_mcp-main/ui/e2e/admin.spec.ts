@@ -71,4 +71,35 @@ test.describe("Admin CMS login (requires E2E_ADMIN_EMAIL/E2E_ADMIN_PASSWORD)", (
     await page.goto(`${UI_ORIGIN}/admin/api-keys`);
     await expect(page.locator("h1")).toContainText("API түлхүүрүүд");
   });
+
+  test("admin opens analytics dashboard and SQL analysis pages", async ({ page }) => {
+    await page.goto(`${UI_ORIGIN}/admin/login`);
+    await page.fill('input[type="email"]', adminEmail!);
+    await page.fill('input[type="password"]', adminPassword!);
+    await page.click('button[type="submit"]');
+    await page.waitForURL("**/admin", { timeout: 15_000 });
+
+    await page.goto(`${UI_ORIGIN}/admin/analytics`);
+    await expect(page.locator("h1")).toContainText("Аналитик");
+
+    await page.goto(`${UI_ORIGIN}/admin/analysis`);
+    await expect(page.locator("h1")).toContainText("SQL Шинжилгээ");
+  });
+
+  test("admin runs a SQL query from the analysis tool", async ({ page }) => {
+    await page.goto(`${UI_ORIGIN}/admin/login`);
+    await page.fill('input[type="email"]', adminEmail!);
+    await page.fill('input[type="password"]', adminPassword!);
+    await page.click('button[type="submit"]');
+    await page.waitForURL("**/admin", { timeout: 15_000 });
+
+    await page.goto(`${UI_ORIGIN}/admin/analysis`);
+    await expect(page.locator("h1")).toContainText("SQL Шинжилгээ");
+
+    const textarea = page.locator('textarea');
+    await textarea.fill('SELECT 1 AS result;');
+    await page.click('button:has-text("Гүйцэтгэх")');
+    await expect(page.locator("table").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("table").first()).toContainText("result");
+  });
 });

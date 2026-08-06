@@ -4,7 +4,8 @@ import { createAdminDataProvider } from "../lib/admin/dataProvider";
 const TOKEN = "test-token";
 
 function mockFetch(ok: boolean, body: unknown, status = 200) {
-  const fetchMock = vi.fn(async () => ({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- params typed for mock.calls tuple assertions
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({
     ok,
     status,
     json: async () => body,

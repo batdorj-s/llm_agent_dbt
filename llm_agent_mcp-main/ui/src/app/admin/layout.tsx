@@ -14,6 +14,8 @@ import {
   KeyRound,
   Database,
   Activity,
+  BarChart,
+  Terminal,
   LogOut,
   Sun,
   Moon,
@@ -29,6 +31,8 @@ const NAV_ITEMS = [
   { href: "/admin/api-keys", label: "API түлхүүрүүд", icon: KeyRound },
   { href: "/admin/knowledge-base", label: "Мэдлэгийн сан", icon: Database },
   { href: "/admin/observability", label: "Хяналт", icon: Activity },
+  { href: "/admin/analytics", label: "Аналитик", icon: BarChart },
+  { href: "/admin/analysis", label: "SQL Шинжилгээ", icon: Terminal },
 ];
 
 function AdminShell({ children }: { children: React.ReactNode }) {
