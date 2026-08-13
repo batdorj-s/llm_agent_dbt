@@ -170,6 +170,7 @@ export default function AdminApiKeysPage() {
                 <th className="px-4 py-3 font-semibold">Түлхүүр</th>
                 <th className="px-4 py-3 font-semibold hidden md:table-cell">Эрхүүд</th>
                 <th className="px-4 py-3 font-semibold hidden sm:table-cell">Хугацаа</th>
+                <th className="px-4 py-3 font-semibold hidden lg:table-cell">Сүүлийн хэрэглээ</th>
                 <th className="px-4 py-3 font-semibold">Төлөв</th>
                 <th className="px-4 py-3 font-semibold text-right">Үйлдэл</th>
               </tr>
@@ -205,6 +206,9 @@ export default function AdminApiKeysPage() {
                   </td>
                   <td className="px-4 py-3 hidden sm:table-cell text-xs text-foreground/50">
                     {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString("mn-MN") : "Хязгааргүй"}
+                  </td>
+                  <td className="px-4 py-3 hidden lg:table-cell text-xs text-foreground/50">
+                    {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString("mn-MN") : "Хараахан ашиглаагүй"}
                   </td>
                   <td className="px-4 py-3">
                     <span

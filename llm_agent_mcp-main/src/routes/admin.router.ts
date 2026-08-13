@@ -509,7 +509,7 @@ router.post("/upload-doc", requireAuth, requirePermission("admin:upload"), uploa
 });
 
 // ── Feedback ─────────────────────────────────────────────────
-const FAILED_QUERIES_PATH = path.join(process.cwd(), "logs", "failed_queries.json");
+const FAILED_QUERIES_PATH = path.resolve(process.cwd(), "data", "failed-queries.json");
 
 async function ensureFailedQueriesFile(): Promise<void> {
   const dir = path.dirname(FAILED_QUERIES_PATH);

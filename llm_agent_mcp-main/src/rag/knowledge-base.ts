@@ -280,7 +280,7 @@ export async function setupKnowledgeBase(): Promise<boolean> {
 
   // Load approved feedback
   try {
-    const failedQueriesPath = path.join(process.cwd(), "logs", "failed_queries.json");
+    const failedQueriesPath = path.resolve(process.cwd(), "data", "failed-queries.json");
     await access(failedQueriesPath).catch(() => { throw new Error("File not found"); });
     const rawData = await readFile(failedQueriesPath, "utf8");
     const data = JSON.parse(rawData);

@@ -2,6 +2,7 @@
  * admin-users.router.ts — Admin User Management
  *
  * GET    /api/admin/users          → List users (search / role filter)
+ * POST   /api/admin/users          → Create user (email, password, name, role)
  * PATCH  /api/admin/users/:id      → Update role / name
  * DELETE /api/admin/users/:id      → Delete user (cascades api_keys)
  *
@@ -10,6 +11,7 @@
 
 import { Router } from "express";
 import { getPool } from "../db/pool.js";
+import { createUser } from "../db/catalog.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { log } from "./shared.js";
 import type { UserRole } from "../agents/agentState.js";
@@ -50,6 +52,45 @@ router.get("/users", requirePermission("admin:users"), async (req, res) => {
   } catch (err) {
     log("error", "Failed to list users", req as any, { error: (err as Error).message });
     res.status(500).json({ error: "Failed to list users" });
+  }
+});
+
+/** Create user (email, password, name, optional role) */
+router.post("/users", requirePermission("admin:users"), async (req, res) => {
+  try {
+    const { email, password, name, role } = req.body ?? {};
+
+    if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      res.status(400).json({ error: "A valid email is required" });
+      return;
+    }
+    if (typeof password !== "string" || password.length < 6) {
+      res.status(400).json({ error: "Password must be at least 6 characters" });
+      return;
+    }
+    if (typeof name !== "string" || name.trim().length === 0) {
+      res.status(400).json({ error: "name must be a non-empty string" });
+      return;
+    }
+    if (role !== undefined && !VALID_ROLES.includes(role as UserRole)) {
+      res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(", ")}` });
+      return;
+    }
+
+    const userId = await createUser(email.trim().toLowerCase(), password, name.trim(), (role as UserRole) ?? "viewer");
+    if (!userId) {
+      res.status(409).json({ error: "Email already registered" });
+      return;
+    }
+
+    log("info", `User created: ${userId}`, req as any, { email: email.trim().toLowerCase(), role: role ?? "viewer" });
+    res.status(201).json({
+      success: true,
+      data: { id: userId, email: email.trim().toLowerCase(), name: name.trim(), role: role ?? "viewer" },
+    });
+  } catch (err) {
+    log("error", "Failed to create user", req as any, { error: (err as Error).message });
+    res.status(500).json({ error: "Failed to create user" });
   }
 });
 

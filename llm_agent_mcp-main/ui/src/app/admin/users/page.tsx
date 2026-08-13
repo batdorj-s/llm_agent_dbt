@@ -6,8 +6,8 @@
  */
 
 import React, { useState } from "react";
-import { useList, useUpdate, useDelete } from "@refinedev/core";
-import { Search, ShieldCheck, Trash2, User as UserIcon } from "lucide-react";
+import { useList, useUpdate, useDelete, useCreate } from "@refinedev/core";
+import { Plus, Search, ShieldCheck, Trash2, User as UserIcon, X } from "lucide-react";
 import { useAuth } from "../../../hooks/useAuth";
 
 interface AdminUser {
@@ -28,6 +28,12 @@ export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [createEmail, setCreateEmail] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+  const [createName, setCreateName] = useState("");
+  const [createRole, setCreateRole] = useState<"viewer" | "analyst" | "admin">("viewer");
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const { query } = useList<AdminUser>({
     resource: "users",
@@ -39,11 +45,42 @@ export default function AdminUsersPage() {
 
   const { mutate: updateUser } = useUpdate();
   const { mutate: deleteUser } = useDelete();
+  const { mutate: createUser } = useCreate();
 
   const users = query.data?.data ?? [];
   const isLoading = query.isLoading;
   const isError = query.isError;
   const refetch = query.refetch;
+
+  const handleCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createEmail.trim() || !createPassword.trim() || !createName.trim()) return;
+    setCreateError(null);
+    createUser(
+      {
+        resource: "users",
+        values: {
+          email: createEmail.trim(),
+          password: createPassword,
+          name: createName.trim(),
+          role: createRole,
+        },
+      },
+      {
+        onSuccess: () => {
+          setShowCreate(false);
+          setCreateEmail("");
+          setCreatePassword("");
+          setCreateName("");
+          setCreateRole("viewer");
+          refetch();
+        },
+        onError: (err) => {
+          setCreateError(err?.message || "Хэрэглэгч үүсгэхэд алдаа гарлаа");
+        },
+      }
+    );
+  };
 
   const handleRoleChange = (user: AdminUser, role: string) => {
     updateUser(
@@ -88,6 +125,16 @@ export default function AdminUsersPage() {
           <option value="analyst">Analyst</option>
           <option value="admin">Admin</option>
         </select>
+        <button
+          onClick={() => {
+            setCreateError(null);
+            setShowCreate(true);
+          }}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          Хэрэглэгч нэмэх
+        </button>
       </div>
 
       {/* Table */}
@@ -177,6 +224,104 @@ export default function AdminUsersPage() {
           <ShieldCheck className="w-3.5 h-3.5" /> Viewer — унших эрх
         </span>
       </div>
+
+      {/* Create user modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowCreate(false)}
+          />
+          <form
+            onSubmit={handleCreate}
+            className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-foreground">Шинэ хэрэглэгч</h2>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="text-foreground/40 hover:text-foreground cursor-pointer"
+                aria-label="Хаах"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <label className="block">
+              <span className="text-[11px] font-medium text-foreground/50 uppercase tracking-wide">Email</span>
+              <input
+                type="email"
+                value={createEmail}
+                onChange={(e) => setCreateEmail(e.target.value)}
+                required
+                placeholder="name@example.com"
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-[11px] font-medium text-foreground/50 uppercase tracking-wide">Нууц үг</span>
+              <input
+                type="password"
+                value={createPassword}
+                onChange={(e) => setCreatePassword(e.target.value)}
+                required
+                minLength={6}
+                placeholder="Хамгийн багадаа 6 тэмдэгт"
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-[11px] font-medium text-foreground/50 uppercase tracking-wide">Нэр</span>
+              <input
+                type="text"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                required
+                placeholder="Хэрэглэгчийн нэр"
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-[11px] font-medium text-foreground/50 uppercase tracking-wide">Роль</span>
+              <select
+                value={createRole}
+                onChange={(e) => setCreateRole(e.target.value as "viewer" | "analyst" | "admin")}
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="viewer">Viewer</option>
+                <option value="analyst">Analyst</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+
+            {createError && (
+              <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                {createError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="px-3.5 py-2 rounded-lg text-sm text-foreground/60 hover:text-foreground hover:bg-foreground/5 cursor-pointer transition-colors"
+              >
+                Болих
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-lg bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
+              >
+                Үүсгэх
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
