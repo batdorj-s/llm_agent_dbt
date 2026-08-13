@@ -16,6 +16,8 @@ import {
   Activity,
   BarChart,
   Terminal,
+  ShieldCheck,
+  Bell,
   LogOut,
   Sun,
   Moon,
@@ -33,6 +35,8 @@ const NAV_ITEMS = [
   { href: "/admin/observability", label: "Хяналт", icon: Activity },
   { href: "/admin/analytics", label: "Аналитик", icon: BarChart },
   { href: "/admin/analysis", label: "SQL Шинжилгээ", icon: Terminal },
+  { href: "/admin/data-quality", label: "Өгөгдлийн чанар", icon: ShieldCheck },
+  { href: "/admin/alerts", label: "Сануулга", icon: Bell },
 ];
 
 function AdminShell({ children }: { children: React.ReactNode }) {

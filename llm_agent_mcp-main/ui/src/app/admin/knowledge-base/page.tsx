@@ -7,7 +7,8 @@
 
 import React, { useState } from "react";
 import { useList, useCustom, useDelete } from "@refinedev/core";
-import { Search, FileText, Trash2, Tag, Building2 } from "lucide-react";
+import { Search, FileText, Trash2, Tag, Building2, Upload, X } from "lucide-react";
+import { useAuth } from "../../../hooks/useAuth";
 
 interface DocumentRecord {
   id: string;
@@ -24,10 +25,21 @@ interface DocumentRecord {
   text_preview: string;
 }
 
+type UploadKind = "csv" | "excel";
+
 export default function AdminKnowledgeBasePage() {
+  const { token } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [department, setDepartment] = useState("");
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadKind, setUploadKind] = useState<UploadKind>("csv");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [tableName, setTableName] = useState("");
+  const [description, setDescription] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const limit = 100;
 
   const { query } = useList<DocumentRecord>({
@@ -61,14 +73,158 @@ export default function AdminKnowledgeBasePage() {
     deleteDocument({ resource: "documents", id: doc.id }, { onSuccess: () => refetch() });
   };
 
+  const closeUpload = () => {
+    setUploadOpen(false);
+    setUploadFile(null);
+    setTableName("");
+    setDescription("");
+    setUploadError(null);
+    setUploadSuccess(null);
+  };
+
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile || !tableName.trim() || !description.trim()) return;
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      fd.append("tableName", tableName.trim());
+      fd.append("description", description.trim());
+      const res = await fetch(uploadKind === "csv" ? "/api/admin/upload-csv" : "/api/admin/upload-excel", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      setUploadSuccess(body.message ?? "Амжилттай импортлогдлоо");
+      refetch();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Хуулахад алдаа гарлаа");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Мэдлэгийн сан</h1>
-        <p className="text-xs text-foreground/50 mt-1">
-          RAG баримтууд — нийт {total.toLocaleString()} хэсэг
-        </p>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-foreground">Мэдлэгийн сан</h1>
+          <p className="text-xs text-foreground/50 mt-1">
+            RAG баримтууд — нийт {total.toLocaleString()} хэсэг
+          </p>
+        </div>
+        <button
+          onClick={() => setUploadOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-foreground text-background hover:opacity-90 cursor-pointer transition-opacity"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          Шинэ мэдээлэл хуулах
+        </button>
       </div>
+
+      {/* Upload modal */}
+      {uploadOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeUpload}>
+          <form
+            onSubmit={handleUpload}
+            onClick={(ev) => ev.stopPropagation()}
+            className="w-full max-w-md bg-card border border-border rounded-2xl p-5 space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-foreground">Шинэ мэдээлэл хуулах</h2>
+              <button
+                type="button"
+                onClick={closeUpload}
+                className="p-1.5 rounded-md text-foreground/40 hover:text-foreground hover:bg-foreground/5 cursor-pointer transition-colors"
+                aria-label="Хаах"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-semibold text-foreground/50 uppercase tracking-wider mb-1">Файлын төрөл</label>
+              <div className="flex gap-2">
+                {(["csv", "excel"] as UploadKind[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setUploadKind(k)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                      uploadKind === k ? "bg-foreground/10 text-foreground" : "text-foreground/50 hover:text-foreground/80 hover:bg-foreground/5"
+                    }`}
+                  >
+                    {k === "csv" ? "CSV" : "Excel"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-semibold text-foreground/50 uppercase tracking-wider mb-1">Файл *</label>
+              <input
+                type="file"
+                accept={uploadKind === "csv" ? ".csv" : ".xlsx,.xls"}
+                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                className="w-full text-xs text-foreground file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-foreground/10 file:text-foreground file:text-xs file:font-medium file:cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-semibold text-foreground/50 uppercase tracking-wider mb-1">Хүснэгтийн нэр *</label>
+              <input
+                value={tableName}
+                onChange={(e) => setTableName(e.target.value)}
+                required
+                placeholder="e.g. sales_2024 (латин үсэг, тоо, _)"
+                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-xs text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-semibold text-foreground/50 uppercase tracking-wider mb-1">Тайлбар *</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                required
+                rows={2}
+                placeholder="Энэ өгөгдлийн тайлбар, агуулга..."
+                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-xs text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+
+            {uploadError && (
+              <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{uploadError}</div>
+            )}
+            {uploadSuccess && (
+              <div className="text-xs text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">{uploadSuccess}</div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeUpload}
+                disabled={uploading}
+                className="px-3 py-2 rounded-lg text-xs text-foreground/60 hover:text-foreground hover:bg-foreground/5 disabled:opacity-50 cursor-pointer transition-colors"
+              >
+                Болих
+              </button>
+              <button
+                type="submit"
+                disabled={uploading || !uploadFile || !tableName.trim() || !description.trim()}
+                className="px-3 py-2 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-opacity"
+              >
+                {uploading ? "Импортлож байна..." : "Хуулах"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
