@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { Message, ThinkingStep } from "../components/types";
 import { generateFollowUpSuggestions } from "../lib/generateFollowUpSuggestions";
 
@@ -67,12 +67,13 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
 
   // Register online/offline listeners once
   const listenersRegistered = useRef(false);
-  if (typeof window !== "undefined" && !listenersRegistered.current) {
+  useEffect(() => {
+    if (typeof window === "undefined" || listenersRegistered.current) return;
     listenersRegistered.current = true;
     window.addEventListener("online", checkOnline);
     window.addEventListener("offline", checkOnline);
     checkOnline();
-  }
+  }, [checkOnline]);
 
   const addWelcomeMessage = () => {
     setMessages([{
@@ -269,7 +270,9 @@ export function useChat(threadId: string, isGraphicModeEnabled: boolean, onDone:
 
   // #7: Fix stale closure — use ref-based message lookup
   const messagesRef = useRef(messages);
-  messagesRef.current = messages;
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const handleFeedback = async (msgId: string, rating: "positive" | "negative") => {
     if (feedbackState[msgId]) return;

@@ -87,6 +87,7 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
   const [userType, setUserType] = useState<ChartType | null>(null);
   const [drillDown, setDrillDown] = useState<{ label: string; value: number; x: number; y: number } | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   let data: { title?: string; type?: string; data?: Record<string, unknown>[]; config?: Record<string, unknown> };
   try {
@@ -328,7 +329,6 @@ export const VisualMessage = ({ visualJson }: { visualJson: string }) => {
     }
   };
 
-  const chartRef = useRef<HTMLDivElement>(null);
   const handleDrillDown = (e: any, row: any) => {
     const rect = chartRef.current?.getBoundingClientRect();
     if (!rect) return;

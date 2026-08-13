@@ -30,7 +30,7 @@ interface DashboardPanelProps {
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
-export const DashboardPanel = React.memo(({
+export const DashboardPanel = React.memo(function DashboardPanel({
   salesKpi,
   usersKpi,
   churnKpi,
@@ -38,7 +38,7 @@ export const DashboardPanel = React.memo(({
   growthRate,
   growthDirection,
   topCategory,
-}: DashboardPanelProps) => {
+}: DashboardPanelProps) {
   const formatCurrency = (value: number) =>
     `$${value.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
 

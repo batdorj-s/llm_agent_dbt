@@ -46,11 +46,13 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
+const INITIAL_THREAD_ID = `thread_${Date.now()}`;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [threadId, setThreadIdState] = useState(`thread_${Date.now()}`);
+  const [threadId, setThreadIdState] = useState(INITIAL_THREAD_ID);
 
   // Persist threadId to localStorage
   const setThreadId = useCallback((id: string) => {
@@ -140,7 +142,7 @@ export function useAuth(): AuthContextValue {
       token: "",
       user: { id: "user-admin-001", name: "Admin", email: "admin@local", role: "admin" },
       isLoggedIn: true,
-      threadId: `thread_${Date.now()}`,
+      threadId: INITIAL_THREAD_ID,
       setThreadId: () => {},
       isAuthLoading: false,
       login: async () => null,
