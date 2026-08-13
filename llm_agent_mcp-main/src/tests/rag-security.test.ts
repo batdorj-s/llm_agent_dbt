@@ -8,7 +8,7 @@ import {
   getKnowledgeDocuments,
 } from "../rag.js";
 
-const FAILED_QUERIES_PATH = path.join(process.cwd(), "logs", "failed_queries.json");
+const FAILED_QUERIES_PATH = path.join(process.cwd(), "data", "failed-queries.json");
 let originalFailedQueries: string | null = null;
 let originalKnowledgeDocuments: any[] = [];
 

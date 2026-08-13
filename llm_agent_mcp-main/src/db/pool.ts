@@ -351,7 +351,15 @@ export async function initDataLake(): Promise<void> {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_notification_prefs_user ON notification_preferences (user_id, channel)`);
 
       const existing = await pool.query("SELECT metric_name, target_value, unit FROM kpi_targets");
-      if (existing.rows.length > 0) {
+      if (existing.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES
+            ('sales', 0, '₮'),
+            ('users', 0, ''),
+            ('churn_rate', 0, '%')
+           ON CONFLICT (metric_name) DO NOTHING`
+        );
+      } else {
         for (const row of existing.rows as Array<{ metric_name: string; target_value: number; unit: string }>) {
           if (row.metric_name === "sales" && row.unit === "USD") {
             await pool.query("UPDATE kpi_targets SET target_value = $1, unit = $2 WHERE metric_name = $3", [0, "₮", "sales"]);

@@ -33,11 +33,11 @@ describe("Dashboard API endpoints", () => {
         `);
         await getPool().query(`
             INSERT INTO data_lake_catalog (table_name, columns_info, owner_id, visibility, created_at)
-            VALUES ($1, '["order_date","sales","quantity","category","customer_id"]', NULL, 'shared', NOW())
+            VALUES ($1, '["order_date","sales","quantity","category","customer_id"]', 'user-admin-001', 'shared', NOW())
         `, [testTable]);
         await getPool().query(`
             INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)
-            VALUES ($1, $1, 'dataset', 'Test dataset for metrics', NULL, 'shared', NOW())
+            VALUES ($1, $1, 'dataset', 'Test dataset for metrics', 'user-admin-001', 'shared', NOW())
         `, [testTable]);
     });
 

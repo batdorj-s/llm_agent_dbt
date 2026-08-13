@@ -31,11 +31,11 @@ describe("Date filter integration — backend", () => {
         `);
         await getPool().query(`
             INSERT INTO data_lake_catalog (table_name, columns_info, owner_id, visibility, created_at)
-            VALUES ($1, '["order_date","sales","quantity","category","customer_id"]', NULL, 'shared', NOW())
+            VALUES ($1, '["order_date","sales","quantity","category","customer_id"]', 'user-admin-001', 'shared', NOW())
         `, [testTable]);
         await getPool().query(`
             INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)
-            VALUES ($1, $1, 'dataset', 'Date filter test table', NULL, 'shared', NOW())
+            VALUES ($1, $1, 'dataset', 'Date filter test table', 'user-admin-001', 'shared', NOW())
         `, [testTable]);
     });
 
