@@ -87,6 +87,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "concurrently": "^10.0.3",
     "eslint": "^10.5.0",
+    "memfs": "^4.68.1",
     "supertest": "^7.2.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",

@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 
 describe("Data Quality Module", () => {
   beforeAll(async () => {
-    vi.mock("fs");
+    vi.mock("fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("fs")>();
+      return { ...actual, existsSync: vi.fn().mockReturnValue(false) };
+    });
   });
 
   it("should return available=false when no run_results.json", async () => {
-    vi.mocked(await import("fs")).existsSync = vi.fn().mockReturnValue(false);
     // Module reads from fs on every call, we test the handler logic
     const router = await import("../routes/data-quality.router.js");
     expect(router.default).toBeDefined();

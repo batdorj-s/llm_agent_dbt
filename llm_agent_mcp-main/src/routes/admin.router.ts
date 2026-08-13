@@ -622,4 +622,52 @@ router.post("/feedback/:id/reject", requireAuth, requirePermission("admin:users"
   }
 });
 
+router.post("/feedback/batch", requireAuth, requirePermission("admin:users"), async (req, res) => {
+  const { ids, action, correctAnswer } = req.body ?? {};
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids must be a non-empty array" });
+    return;
+  }
+  if (action !== "approve" && action !== "reject") {
+    res.status(400).json({ error: "action must be 'approve' or 'reject'" });
+    return;
+  }
+
+  try {
+    const all = await readFailedQueries();
+    const skipped: string[] = [];
+    let processed = 0;
+
+    for (const id of ids) {
+      const entry = all.find((f: any) => f.id === id);
+      if (!entry || entry.status !== "pending") {
+        skipped.push(String(id));
+        continue;
+      }
+
+      entry.status = action === "approve" ? "approved" : "rejected";
+
+      if (action === "approve" && entry.response) {
+        const ragText = `Failed Query: User asked "${entry.message}". The system responded with: "${entry.response}". This response was rated as incorrect.${correctAnswer ? `\nCorrect answer: ${correctAnswer}` : ""}`;
+        await addDocumentToCatalog(entry.id, ragText, {
+          category: "previous_analysis",
+          department: "analytics",
+          author: entry.userId,
+          source_name: "User Feedback",
+          shared: true,
+        }, ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)]);
+      }
+
+      processed++;
+    }
+
+    await fs.promises.writeFile(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
+
+    res.json({ success: true, processed, skipped });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
 export default router;
