@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu, X, BookOpen, ShieldCheck, GitBranch, Calendar, Users, Search, ChevronDown, Clock } from "lucide-react";
+import { Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu, X, BookOpen, ShieldCheck, GitBranch, Calendar, Users, Search, ChevronDown, Clock, Receipt } from "lucide-react";
 import { ServerStatus } from "./types";
 import { AvatarDropdown, DocLink } from "./RightContent";
 import { GlobalSearch } from "./GlobalSearch";
 
-export type TabId = "ask" | "dashboard" | "report" | "glossary" | "quality" | "lineage" | "scheduler" | "sharing" | "history";
+export type TabId = "ask" | "dashboard" | "report" | "noat" | "glossary" | "quality" | "lineage" | "scheduler" | "sharing" | "history";
 
 interface HeaderProps {
   serverStatus: ServerStatus | null;
@@ -24,6 +24,7 @@ const MAIN_TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "ask", label: "Асуулт", icon: <MessageSquare className="w-3.5 h-3.5" /> },
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
   { id: "report", label: "Тайлан", icon: <FileText className="w-3.5 h-3.5" /> },
+  { id: "noat", label: "НӨАТ Тулгалт", icon: <Receipt className="w-3.5 h-3.5" /> },
 ];
 
 const SECONDARY_TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [

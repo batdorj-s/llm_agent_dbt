@@ -14,6 +14,7 @@ import { DataQualityDashboard } from "../components/DataQualityDashboard";
 import { DataLineageView } from "../components/DataLineageView";
 import { ReportScheduler } from "../components/ReportScheduler";
 import { SharingPanel } from "../components/SharingPanel";
+import { NoatTab } from "../components/noat/NoatTab";
 
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
@@ -402,6 +403,12 @@ export default function Home() {
         {activeTab === "report" && (
           <div id="panel-report" role="tabpanel" aria-label="Тайлан" className="flex-1 min-h-0 flex flex-col">
             <ReportTab reportMode={reportMode} setReportMode={setReportMode} token={auth.token} />
+          </div>
+        )}
+
+        {activeTab === "noat" && (
+          <div id="panel-noat" role="tabpanel" aria-label="НӨАТ Тулгалт" className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+            <NoatTab />
           </div>
         )}
 

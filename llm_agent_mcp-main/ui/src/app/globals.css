@@ -28,6 +28,63 @@
   --accent-foreground: #000000;
 }
 
+/* НӨАТ Тулгалт module theme (namespaced to avoid collisions) */
+:root {
+  --noat-surface: #ffffff;
+  --noat-surface-alt: #f1f5f9;
+  --noat-surface-inset: #f8fafc;
+  --noat-border: #e2e8f0;
+  --noat-border-strong: #cbd5e1;
+  --noat-text-primary: #0f172a;
+  --noat-text-secondary: #475569;
+  --noat-text-muted: #64748b;
+  --noat-primary: #1e3a8a;
+  --noat-primary-hover: #1e40af;
+  --noat-primary-soft: #dbeafe;
+  --noat-on-primary: #ffffff;
+  --noat-accent: #7c3aed;
+  --noat-success: #16a34a;
+  --noat-success-soft: #dcfce7;
+  --noat-warning: #d97706;
+  --noat-warning-soft: #fef3c7;
+  --noat-danger: #dc2626;
+  --noat-danger-soft: #fee2e2;
+  --noat-info: #0891b2;
+  --noat-info-soft: #cffafe;
+  --noat-teal: #0d9488;
+  --noat-teal-soft: #ccfbf1;
+  --noat-shadow: 0 1px 3px 0 rgb(15 23 42 / 0.08), 0 1px 2px -1px rgb(15 23 42 / 0.08);
+  --noat-shadow-lg: 0 10px 30px -5px rgb(15 23 42 / 0.15);
+}
+
+.dark {
+  --noat-surface: #1e293b;
+  --noat-surface-alt: #172033;
+  --noat-surface-inset: #0f172a;
+  --noat-border: #334155;
+  --noat-border-strong: #475569;
+  --noat-text-primary: #f8fafc;
+  --noat-text-secondary: #cbd5e1;
+  --noat-text-muted: #94a3b8;
+  --noat-primary: #f59e0b;
+  --noat-primary-hover: #fbbf24;
+  --noat-primary-soft: #451a03;
+  --noat-on-primary: #0f172a;
+  --noat-accent: #a78bfa;
+  --noat-success: #4ade80;
+  --noat-success-soft: #052e16;
+  --noat-warning: #fbbf24;
+  --noat-warning-soft: #431407;
+  --noat-danger: #f87171;
+  --noat-danger-soft: #450a0a;
+  --noat-info: #22d3ee;
+  --noat-info-soft: #083344;
+  --noat-teal: #2dd4bf;
+  --noat-teal-soft: #042f2e;
+  --noat-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4);
+  --noat-shadow-lg: 0 10px 30px -5px rgb(0 0 0 / 0.5);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -36,6 +93,31 @@
   --color-sidebar: var(--sidebar-bg);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-noat-surface: var(--noat-surface);
+  --color-noat-surface-alt: var(--noat-surface-alt);
+  --color-noat-surface-inset: var(--noat-surface-inset);
+  --color-noat-border: var(--noat-border);
+  --color-noat-border-strong: var(--noat-border-strong);
+  --color-noat-text-primary: var(--noat-text-primary);
+  --color-noat-text-secondary: var(--noat-text-secondary);
+  --color-noat-text-muted: var(--noat-text-muted);
+  --color-noat-primary: var(--noat-primary);
+  --color-noat-primary-hover: var(--noat-primary-hover);
+  --color-noat-primary-soft: var(--noat-primary-soft);
+  --color-noat-on-primary: var(--noat-on-primary);
+  --color-noat-accent: var(--noat-accent);
+  --color-noat-success: var(--noat-success);
+  --color-noat-success-soft: var(--noat-success-soft);
+  --color-noat-warning: var(--noat-warning);
+  --color-noat-warning-soft: var(--noat-warning-soft);
+  --color-noat-danger: var(--noat-danger);
+  --color-noat-danger-soft: var(--noat-danger-soft);
+  --color-noat-info: var(--noat-info);
+  --color-noat-info-soft: var(--noat-info-soft);
+  --color-noat-teal: var(--noat-teal);
+  --color-noat-teal-soft: var(--noat-teal-soft);
+  --shadow-noat-card: var(--noat-shadow);
+  --shadow-noat-card-lg: var(--noat-shadow-lg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --animate-fade-in-up: fadeInUp 0.2s ease-out;
@@ -122,6 +204,13 @@ body {
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Таблицан дүн тоонууд (НӨАТ Тулгалт) */
+.tnum {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* Respect prefers-reduced-motion */
