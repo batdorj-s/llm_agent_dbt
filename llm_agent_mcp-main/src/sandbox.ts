@@ -1,6 +1,7 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import dotenv from "dotenv";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { execFile } from "child_process";
 import { traceToolCall } from "./observability/tracer.js";
@@ -19,7 +20,7 @@ const _sandboxInstances = new Map<string, SandboxEntry>();
 const SANDBOX_TIMEOUT_MS = 20_000;
 const SANDBOX_CREATE_TIMEOUT_MS = 60_000;
 const SANDBOX_MAX_OUTPUT_CHARS = 10_000;
-const TEMP_DIR = "/var/folders/9z/_bgsb1152n9g37m6xn9h8thc0000gn/T/opencode";
+const TEMP_DIR = path.join(os.tmpdir(), "opencode");
 
 // ─────────────────────────────────────────────────────────────
 // Static code analysis for local fallback only
@@ -111,8 +112,12 @@ async function runPythonLocally(code: string, timeoutMs: number): Promise<string
     const chartFile = tmpFile.replace(".py", "_chart.png");
     const configFile = tmpFile.replace(".py", "_config.json");
 
-    // Write paths to a JSON config file instead of interpolating into Python source
-    fs.writeFileSync(configFile, JSON.stringify({ outputFile, chartFile }), "utf8");
+    try {
+        // Create the temp dir before writing any files into it
+        fs.mkdirSync(TEMP_DIR, { recursive: true });
+
+        // Write paths to a JSON config file instead of interpolating into Python source
+        fs.writeFileSync(configFile, JSON.stringify({ outputFile, chartFile }), "utf8");
 
     // Prepend chart-save logic: redirect matplotlib to a known path (read from config)
     const chartSaveCode = `
@@ -135,8 +140,6 @@ with open(_sandbox_out, "w") as _f:
     _f.write(str(globals().get("result", "")))
 `;
 
-    try {
-        fs.mkdirSync(TEMP_DIR, { recursive: true });
         fs.writeFileSync(tmpFile, fullCode, "utf8");
 
         await new Promise<void>((resolve, reject) => {

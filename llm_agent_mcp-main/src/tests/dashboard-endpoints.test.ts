@@ -39,6 +39,33 @@ describe("Dashboard API endpoints", () => {
             INSERT INTO uploaded_files (id, filename, type, description, owner_id, visibility, created_at)
             VALUES ($1, $1, 'dataset', 'Test dataset for metrics', 'user-admin-001', 'shared', NOW())
         `, [testTable]);
+
+        // MartsKpiRepository reads dbt marts; create them so KPI endpoints return 200
+        // even on a fresh CI database where dbt has not run yet.
+        await getPool().query(`
+            CREATE TABLE IF NOT EXISTS kpi_sales (
+                order_date DATE,
+                total_sales NUMERIC
+            )
+        `);
+        await getPool().query(`
+            CREATE TABLE IF NOT EXISTS user_metrics (
+                customer_id TEXT,
+                last_order_date DATE
+            )
+        `);
+        await getPool().query(`
+            INSERT INTO kpi_sales (order_date, total_sales) VALUES
+                ('2024-01-15', 1000),
+                ('2024-02-20', 1500),
+                ('2024-03-10', 800)
+        `);
+        await getPool().query(`
+            INSERT INTO user_metrics (customer_id, last_order_date) VALUES
+                ('C001', '2024-01-15'),
+                ('C002', '2024-02-20'),
+                ('C003', '2024-03-10')
+        `);
     });
 
     afterAll(async () => {
@@ -46,6 +73,8 @@ describe("Dashboard API endpoints", () => {
             await getPool().query(`DROP TABLE IF EXISTS "${testTable}" CASCADE`);
             await getPool().query(`DELETE FROM data_lake_catalog WHERE table_name = $1`, [testTable]);
             await getPool().query(`DELETE FROM uploaded_files WHERE id = $1`, [testTable]);
+            await getPool().query(`DELETE FROM kpi_sales`);
+            await getPool().query(`DELETE FROM user_metrics`);
         }
     });
 
