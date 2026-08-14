@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">13.33% </span>
+                <span class="strong">73.33% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>2/15</span>
+                <span class='fraction'>11/15</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">33.33% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/6</span>
+                <span class='fraction'>2/6</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/2</span>
+                <span class='fraction'>2/2</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">14.28% </span>
+                <span class="strong">78.57% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>2/14</span>
+                <span class='fraction'>11/14</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line medium'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -120,7 +120,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -137,25 +137,25 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -187,13 +187,13 @@ interface MetricsYaml {
   metrics?: DbtMetric[];
 }
 &nbsp;
-function <span class="fstat-no" title="function not covered" >loadMetrics(): DbtMetric[] {</span>
-  const metricsPath = <span class="cstat-no" title="statement not covered" >path.join(process.cwd(), "docs", "dbt-metrics.yaml");</span>
-<span class="cstat-no" title="statement not covered" >  if (!fs.existsSync(metricsPath)) <span class="cstat-no" title="statement not covered" >return [];</span></span>
-<span class="cstat-no" title="statement not covered" >  try {</span>
-    const raw = <span class="cstat-no" title="statement not covered" >fs.readFileSync(metricsPath, "utf-8");</span>
-    const parsed = <span class="cstat-no" title="statement not covered" >yaml.parse(raw) as MetricsYaml;</span>
-<span class="cstat-no" title="statement not covered" >    return parsed?.metrics || [];</span>
+function loadMetrics(): DbtMetric[] {
+  const metricsPath = path.join(process.cwd(), "docs", "dbt-metrics.yaml");
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (!fs.existsSync(metricsPath)) <span class="cstat-no" title="statement not covered" >return [];</span>
+  try {
+    const raw = fs.readFileSync(metricsPath, "utf-8");
+    const parsed = yaml.parse(raw) as MetricsYaml;
+    return parsed?.metrics || <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
   } catch {
 <span class="cstat-no" title="statement not covered" >    return [];</span>
   }
@@ -202,10 +202,10 @@ function <span class="fstat-no" title="function not covered" >loadMetrics(): Dbt
 /**
  * GET /api/metrics — return all defined business metrics
  */
-router.get("/", requireAuth, requirePermission("metrics:read"), <span class="fstat-no" title="function not covered" >async (_</span>req, res) =&gt; {
-<span class="cstat-no" title="statement not covered" >  try {</span>
-    const metrics = <span class="cstat-no" title="statement not covered" >loadMetrics();</span>
-<span class="cstat-no" title="statement not covered" >    res.json({ success: true, data: metrics, count: metrics.length });</span>
+router.get("/", requireAuth, requirePermission("metrics:read"), async (_req, res) =&gt; {
+  try {
+    const metrics = loadMetrics();
+    res.json({ success: true, data: metrics, count: metrics.length });
   } catch (err: unknown) {
     const msg = <span class="cstat-no" title="statement not covered" >err instanceof Error ? err.message : "Unknown error";</span>
 <span class="cstat-no" title="statement not covered" >    res.status(500).json({ success: false, error: msg });</span>
@@ -220,7 +220,7 @@ export default router;
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-07-18T07:31:19.644Z
+                at 2026-08-14T14:50:07.445Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

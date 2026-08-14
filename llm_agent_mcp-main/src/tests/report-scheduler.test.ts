@@ -82,7 +82,7 @@ describe("Report Scheduler — stored SQL validation", () => {
   });
 
   function makeReq(body: any) {
-    return { body, user: { userId: "user-test", role: "admin" }, params: { id: "sched_x" } } as any;
+    return { body, userId: "user-test", role: "admin", user: { userId: "user-test", role: "admin" }, params: { id: "sched_x" } } as any;
   }
 
   function makeRes() {
