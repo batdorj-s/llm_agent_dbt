@@ -3,12 +3,32 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { upload } from "./shared.js";
+import { requireAuth } from "../auth.js";
+import { requirePermission } from "../middleware/rbac.js";
+import { RateLimiter } from "../rate-limiter.js";
 
 const router = Router();
 
 const DATA_DIR = path.resolve("data");
 const MAPPER_PY = path.resolve("finance-mapper/mapper.py");
 const PYTHON_BIN = path.resolve("finance-mapper/.venv/bin/python");
+
+// Each mapping spawns a Python subprocess — restrict to admins and rate-limit tightly
+const mapperLimiter = new RateLimiter({ maxRequests: 5, windowMs: 60_000 });
+
+router.use(requireAuth);
+router.use(requirePermission("admin:upload"));
+router.use(async (req, res, next) => {
+  const key = `finance-mapper:${(req as any).user?.userId || req.ip || "anon"}`;
+  const result = await mapperLimiter.check(key);
+  res.setHeader("X-RateLimit-Limit", "5");
+  res.setHeader("X-RateLimit-Remaining", String(result.remaining));
+  if (!result.allowed) {
+    res.status(429).json({ error: result.message });
+    return;
+  }
+  next();
+});
 
 router.post("/finance-mapper/upload", upload.single("file"), async (req, res) => {
   try {

@@ -31,6 +31,46 @@ function getUserId(req: any): string {
   return userId;
 }
 
+function isAdmin(req: any): boolean {
+  return req.user?.role === "admin";
+}
+
+async function isTeamAdminOrCreator(pool: any, teamId: string, userId: string): Promise<boolean> {
+  const team = await pool.query("SELECT created_by FROM teams WHERE id = $1", [teamId]);
+  if (team.rows.length === 0) return false;
+  if (team.rows[0].created_by === userId) return true;
+  const member = await pool.query(
+    "SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2 AND role = 'admin' LIMIT 1",
+    [teamId, userId]
+  );
+  return member.rows.length > 0;
+}
+
+async function getResourceOwner(pool: any, resourceType: string, resourceId: string): Promise<string | null> {
+  if (resourceType === "catalog") {
+    const result = await pool.query(
+      "SELECT owner_id FROM data_lake_catalog WHERE table_name = $1",
+      [resourceId]
+    );
+    return result.rows[0]?.owner_id ?? null;
+  }
+  if (resourceType === "file") {
+    const result = await pool.query(
+      "SELECT owner_id FROM uploaded_files WHERE id = $1",
+      [resourceId]
+    );
+    return result.rows[0]?.owner_id ?? null;
+  }
+  return null;
+}
+
+async function canManageResource(req: any, pool: any, resourceType: string, resourceId: string): Promise<boolean> {
+  if (isAdmin(req)) return true;
+  const userId = getUserId(req);
+  const ownerId = await getResourceOwner(pool, resourceType, resourceId);
+  return ownerId !== null && ownerId === userId;
+}
+
 // ── Teams ───────────────────────────────────────────────
 
 router.get("/teams", async (req, res) => {
@@ -94,6 +134,13 @@ router.post("/teams/:id/members", async (req, res) => {
     }
 
     const pool = getPool();
+    const userId = getUserId(req);
+
+    if (!(await isTeamAdminOrCreator(pool, req.params.id, userId)) && !isAdmin(req)) {
+      res.status(403).json({ error: "Only the team creator or a team admin can add members" });
+      return;
+    }
+
     await pool.query(
       "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
       [req.params.id, user_id, role || "member"]
@@ -109,6 +156,13 @@ router.post("/teams/:id/members", async (req, res) => {
 router.delete("/teams/:id/members/:userId", async (req, res) => {
   try {
     const pool = getPool();
+    const requesterId = getUserId(req);
+
+    if (!(await isTeamAdminOrCreator(pool, req.params.id, requesterId)) && !isAdmin(req)) {
+      res.status(403).json({ error: "Only the team creator or a team admin can remove members" });
+      return;
+    }
+
     await pool.query(
       "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
       [req.params.id, req.params.userId]
@@ -139,6 +193,11 @@ router.post("/sharing", async (req, res) => {
     const pool = getPool();
     const userId = getUserId(req);
 
+    if (!(await canManageResource(req, pool, resource_type, resource_id))) {
+      res.status(403).json({ error: "Only the resource owner or an admin can share this resource" });
+      return;
+    }
+
     await pool.query(
       `INSERT INTO shared_resources (resource_type, resource_id, granted_to_user_id, granted_to_team_id, permission, granted_by)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -166,6 +225,12 @@ router.get("/sharing", async (req, res) => {
     }
 
     const pool = getPool();
+
+    if (!(await canManageResource(req, pool, type as string, id as string))) {
+      res.status(403).json({ error: "Only the resource owner or an admin can view sharing details" });
+      return;
+    }
+
     const result = await pool.query(
       `SELECT sr.id AS share_id, sr.resource_type, sr.resource_id,
               sr.granted_to_user_id, sr.granted_to_team_id,
@@ -186,6 +251,27 @@ router.get("/sharing", async (req, res) => {
 router.delete("/sharing/:shareId", async (req, res) => {
   try {
     const pool = getPool();
+    const requesterId = getUserId(req);
+
+    const share = await pool.query(
+      "SELECT id, resource_type, resource_id, granted_by FROM shared_resources WHERE id = $1",
+      [req.params.shareId]
+    );
+    if (share.rows.length === 0) {
+      res.status(404).json({ error: "Share not found" });
+      return;
+    }
+
+    const row = share.rows[0];
+    const canRevoke = isAdmin(req)
+      || row.granted_by === requesterId
+      || (await canManageResource(req, pool, row.resource_type, row.resource_id));
+
+    if (!canRevoke) {
+      res.status(403).json({ error: "Only the grantor, resource owner, or an admin can revoke access" });
+      return;
+    }
+
     await pool.query("DELETE FROM shared_resources WHERE id = $1", [req.params.shareId]);
     res.json({ success: true, message: "Access revoked" });
   } catch (err) {
