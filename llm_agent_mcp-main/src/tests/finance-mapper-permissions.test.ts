@@ -26,10 +26,11 @@ describe("finance-mapper authorization", () => {
 
     const { default: expressMod } = await import("express");
     const { default: financeMapperRouter } = await import("../routes/finance-mapper.router.js");
-    const { requireAuth } = await import("../auth.js");
+    // Router already applies requireAuth internally; mounting it here too
+    // would add a second env-sensitive import and race other files that
+    // mutate process.env concurrently in the same worker process.
     app = expressMod();
     app.use(expressMod.json());
-    app.use(requireAuth);
     app.use("/api", financeMapperRouter);
   });
 
