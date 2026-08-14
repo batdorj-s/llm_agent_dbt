@@ -37,7 +37,7 @@ describe("ErrorBoundary", () => {
       screen.getByText("Уучлаарай, энэ хуудсанд алдаа гарлаа."),
     ).toBeInTheDocument();
     expect(screen.getByText("Хуудсыг дахин ачаалах")).toBeInTheDocument();
-    expect(screen.getByText("Нүүр хуудас")).toBeInTheDocument();
+    expect(screen.getByText("Буцах")).toBeInTheDocument();
   });
 
   it("shows Дахин оролдох button and ChunkLoadError title for dynamic import failures", () => {
@@ -75,7 +75,7 @@ describe("ErrorBoundary", () => {
         <ThrowError />
       </ErrorBoundary>,
     );
-    const homeLink = screen.getByText("Нүүр хуудас").closest("a");
+    const homeLink = screen.getByText("Буцах").closest("a");
     expect(homeLink).toHaveAttribute("href", "/");
   });
 
