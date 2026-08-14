@@ -3,3 +3,9 @@ node_modules/
 
 # OS
 .DS_Store
+
+# Unrelated nested repo (accidentally tracked as gitlink)
+noat-tulgalt/
+
+# Coverage HTML reports (regenerated on every run)
+coverage/
