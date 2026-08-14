@@ -81,7 +81,10 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
 app.use(express.json({ limit: "5mb" }));
 
 // Rate limiter middleware — applies to all /api/* routes
-const apiLimiter = new RateLimiter({ maxRequests: 120, windowMs: 60_000 });
+// In test mode, use the in-memory backend so parallel/back-to-back test runs
+// never accumulate persistent rows in the shared rate_limiter table.
+const limiterBackend = process.env.NODE_ENV === "test" ? ("memory" as const) : undefined;
+const apiLimiter = new RateLimiter({ maxRequests: 120, windowMs: 60_000, backend: limiterBackend });
 app.use("/api", async (req, res, next) => {
   const key = `api:${(req as any).user?.userId || req.ip || "anon"}`;
   const result = await apiLimiter.check(key);
@@ -94,7 +97,7 @@ app.use("/api", async (req, res, next) => {
   next();
 });
 
-const authEndpointLimiter = new RateLimiter({ maxRequests: 10, windowMs: 60_000 });
+const authEndpointLimiter = new RateLimiter({ maxRequests: 10, windowMs: 60_000, backend: limiterBackend });
 app.use("/api/auth/login", async (req, res, next) => {
   const key = `auth:${req.ip}`;
   const result = await authEndpointLimiter.check(key);

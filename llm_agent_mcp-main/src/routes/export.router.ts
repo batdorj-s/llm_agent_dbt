@@ -3,6 +3,7 @@ import type express from "express";
 import { requireAuth } from "../auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { getActiveCatalogEntry, getPool, getCatalog, canAccessCatalogEntry } from "../db/data-lake.js";
+import { exportLimiter } from "../rate-limiter.js";
 
 const router = Router();
 
@@ -22,6 +23,15 @@ function getUserId(req: express.Request): string {
  */
 router.get("/", requireAuth, requirePermission("export:csv"), async (req, res) => {
   try {
+    const userKey = (req as express.Request & { userId?: string }).userId || req.ip || "anon";
+    const limitResult = await exportLimiter.check(`export:${userKey}`);
+    res.setHeader("X-RateLimit-Limit", "5");
+    res.setHeader("X-RateLimit-Remaining", String(limitResult.remaining));
+    if (!limitResult.allowed) {
+      res.status(429).json({ error: limitResult.message });
+      return;
+    }
+
     const format = (req.query.format as string) || "csv";
 
     // Resolve table name: explicit query param > user's active dataset

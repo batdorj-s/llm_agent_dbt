@@ -3,6 +3,7 @@ import { requireAuth } from "../auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { getUserId } from "./shared.js";
 import { getActiveCatalogEntry, getPool } from "../db/data-lake.js";
+import { whatifLimiter } from "../rate-limiter.js";
 
 const router = Router();
 
@@ -15,6 +16,14 @@ const CATEGORY_KEYWORDS = [/category/i, /type/i, /status/i, /segment/i, /channel
 router.post("/whatif", requireAuth, requirePermission("kpi:whatif"), async (req, res) => {
   try {
     const userId = getUserId(req);
+    const limitResult = await whatifLimiter.check(`whatif:${userId}`);
+    res.setHeader("X-RateLimit-Limit", "10");
+    res.setHeader("X-RateLimit-Remaining", String(limitResult.remaining));
+    if (!limitResult.allowed) {
+      res.status(429).json({ error: limitResult.message });
+      return;
+    }
+
     const { column, changePercent, scenarioName } = req.body;
 
     if (!column || typeof column !== "string") {

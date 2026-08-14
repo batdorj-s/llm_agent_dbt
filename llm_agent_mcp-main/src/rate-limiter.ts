@@ -262,11 +262,18 @@ export class RateLimiter {
 
 // ─────────────────────────────────────────────────────────────
 // Pre-configured limiters
+// In test mode, default to the in-memory backend so tests are
+// deterministic and never share persistent state across runs.
 // ─────────────────────────────────────────────────────────────
 
-export const agentLimiter   = new RateLimiter({ maxRequests: 10,  windowMs: 60_000 });
-export const sandboxLimiter = new RateLimiter({ maxRequests: 5,   windowMs: 60_000 });
-export const mcpLimiter     = new RateLimiter({ maxRequests: 30,  windowMs: 60_000 });
-export const authLimiter    = new RateLimiter({ maxRequests: 5,   windowMs: 60_000 });
-export const registerLimiter = new RateLimiter({ maxRequests: 3,  windowMs: 3600_000 });
-export const uploadLimiter  = new RateLimiter({ maxRequests: 10,  windowMs: 60_000 });
+const testBackend = process.env.NODE_ENV === "test" ? ("memory" as const) : undefined;
+
+export const agentLimiter   = new RateLimiter({ maxRequests: 10,  windowMs: 60_000, backend: testBackend });
+export const sandboxLimiter = new RateLimiter({ maxRequests: 5,   windowMs: 60_000, backend: testBackend });
+export const mcpLimiter     = new RateLimiter({ maxRequests: 30,  windowMs: 60_000, backend: testBackend });
+export const authLimiter    = new RateLimiter({ maxRequests: 5,   windowMs: 60_000, backend: testBackend });
+export const registerLimiter = new RateLimiter({ maxRequests: 3,  windowMs: 3600_000, backend: testBackend });
+export const uploadLimiter  = new RateLimiter({ maxRequests: 10,  windowMs: 60_000, backend: testBackend });
+export const exportLimiter  = new RateLimiter({ maxRequests: 5,   windowMs: 60_000, backend: testBackend });
+export const sqlLimiter     = new RateLimiter({ maxRequests: 10,  windowMs: 60_000, backend: testBackend });
+export const whatifLimiter  = new RateLimiter({ maxRequests: 10,  windowMs: 60_000, backend: testBackend });

@@ -13,6 +13,7 @@ import { Router } from "express";
 import { getPool } from "../db/pool.js";
 import { executeSql } from "../db/sql-utils.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { sqlLimiter } from "../rate-limiter.js";
 import { log } from "./shared.js";
 
 const router = Router();
@@ -67,6 +68,14 @@ router.post("/analysis/sql", requirePermission("admin:system"), async (req, res)
   }
   if (query.length > MAX_QUERY_LENGTH) {
     res.status(400).json({ error: `Query too long (max ${MAX_QUERY_LENGTH} chars)` });
+    return;
+  }
+
+  const limitResult = await sqlLimiter.check(`sql:${userId}`);
+  res.setHeader("X-RateLimit-Limit", "10");
+  res.setHeader("X-RateLimit-Remaining", String(limitResult.remaining));
+  if (!limitResult.allowed) {
+    res.status(429).json({ error: limitResult.message });
     return;
   }
 
