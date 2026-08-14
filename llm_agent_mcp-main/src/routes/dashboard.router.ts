@@ -2,10 +2,12 @@ import { Router } from "express";
 import { getUserId, extractDateFilter } from "./shared.js";
 import { computeMetrics } from "../agents/reportMetrics.js";
 import { generateReportPdf, generateReportXlsx } from "../agents/reportExport.js";
+import { requireAuth } from "../auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 
 const router = Router();
 
-router.get("/computed-metrics", async (req, res) => {
+router.get("/computed-metrics", requireAuth, requirePermission("metrics:read"), async (req, res) => {
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
@@ -17,7 +19,7 @@ router.get("/computed-metrics", async (req, res) => {
   }
 });
 
-router.post("/export-pdf", async (req, res) => {
+router.post("/export-pdf", requireAuth, requirePermission("export:csv"), async (req, res) => {
   const { startDate, endDate } = extractDateFilter(req);
 
   try {
@@ -30,7 +32,7 @@ router.post("/export-pdf", async (req, res) => {
   }
 });
 
-router.post("/export-xlsx", async (req, res) => {
+router.post("/export-xlsx", requireAuth, requirePermission("export:csv"), async (req, res) => {
   const { startDate, endDate } = extractDateFilter(req);
 
   try {

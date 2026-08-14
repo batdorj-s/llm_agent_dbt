@@ -6,8 +6,13 @@ import { buildMntAmountExpr } from "../utils/sqlHelpers.js";
 import { quoteIdent } from "../db/data-lake.js";
 import { buildNoiseSubcategoryFilter } from "../db/data-lake.js";
 import { getPassportByTableName, parsePassportQuestions } from "../rag.js";
+import { requireAuth } from "../auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 
 const router = Router();
+
+router.use(requireAuth);
+router.use(requirePermission("dashboard:read"));
 
 // ─────────────────────────────────────────────────────────────
 // Finance Default Charts
