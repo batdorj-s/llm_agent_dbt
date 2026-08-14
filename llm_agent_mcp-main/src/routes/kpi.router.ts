@@ -158,8 +158,8 @@ router.get("/kpi/:metric/anomalies", requireAuth, requirePermission("kpi:anomaly
   }
 });
 
-router.post("/kpi/:metric/target", async (req, res) => {
-  const { metric } = req.params;
+router.post("/kpi/:metric/target", requireAuth, requirePermission("kpi:write"), async (req, res) => {
+  const metric = String(req.params.metric);
   if (!VALID_METRICS.includes(metric)) {
     return res.status(400).json({ error: `Invalid metric '${metric}'. Must be one of: ${VALID_METRICS.join(", ")}` });
   }

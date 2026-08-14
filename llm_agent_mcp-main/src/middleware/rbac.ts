@@ -58,6 +58,7 @@ const PERMISSIONS: Record<UserRole, Set<string>> = {
     "kpi:read",
     "kpi:anomaly",
     "kpi:whatif",
+    "kpi:write",
     "report:read",
     "report:write",
     "metrics:read",

@@ -1,4 +1,5 @@
 import { getPool } from "../db/pool.js";
+import { assertSafeWebhookUrl } from "../utils/ssrf.js";
 
 export type NotificationChannel = "email" | "slack" | "telegram";
 
@@ -43,6 +44,7 @@ async function sendEmail(config: Record<string, string>, message: NotificationMe
 async function sendSlack(config: Record<string, string>, message: NotificationMessage): Promise<void> {
   const webhookUrl = config.webhook_url;
   if (!webhookUrl) throw new Error("Slack webhook URL not configured");
+  await assertSafeWebhookUrl(webhookUrl);
   const blocks: any[] = [
     { type: "header", text: { type: "plain_text", text: message.subject } },
     { type: "section", text: { type: "mrkdwn", text: message.body } },

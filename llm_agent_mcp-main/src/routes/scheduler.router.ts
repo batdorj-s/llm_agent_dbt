@@ -14,7 +14,7 @@ import cron from "node-cron";
 import { getPool } from "../db/pool.js";
 import { assertSelectOnly } from "../db/sql-utils.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { log } from "./shared.js";
+import { log, getUserId, getRole } from "./shared.js";
 
 const router = Router();
 
@@ -46,11 +46,15 @@ function computeNextRun(expr: string): string | null {
 router.get("/scheduler/reports", requirePermission("report:read"), async (req, res) => {
   try {
     const pool = getPool();
+    const isAdmin = getRole(req) === "admin";
+    const userId = getUserId(req);
     const result = await pool.query(
       `SELECT id, name, description, query, format, cron_expression, recipients,
               is_active, last_run_at, next_run_at, created_at
        FROM scheduled_reports
-       ORDER BY created_at DESC`
+       ${isAdmin ? "" : "WHERE created_by = $1"}
+       ORDER BY created_at DESC`,
+      isAdmin ? [] : [userId]
     );
     res.json({
       success: true,
@@ -93,7 +97,7 @@ router.post("/scheduler/reports", requirePermission("report:write"), async (req,
     }
 
     const id = `sched_${crypto.randomBytes(8).toString("hex")}`;
-    const userId = (req as any).user?.userId || "unknown";
+    const userId = getUserId(req);
     const pool = getPool();
     const nextRunAt = computeNextRun(cron_expression);
 
@@ -139,7 +143,12 @@ router.put("/scheduler/reports/:id", requirePermission("report:write"), async (r
     }
 
     const pool = getPool();
-    const existing = await pool.query("SELECT id FROM scheduled_reports WHERE id = $1", [req.params.id]);
+    const isAdmin = getRole(req) === "admin";
+    const userId = getUserId(req);
+    const existing = await pool.query(
+      `SELECT id FROM scheduled_reports WHERE id = $1 ${isAdmin ? "" : "AND created_by = $2"}`,
+      isAdmin ? [req.params.id] : [req.params.id, userId]
+    );
     if (existing.rows.length === 0) {
       res.status(404).json({ error: "Scheduled report not found" });
       return;
@@ -169,7 +178,10 @@ router.put("/scheduler/reports/:id", requirePermission("report:write"), async (r
     }
 
     params.push(req.params.id);
-    await pool.query(`UPDATE scheduled_reports SET ${sets.join(", ")} WHERE id = $${idx}`, params);
+    await pool.query(
+      `UPDATE scheduled_reports SET ${sets.join(", ")} WHERE id = $${idx} ${isAdmin ? "" : "AND created_by = $" + (idx + 1)}`,
+      isAdmin ? params : [...params, userId]
+    );
 
     res.json({ success: true, message: "Scheduled report updated" });
   } catch (err) {
@@ -181,7 +193,12 @@ router.put("/scheduler/reports/:id", requirePermission("report:write"), async (r
 router.delete("/scheduler/reports/:id", requirePermission("report:write"), async (req, res) => {
   try {
     const pool = getPool();
-    const result = await pool.query("DELETE FROM scheduled_reports WHERE id = $1 RETURNING id", [req.params.id]);
+    const isAdmin = getRole(req) === "admin";
+    const userId = getUserId(req);
+    const result = await pool.query(
+      `DELETE FROM scheduled_reports WHERE id = $1 ${isAdmin ? "" : "AND created_by = $2"} RETURNING id`,
+      isAdmin ? [req.params.id] : [req.params.id, userId]
+    );
     if (result.rows.length === 0) {
       res.status(404).json({ error: "Scheduled report not found" });
       return;
@@ -199,9 +216,14 @@ router.delete("/scheduler/reports/:id", requirePermission("report:write"), async
 router.get("/scheduler/reports/:id/download", requirePermission("report:read"), async (req, res) => {
   try {
     const pool = getPool();
+    const isAdmin = getRole(req) === "admin";
+    const userId = getUserId(req);
     const result = await pool.query(
-      "SELECT id, schedule_id, format, file_path, file_size, row_count, generated_at FROM generated_reports WHERE id = $1",
-      [req.params.id]
+      `SELECT gr.id, gr.schedule_id, gr.format, gr.file_path, gr.file_size, gr.row_count, gr.generated_at
+       FROM generated_reports gr
+       LEFT JOIN scheduled_reports sr ON sr.id = gr.schedule_id
+       WHERE gr.id = $1 ${isAdmin ? "" : "AND sr.created_by = $2"}`,
+      isAdmin ? [req.params.id] : [req.params.id, userId]
     );
     if (result.rows.length === 0) {
       res.status(404).json({ error: "Generated report not found" });
@@ -236,18 +258,23 @@ router.get("/scheduler/reports/:id/download", requirePermission("report:read"), 
 
 // ── Generated Reports List ────────────────────────────────
 
-router.get("/scheduler/reports/generated", requirePermission("report:read"), async (_req, res) => {
+router.get("/scheduler/reports/generated", requirePermission("report:read"), async (req, res) => {
   try {
     const pool = getPool();
+    const isAdmin = getRole(req) === "admin";
+    const userId = getUserId(req);
     const result = await pool.query(
       `SELECT gr.id, gr.schedule_id, sr.name AS report_name, gr.format, gr.file_size, gr.row_count, gr.generated_at
        FROM generated_reports gr
        LEFT JOIN scheduled_reports sr ON sr.id = gr.schedule_id
+       ${isAdmin ? "" : "WHERE sr.created_by = $1"}
        ORDER BY gr.generated_at DESC
-       LIMIT 100`
+       LIMIT 100`,
+      isAdmin ? [] : [userId]
     );
     res.json({ success: true, data: result.rows });
   } catch (err) {
+    log("error", "Failed to list generated reports", req as any, { error: (err as Error).message });
     res.status(500).json({ success: false, error: "Failed to list generated reports" });
   }
 });

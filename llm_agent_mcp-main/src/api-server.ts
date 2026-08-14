@@ -80,13 +80,18 @@ app.use(
 app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
 app.use(express.json({ limit: "5mb" }));
 
-// Rate limiter middleware — applies to all /api/* routes
+// Auth middleware — extracts userId and role from JWT on every request
+app.use(requireAuth);
+
+// Rate limiter middleware — applies to all /api/* routes.
+// Runs AFTER requireAuth so authenticated requests are keyed by userId
+// (a user's quota follows them across IPs) and anonymous requests by IP.
 // In test mode, use the in-memory backend so parallel/back-to-back test runs
 // never accumulate persistent rows in the shared rate_limiter table.
 const limiterBackend = process.env.NODE_ENV === "test" ? ("memory" as const) : undefined;
 const apiLimiter = new RateLimiter({ maxRequests: 120, windowMs: 60_000, backend: limiterBackend });
 app.use("/api", async (req, res, next) => {
-  const key = `api:${(req as any).user?.userId || req.ip || "anon"}`;
+  const key = `api:${(req as any).userId || req.ip || "anon"}`;
   const result = await apiLimiter.check(key);
   res.setHeader("X-RateLimit-Limit", "120");
   res.setHeader("X-RateLimit-Remaining", String(result.remaining));
@@ -115,9 +120,6 @@ app.use((req, _res, next) => {
   _res.setHeader("X-Request-Id", reqId);
   requestContext.run({ requestId: reqId, ipAddress: req.ip }, next);
 });
-
-// Auth middleware — extracts userId and role from JWT on every request
-app.use(requireAuth);
 
 // Request timeout — kill requests that exceed 60s
 function requestTimeout(req: express.Request, res: express.Response, next: express.NextFunction): void {
