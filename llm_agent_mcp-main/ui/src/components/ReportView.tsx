@@ -106,12 +106,14 @@ export const ReportView = ({ token }: { token: string }) => {
     setIsLoading(true);
     setError(null);
 
+    const headers = { Authorization: `Bearer ${token}` };
+
     Promise.all([
-      fetch("/api/kpi/sales"),
-      fetch("/api/kpi/users"),
-      fetch("/api/kpi/churn_rate"),
-      fetch("/api/kpi-history?limit=12"),
-      fetch("/api/dashboard/computed-metrics"),
+      fetch("/api/kpi/sales", { headers }),
+      fetch("/api/kpi/users", { headers }),
+      fetch("/api/kpi/churn_rate", { headers }),
+      fetch("/api/kpi-history?limit=12", { headers }),
+      fetch("/api/dashboard/computed-metrics", { headers }),
     ]).then(async ([salesRes, usersRes, churnRes, historyRes, computedRes]) => {
       if (cancelled) return;
       const [salesKpi, usersKpi, churnKpi, salesHistory, computedMetrics] = await Promise.all([

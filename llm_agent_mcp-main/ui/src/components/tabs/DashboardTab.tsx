@@ -229,7 +229,7 @@ const DashboardTabInner: React.FC<DashboardTabProps> = ({
             )}
 
             <div className="animate-fade-in-up" style={{ animationDelay: "80ms" }}>
-              <FinanceDashboard />
+              <FinanceDashboard token={token} />
             </div>
 
             <div className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>

@@ -73,7 +73,7 @@ const IconProfit = () => (
   </svg>
 );
 
-export function FinanceDashboard() {
+export function FinanceDashboard({ token }: { token: string }) {
   const [data, setData] = useState<FinanceChartsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -81,7 +81,9 @@ export function FinanceDashboard() {
     let cancelled = false;
     setLoading(true);
 
-    fetch("/api/finance-charts")
+    fetch("/api/finance-charts", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then((r) => r.ok ? r.json() : Promise.resolve({ isFinance: false }))
       .then((json) => { if (!cancelled) { setData(json); setLoading(false); } })
       .catch(() => { if (!cancelled) { setData({ isFinance: false }); setLoading(false); } });

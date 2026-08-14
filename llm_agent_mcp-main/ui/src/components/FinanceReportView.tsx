@@ -265,10 +265,12 @@ export const FinanceReportView = ({ token }: { token: string }) => {
     setIsLoading(true);
     setError(null);
 
+    const headers = { Authorization: `Bearer ${token}` };
+
     Promise.all([
-      fetch("/api/finance-charts"),
-      fetch("/api/dashboard/computed-metrics"),
-      fetch("/api/finance-reports"),
+      fetch("/api/finance-charts", { headers }),
+      fetch("/api/dashboard/computed-metrics", { headers }),
+      fetch("/api/finance-reports", { headers }),
     ]).then(async ([chartsRes, metricsRes, reportsRes]) => {
       if (cancelled) return;
       const [chartsData, metricsData, reportsData] = await Promise.all([
