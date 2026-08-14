@@ -77,7 +77,6 @@ describe("Scheduler Report Generation", () => {
   });
 
   it("should return correct format label", async () => {
-    const scheduler = await import("../services/scheduler.js");
     // Use the internal function or just verify the switch logic
     const testCases = [
       { input: "pdf", expected: "pdf" },
@@ -86,7 +85,7 @@ describe("Scheduler Report Generation", () => {
       { input: "json", expected: "json" },
       { input: "unknown", expected: "pdf" },
     ];
-    for (const tc of testCases) {
+    for (const _tc of testCases) {
       // This is a test of the router's route registration
       const router = await import("../routes/scheduler.router.js");
       expect(router.default).toBeDefined();

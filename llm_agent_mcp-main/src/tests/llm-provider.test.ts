@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { detectProvider, isRateLimitError } from "../llm-provider.js";
-import { invokeWithFallback as InvokeWithFallbackFn } from "../llm-provider.js";
+import type { invokeWithFallback as InvokeWithFallbackFn } from "../llm-provider.js";
 
 // ── Mock LangChain packages ──────────────────────────────────
 // hoisted runs before vi.mock factories, so mock functions are available

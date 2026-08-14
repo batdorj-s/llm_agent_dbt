@@ -143,10 +143,6 @@ export class SQLiteKpiRepository implements IKpiRepository {
                 || null;
             if (!dateCol) return false;
 
-            const categoryCol = columns.find(c => /^category$/i.test(c))
-                || columns.find(c => /category|type|kind|class/i.test(c))
-                || undefined;
-
             return true;
         }).then((info) => {
             if (!info) return null;

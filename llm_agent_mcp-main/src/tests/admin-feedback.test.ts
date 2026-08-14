@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import type * as NodeFs from "node:fs";
 import path from "path";
 import { vol } from "memfs";
 
@@ -49,7 +50,7 @@ describe("Admin Router — Feedback routes", () => {
   let router: any;
 
   beforeAll(async () => {
-    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    const realFs = await vi.importActual<typeof NodeFs>("node:fs");
     vol.fromJSON({
       "src/prompts.yaml": realFs.readFileSync(path.resolve("src/prompts.yaml"), "utf8"),
       "./src/prompts.yaml": realFs.readFileSync(path.resolve("src/prompts.yaml"), "utf8"),

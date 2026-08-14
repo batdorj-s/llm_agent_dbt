@@ -1,4 +1,5 @@
-import { StateGraph, MemorySaver, BaseCheckpointSaver } from "@langchain/langgraph";
+import { StateGraph, MemorySaver } from "@langchain/langgraph";
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { Pool } from "pg";
 import { dataScientistNode } from "./agents/data-scientist.js";

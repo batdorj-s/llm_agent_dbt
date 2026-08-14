@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
-import path from "path";
-import { Router } from "express";
 
 vi.mock("fs", () => ({
   default: {

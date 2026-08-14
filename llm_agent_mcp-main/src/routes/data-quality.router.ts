@@ -183,7 +183,7 @@ router.get("/data-quality/custom-tests", requirePermission("quality:read"), asyn
       "SELECT * FROM data_quality_tests ORDER BY updated_at DESC"
     );
     res.json({ success: true, data: result.rows });
-  } catch (err) {
+  } catch {
     res.status(500).json({ success: false, error: "Failed to load custom tests" });
   }
 });
@@ -206,7 +206,7 @@ router.post("/data-quality/custom-tests", requirePermission("quality:create"), a
     );
 
     res.status(201).json({ success: true, data: { id, name, model_name } });
-  } catch (err) {
+  } catch {
     res.status(500).json({ success: false, error: "Failed to create test" });
   }
 });
@@ -239,7 +239,7 @@ router.put("/data-quality/custom-tests/:id", requirePermission("quality:write"),
 
     await pool.query(`UPDATE data_quality_tests SET ${sets.join(", ")} WHERE id = $${idx}`, params);
     res.json({ success: true, message: "Test updated" });
-  } catch (err) {
+  } catch {
     res.status(500).json({ success: false, error: "Failed to update test" });
   }
 });
@@ -249,7 +249,7 @@ router.delete("/data-quality/custom-tests/:id", requirePermission("quality:write
     const pool = getPool();
     await pool.query("DELETE FROM data_quality_tests WHERE id = $1", [req.params.id]);
     res.json({ success: true, message: "Test deleted" });
-  } catch (err) {
+  } catch {
     res.status(500).json({ success: false, error: "Failed to delete test" });
   }
 });

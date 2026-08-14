@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
+import type * as Fs from "fs";
 
 describe("Data Quality Module", () => {
   beforeAll(async () => {
     vi.mock("fs", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("fs")>();
+      const actual = await importOriginal<typeof Fs>();
       return { ...actual, existsSync: vi.fn().mockReturnValue(false) };
     });
   });

@@ -51,7 +51,7 @@ describe("requireAuth fail-closed behavior", () => {
   it("rejects an expired token with 401 in production", async () => {
     process.env.NODE_ENV = "production";
     process.env.JWT_SECRET = "test-secret-please-ignore-0123456789";
-    const { requireAuth, createToken, verifyToken } = await loadAuth();
+    const { requireAuth, verifyToken } = await loadAuth();
     // Create a token, then tamper with its payload expiry by signing manually:
     // simpler — verify verifyToken fails on garbage, and requireAuth 401s.
     expect(verifyToken("garbage.token.here").success).toBe(false);

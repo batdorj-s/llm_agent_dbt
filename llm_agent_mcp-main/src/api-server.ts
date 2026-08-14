@@ -23,7 +23,6 @@ import { requestContext } from "./context.js";
 import helmet from "helmet";
 import { detectProvider } from "./llm-provider.js";
 import { RateLimiter } from "./rate-limiter.js";
-import { authLimiter, mcpLimiter } from "./rate-limiter.js";
 import { getPool } from "./db/data-lake.js";
 import { setupKnowledgeBase } from "./rag.js";
 import { ensureProjectReady } from "./setup/init.js";

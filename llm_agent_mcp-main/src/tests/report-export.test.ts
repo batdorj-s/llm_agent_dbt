@@ -42,8 +42,10 @@ vi.mock("../db/kpi-repository.js", () => ({
 // Keep report generation deterministic: never let the unmocked finance-data
 // path hit the real DB (parallel DB tests can leave shared catalog rows,
 // which would switch the xlsx sheet names and make this test flaky).
+import type * as DataLake from "../db/data-lake.js";
+
 vi.mock("../db/data-lake.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../db/data-lake.js")>();
+  const actual = await importOriginal<typeof DataLake>();
   return {
     ...actual,
     getActiveCatalogEntry: vi.fn().mockResolvedValue(null),

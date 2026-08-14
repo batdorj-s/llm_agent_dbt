@@ -5,7 +5,7 @@ const MART_SALES = "kpi_sales";
 const MART_USERS = "user_metrics";
 
 export class MartsKpiRepository implements IKpiRepository {
-    async getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter, userId?: string): Promise<KpiMetric | null> {
+    async getKpi(metric: KpiMetric["name"], dateFilter?: DateFilter, _userId?: string): Promise<KpiMetric | null> {
         try {
             await initDataLake();
 

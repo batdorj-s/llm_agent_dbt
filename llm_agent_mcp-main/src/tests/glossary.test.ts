@@ -1,16 +1,6 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 
 describe("Glossary Data Dictionary", () => {
-  let getPool: any;
-
-  beforeAll(async () => {
-    try {
-      const mod = await import("../db/pool.js");
-      getPool = mod.getPool;
-    } catch {
-      // tests run without DB
-    }
-  });
 
   it("should export router functions", async () => {
     const router = await import("../routes/glossary.router.js");
