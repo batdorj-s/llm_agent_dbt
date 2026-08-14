@@ -86,9 +86,9 @@ export function useDashboard(
   period: Period,
   setPeriod: (p: Period) => void,
 ) {
-  const { token, logout } = useAuth();
+  const { token, isLoggedIn, isAuthLoading, logout } = useAuth();
   const qs = buildQs(period);
-  const enabled = true;
+  const enabled = !isAuthLoading && isLoggedIn;
   const onUnauthorized = logoutIfUnauthorized(logout);
 
   const { data: serverStatus } = useQuery<ServerStatus>({

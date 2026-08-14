@@ -1,6 +1,9 @@
 import crypto from "crypto";
+import dotenv from "dotenv";
 import type { Request, Response, NextFunction } from "express";
 import type { UserRole } from "./multi-agent.js";
+
+dotenv.config();
 
 export interface TokenPayload {
   userId: string;
