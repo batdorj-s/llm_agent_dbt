@@ -187,9 +187,9 @@ describe("chat.router", () => {
       await streamHandler({ userId: "u1", role: "analyst", body: { message: "hi" } }, res);
       expect(res._headers["Content-Type"]).toBe("text/event-stream");
       expect(mockedAddMessage).toHaveBeenCalledWith("conv-3", "user", "hi");
-      expect(res._writes.some(w => w.includes('"type":"agent"'))).toBe(true);
-      expect(res._writes.some(w => w.includes("chunk1"))).toBe(true);
-      expect(res._writes.some(w => w.includes('"type":"done"' ))).toBe(true);
+      expect(res._writes.some((w: string) => w.includes('"type":"agent"'))).toBe(true);
+      expect(res._writes.some((w: string) => w.includes("chunk1"))).toBe(true);
+      expect(res._writes.some((w: string) => w.includes('"type":"done"' ))).toBe(true);
       expect(res.end).toHaveBeenCalled();
     });
 
@@ -199,8 +199,8 @@ describe("chat.router", () => {
       mockedStream.mockRejectedValueOnce(new Error("stream exploded"));
       const res = mockRes();
       await streamHandler({ userId: "u1", role: "analyst", body: { message: "hi" } }, res);
-      expect(res._writes.some(w => w.includes('"type":"error"'))).toBe(true);
-      expect(res._writes.some(w => w.includes("stream exploded"))).toBe(true);
+      expect(res._writes.some((w: string) => w.includes('"type":"error"'))).toBe(true);
+      expect(res._writes.some((w: string) => w.includes("stream exploded"))).toBe(true);
       expect(res.end).toHaveBeenCalled();
     });
   });
