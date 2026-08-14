@@ -33,21 +33,23 @@ export function log(
 
 // ── Auth helpers ──────────────────────────────────────────────
 
-/** Extract userId from request (set by requireAuth middleware) */
+/**
+ * Extract userId from request (set by requireAuth middleware).
+ * Fails closed: throws if the route bypassed requireAuth — no silent admin fallback.
+ */
 export function getUserId(req: express.Request): string {
   const userId = (req as any).userId as string | undefined;
   if (!userId) {
-    // Fallback for public routes that bypass requireAuth
-    return "user-admin-001";
+    throw new Error("getUserId: no authenticated user — route must be behind requireAuth");
   }
   return userId;
 }
 
-/** Extract role from request (set by requireAuth middleware) */
+/** Extract role from request (set by requireAuth middleware). Fails closed. */
 export function getRole(req: express.Request): UserRole {
   const role = (req as any).role as UserRole | undefined;
   if (!role) {
-    return "admin";
+    throw new Error("getRole: no authenticated user — route must be behind requireAuth");
   }
   return role;
 }

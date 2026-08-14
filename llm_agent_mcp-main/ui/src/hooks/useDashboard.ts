@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { KpiData, SalesHistory, ComputedMetrics, ServerStatus } from "../components/types";
+import { useAuth } from "./useAuth";
 
 export interface FinanceAudit {
   available: boolean;
@@ -61,8 +62,10 @@ function buildQs(period: Period): string {
   return params.toString();
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+async function fetchJson<T>(url: string, token: string): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -71,6 +74,7 @@ export function useDashboard(
   period: Period,
   setPeriod: (p: Period) => void,
 ) {
+  const { token } = useAuth();
   const qs = buildQs(period);
   const enabled = true;
 
@@ -86,50 +90,50 @@ export function useDashboard(
 
   const { data: salesKpi } = useQuery<KpiData>({
     queryKey: ["kpi", "sales", qs],
-    queryFn: () => fetchJson(`/api/kpi/sales?${qs}`),
+    queryFn: () => fetchJson(`/api/kpi/sales?${qs}`, token),
     enabled,
   });
 
   const { data: usersKpi } = useQuery<KpiData>({
     queryKey: ["kpi", "users", qs],
-    queryFn: () => fetchJson(`/api/kpi/users?${qs}`),
+    queryFn: () => fetchJson(`/api/kpi/users?${qs}`, token),
     enabled,
   });
 
   const { data: churnKpi } = useQuery<KpiData>({
     queryKey: ["kpi", "churn_rate", qs],
-    queryFn: () => fetchJson(`/api/kpi/churn_rate?${qs}`),
+    queryFn: () => fetchJson(`/api/kpi/churn_rate?${qs}`, token),
     enabled,
   });
 
   const { data: salesHistory = [] } = useQuery<SalesHistory[]>({
     queryKey: ["kpiHistory", qs],
-    queryFn: () => fetchJson(`/api/kpi-history?${qs}`),
+    queryFn: () => fetchJson(`/api/kpi-history?${qs}`, token),
     enabled,
   });
 
   const { data: computedMetrics } = useQuery<ComputedMetrics>({
     queryKey: ["computedMetrics", qs],
-    queryFn: () => fetchJson(`/api/dashboard/computed-metrics?${qs}`),
+    queryFn: () => fetchJson(`/api/dashboard/computed-metrics?${qs}`, token),
     enabled,
   });
 
   const { data: financeCharts } = useQuery<any>({
     queryKey: ["financeCharts"],
-    queryFn: () => fetchJson(`/api/finance-charts`),
+    queryFn: () => fetchJson(`/api/finance-charts`, token),
     enabled,
   });
 
   const { data: financeAudit } = useQuery<FinanceAudit>({
     queryKey: ["financeAudit"],
-    queryFn: () => fetchJson(`/api/finance-audit`),
+    queryFn: () => fetchJson(`/api/finance-audit`, token),
     enabled,
     staleTime: 60_000,
   });
 
   const { data: tablePassport } = useQuery<TablePassport>({
     queryKey: ["tablePassport"],
-    queryFn: () => fetchJson(`/api/table-passport`),
+    queryFn: () => fetchJson(`/api/table-passport`, token),
     enabled,
     staleTime: 5 * 60_000,
   });

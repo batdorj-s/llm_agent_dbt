@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import type { UploadedFile } from "../components/types";
+import { useAuth } from "./useAuth";
 
 export interface PreviewState {
   data: Record<string, unknown>[] | null;
@@ -18,6 +19,7 @@ const EMPTY: PreviewState = {
 };
 
 export function usePreview() {
+  const { token } = useAuth();
   const [preview, setPreview] = useState<PreviewState>(EMPTY);
   const [isLoading, setIsLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -30,7 +32,10 @@ export function usePreview() {
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/admin/files/${file.id}/preview`, { signal: controller.signal });
+      const res = await fetch(`/api/admin/files/${file.id}/preview`, {
+        signal: controller.signal,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok) {
         let msg = `Preview failed (${res.status})`;
         try { const b = await res.json(); if (b.error) msg += `: ${b.error}`; } catch {}

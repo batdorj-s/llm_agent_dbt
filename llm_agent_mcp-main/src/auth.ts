@@ -62,18 +62,13 @@ export const DEFAULT_ROLE: UserRole = "admin";
  * explicitly so dev admin access is never granted by accident.
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  // Public routes that never require auth (read-only dashboard data, auth, health)
+  // Public routes that never require auth (health, auth, setup only)
   const publicPaths = [
     "/api/health",
     "/api/auth/login",
     "/api/auth/register",
     "/api/setup/status",
     "/api/status",
-    "/api/table-passport",
-    "/api/kpi",
-    "/api/kpi-history",
-    "/api/dashboard",
-    "/api/finance",
   ];
   if (publicPaths.some(p => req.path.startsWith(p))) {
     return next();

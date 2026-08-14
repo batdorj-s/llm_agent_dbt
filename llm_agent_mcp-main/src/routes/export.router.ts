@@ -6,9 +6,13 @@ import { getActiveCatalogEntry, getPool, getCatalog, canAccessCatalogEntry } fro
 
 const router = Router();
 
-/** Helper: extract userId from request (set by requireAuth middleware) */
+/** Helper: extract userId from request (set by requireAuth middleware). Fails closed. */
 function getUserId(req: express.Request): string {
-  return (req as express.Request & { userId: string }).userId || "user-admin-001";
+  const userId = (req as express.Request & { userId?: string }).userId;
+  if (!userId) {
+    throw new Error("getUserId: no authenticated user — route must be behind requireAuth");
+  }
+  return userId;
 }
 
 /**

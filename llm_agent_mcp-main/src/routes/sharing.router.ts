@@ -24,7 +24,11 @@ const router = Router();
 // ── Helpers ─────────────────────────────────────────────
 
 function getUserId(req: any): string {
-  return req.user?.userId || req.apiKeyInfo?.user_id || "unknown";
+  const userId = req.user?.userId || req.apiKeyInfo?.user_id;
+  if (!userId) {
+    throw new Error("getUserId: no authenticated user — route must be behind requireAuth");
+  }
+  return userId;
 }
 
 // ── Teams ───────────────────────────────────────────────
