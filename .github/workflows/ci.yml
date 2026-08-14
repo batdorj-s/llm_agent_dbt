@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+defaults:
+  run:
+    working-directory: llm_agent_mcp-main
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -58,20 +62,20 @@ jobs:
         with:
           node-version: 22
           cache: "npm"
-          cache-dependency-path: ui/package-lock.json
+          cache-dependency-path: llm_agent_mcp-main/ui/package-lock.json
 
       - name: Install dependencies
-        working-directory: ui
+        working-directory: llm_agent_mcp-main/ui
         run: npm ci
 
       - name: Lint
-        working-directory: ui
+        working-directory: llm_agent_mcp-main/ui
         run: npx next lint --max-warnings=100
 
       - name: Run frontend tests
-        working-directory: ui
+        working-directory: llm_agent_mcp-main/ui
         run: npm test
 
       - name: Build
-        working-directory: ui
+        working-directory: llm_agent_mcp-main/ui
         run: npm run build

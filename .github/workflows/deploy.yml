@@ -42,7 +42,7 @@ jobs:
       - name: Build and push API
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: llm_agent_mcp-main
           file: Dockerfile.api
           push: true
           tags: ${{ steps.meta.outputs.tags }}-api
@@ -53,7 +53,7 @@ jobs:
       - name: Build and push UI
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: llm_agent_mcp-main
           file: Dockerfile.ui
           push: true
           tags: ${{ steps.meta.outputs.tags }}-ui
