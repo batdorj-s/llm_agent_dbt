@@ -4,6 +4,7 @@
 
 import { Pool } from "pg";
 import fs from "fs";
+import path from "path";
 import crypto from "crypto";
 import dotenv from "dotenv";
 import { hashPassword } from "../auth.js";
@@ -350,6 +351,39 @@ export async function initDataLake(): Promise<void> {
       `);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_notification_prefs_user ON notification_preferences (user_id, channel)`);
 
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS feedback (
+          id TEXT PRIMARY KEY,
+          user_id TEXT,
+          message TEXT NOT NULL,
+          response TEXT DEFAULT '',
+          rating TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+          thread_id TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback (status)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback (created_at DESC)`);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id BIGSERIAL PRIMARY KEY,
+          user_id TEXT,
+          action TEXT NOT NULL,
+          method TEXT,
+          path TEXT,
+          status INT,
+          ip TEXT,
+          request_id TEXT,
+          details JSONB DEFAULT '{}',
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (created_at DESC)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log (user_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log (action)`);
+
       const existing = await pool.query("SELECT metric_name, target_value, unit FROM kpi_targets");
       if (existing.rows.length === 0) {
         await pool.query(
@@ -440,6 +474,44 @@ export async function initDataLake(): Promise<void> {
       `);
 
       await ensureUploadedFilesSynced();
+
+      // Migrate legacy file-based feedback (data/failed-queries.json) into the feedback table.
+      // Runs whenever the legacy file still exists; ON CONFLICT (id) DO NOTHING keeps
+      // re-runs idempotent. The file is renamed to .migrated.json only on full success,
+      // so an interrupted run retries on the next boot.
+      try {
+        const legacyPath = path.resolve(process.cwd(), "data", "failed-queries.json");
+        if (fs.existsSync(legacyPath)) {
+          const raw = fs.readFileSync(legacyPath, "utf8");
+          const entries = JSON.parse(raw);
+          if (Array.isArray(entries) && entries.length > 0) {
+            let migrated = 0;
+            for (const e of entries) {
+              if (!e?.id || !e?.message || !e?.rating) continue;
+              await pool.query(
+                `INSERT INTO feedback (id, user_id, message, response, rating, status, thread_id, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 ON CONFLICT (id) DO NOTHING`,
+                [
+                  String(e.id),
+                  e.userId ?? null,
+                  String(e.message),
+                  typeof e.response === "string" ? e.response : "",
+                  String(e.rating),
+                  ["pending", "approved", "rejected"].includes(e.status) ? e.status : (e.rating === "negative" ? "pending" : "approved"),
+                  e.threadId ?? null,
+                  e.timestamp ? new Date(e.timestamp) : new Date(),
+                ]
+              );
+              migrated++;
+            }
+            fs.renameSync(legacyPath, legacyPath.replace(".json", ".migrated.json"));
+            console.log(`[Data Lake] Migrated ${migrated} legacy feedback entries to PostgreSQL`);
+          }
+        }
+      } catch (err) {
+        console.warn("[Data Lake] Feedback migration failed:", err instanceof Error ? err.message : String(err));
+      }
 
       const oldTables = ["datasetdescription", "test_mixed_data", "test_int_dec", "upload_test"];
       for (const tbl of oldTables) {

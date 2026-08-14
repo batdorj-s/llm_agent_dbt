@@ -27,6 +27,7 @@ import { getPool } from "./db/data-lake.js";
 import { setupKnowledgeBase } from "./rag.js";
 import { ensureProjectReady } from "./setup/init.js";
 import { requireAuth } from "./auth.js";
+import { auditWrites } from "./middleware/audit.js";
 import { initConversationSchema } from "./services/conversation.js";
 import { log } from "./routes/shared.js";
 import { REQUEST_TIMEOUT_MS } from "./routes/shared.js";
@@ -45,6 +46,7 @@ import adminSummaryRouter from "./routes/admin-summary.router.js";
 import adminAnalyticsRouter from "./routes/admin-analytics.router.js";
 import adminAnalysisRouter from "./routes/admin-analysis.router.js";
 import feedbackRouter from "./routes/feedback.router.js";
+import auditRouter from "./routes/audit.router.js";
 import exportRouter from "./routes/export.router.js";
 import metricsRouter from "./routes/metrics.router.js";
 import glossaryRouter from "./routes/glossary.router.js";
@@ -252,6 +254,7 @@ app.get("/api/status", (_req, res) => {
 });
 
 // ── Feature routers ──────────────────────────────────────────
+app.use(auditWrites);  // audit write requests (POST/PUT/PATCH/DELETE) after auth/requestId context
 app.use("/api/chat",        chatRouter);
 app.use("/api/auth",        authRouter);
 app.use("/api",             kpiRouter);       // /api/kpi/:metric, /api/kpi-history
@@ -266,6 +269,7 @@ app.use("/api/admin",       adminRouter);
 app.use("/api/admin",       adminUsersRouter);     // /api/admin/users
 app.use("/api/admin",       adminDocumentsRouter); // /api/admin/documents
 app.use("/api/admin",       adminSummaryRouter);   // /api/admin/summary
+app.use("/api/admin",       auditRouter);           // /api/admin/audit
 app.use("/api/admin",       adminAnalyticsRouter);  // /api/admin/analytics
 app.use("/api/admin",       adminAnalysisRouter);   // /api/admin/analysis/*
 app.use("/api/feedback",    feedbackRouter);

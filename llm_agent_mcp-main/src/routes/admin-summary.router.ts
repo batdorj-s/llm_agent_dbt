@@ -9,24 +9,12 @@
  */
 
 import { Router } from "express";
-import fs from "fs";
-import path from "path";
 import { getPool } from "../db/pool.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { log } from "./shared.js";
+import { feedbackCounts, listFeedback } from "../db/feedback-repository.js";
 
 const router = Router();
-
-const FAILED_QUERIES_PATH = path.resolve(process.cwd(), "data", "failed-queries.json");
-
-function readFailedQueries(): Array<Record<string, unknown>> {
-  try {
-    const raw = fs.readFileSync(FAILED_QUERIES_PATH, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
 
 /** Aggregate platform summary */
 router.get("/summary", requirePermission("admin:system"), async (_req, res) => {
@@ -49,9 +37,10 @@ router.get("/summary", requirePermission("admin:system"), async (_req, res) => {
       pool.query(`SELECT COUNT(*) AS count FROM data_quality_tests`),
     ]);
 
-    const feedbackAll = readFailedQueries();
-    const feedbackPending = feedbackAll.filter((f) => f.status === "pending").length;
-    const feedbackApproved = feedbackAll.filter((f) => f.status === "approved").length;
+    const [feedbackAll, feedbackCountsResult] = await Promise.all([
+      listFeedback("pending"),
+      feedbackCounts(),
+    ]);
 
     const recentLogs = await pool.query(
       `SELECT id, user_id, query, outcome, attempts, table_name, error, duration_ms, created_at
@@ -61,13 +50,12 @@ router.get("/summary", requirePermission("admin:system"), async (_req, res) => {
     );
 
     const recentFeedback = feedbackAll
-      .filter((f) => f.status === "pending")
       .slice(0, 10)
       .map((f) => ({
         id: f.id,
         message: f.message,
         rating: f.rating,
-        createdAt: f.createdAt,
+        createdAt: f.timestamp,
       }));
 
     res.json({
@@ -85,8 +73,8 @@ router.get("/summary", requirePermission("admin:system"), async (_req, res) => {
           activeSchedules: Number(sched.rows[0]?.count ?? 0),
           generatedReports: Number(reports.rows[0]?.count ?? 0),
           qualityTests: Number(quality.rows[0]?.count ?? 0),
-          feedbackPending,
-          feedbackApproved,
+          feedbackPending: feedbackCountsResult.pending,
+          feedbackApproved: feedbackCountsResult.approved,
         },
         recentSqlLogs: recentLogs.rows,
         recentFeedback,

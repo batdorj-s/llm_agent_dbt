@@ -6,12 +6,36 @@ import { vol } from "memfs";
 vi.mock("node:fs");
 vi.mock("node:fs/promises");
 
+vi.mock("../db/pool.js", () => ({
+  getPool: vi.fn(),
+}));
+
+vi.mock("../db/data-lake.js", () => ({
+  getPool: vi.fn(),
+}));
+
 vi.mock("../rag.js", () => ({
   removeDocumentsByPrefix: vi.fn(async () => 0),
   addDocumentToCatalog: vi.fn(async () => undefined),
 }));
 
-const FIXTURE_PATH = path.resolve(process.cwd(), "data", "failed-queries.json");
+import { getPool } from "../db/pool.js";
+
+const mockedPool = { query: vi.fn() };
+(getPool as ReturnType<typeof vi.fn>).mockReturnValue(mockedPool);
+
+function fbRow(id: string, status: string, response = "bad answer") {
+  return {
+    id,
+    user_id: "u1",
+    message: `${id} query`,
+    response,
+    rating: "negative",
+    status,
+    thread_id: null,
+    created_at: new Date("2026-01-01T00:00:00Z"),
+  };
+}
 
 function findHandler(router: any, method: string, routePath: string) {
   const layer = router.default.stack.find(
@@ -34,18 +58,6 @@ function mockRes() {
   return res;
 }
 
-function fixture() {
-  return JSON.stringify([
-    { id: "fb_1", userId: "u1", message: "first query", response: "bad answer", rating: "negative", status: "pending", timestamp: "2026-01-01T00:00:00Z" },
-    { id: "fb_2", userId: "u1", message: "second query", response: "", rating: "negative", status: "pending", timestamp: "2026-01-01T00:00:00Z" },
-    { id: "fb_3", userId: "u1", message: "old query", response: "old answer", rating: "negative", status: "approved", timestamp: "2026-01-01T00:00:00Z" },
-  ]);
-}
-
-function storedEntries(): any[] {
-  return JSON.parse(vol.readFileSync(FIXTURE_PATH, "utf8") as string) as any[];
-}
-
 describe("Admin Router — Feedback routes", () => {
   let router: any;
 
@@ -60,8 +72,7 @@ describe("Admin Router — Feedback routes", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vol.reset();
-    vol.fromJSON({ [FIXTURE_PATH]: fixture() });
+    mockedPool.query.mockReset();
   });
 
   it("registers pending / approve / reject / batch routes", () => {
@@ -72,25 +83,34 @@ describe("Admin Router — Feedback routes", () => {
   });
 
   it("GET /feedback/pending returns only pending entries", async () => {
+    mockedPool.query.mockResolvedValue({ rows: [fbRow("fb_1", "pending"), fbRow("fb_2", "pending")] });
     const handle = findHandler(router, "get", "/feedback/pending");
     const res = mockRes();
     await handle({}, res);
+    expect(mockedPool.query.mock.calls[0][0]).toContain("WHERE status = $1");
+    expect(mockedPool.query.mock.calls[0][1]).toEqual(["pending"]);
     expect(res._json.map((f: any) => f.id).sort()).toEqual(["fb_1", "fb_2"]);
   });
 
   it("POST /feedback/:id/approve marks approved and adds to RAG", async () => {
     const { addDocumentToCatalog } = await import("../rag.js");
+    mockedPool.query
+      .mockResolvedValueOnce({ rows: [fbRow("fb_1", "pending")] })
+      .mockResolvedValueOnce({ rows: [{ id: "fb_1" }] });
     const handle = findHandler(router, "post", "/feedback/:id/approve");
     const res = mockRes();
     await handle({ params: { id: "fb_1" }, body: { correctAnswer: "SELECT 1" } }, res);
     expect(res._status).toBe(200);
     expect(res._json.success).toBe(true);
-    expect(storedEntries().find((f: any) => f.id === "fb_1").status).toBe("approved");
+    const updateCall = mockedPool.query.mock.calls[1];
+    expect(updateCall[0]).toContain("UPDATE feedback");
+    expect(updateCall[1]).toEqual(["approved", "fb_1"]);
     expect(addDocumentToCatalog).toHaveBeenCalledTimes(1);
     expect(addDocumentToCatalog).toHaveBeenCalledWith("fb_1", expect.stringContaining("SELECT 1"), expect.anything(), expect.anything());
   });
 
   it("POST /feedback/:id/approve returns 404 for unknown id", async () => {
+    mockedPool.query.mockResolvedValue({ rows: [] });
     const handle = findHandler(router, "post", "/feedback/:id/approve");
     const res = mockRes();
     await handle({ params: { id: "missing" }, body: {} }, res);
@@ -99,6 +119,7 @@ describe("Admin Router — Feedback routes", () => {
 
   it("POST /feedback/:id/approve does not re-add already approved entries", async () => {
     const { addDocumentToCatalog } = await import("../rag.js");
+    mockedPool.query.mockResolvedValue({ rows: [fbRow("fb_3", "approved")] });
     const handle = findHandler(router, "post", "/feedback/:id/approve");
     const res = mockRes();
     await handle({ params: { id: "fb_3" }, body: {} }, res);
@@ -107,24 +128,36 @@ describe("Admin Router — Feedback routes", () => {
   });
 
   it("POST /feedback/:id/reject marks rejected", async () => {
+    mockedPool.query
+      .mockResolvedValueOnce({ rows: [fbRow("fb_2", "pending")] })
+      .mockResolvedValueOnce({ rows: [{ id: "fb_2" }] });
     const handle = findHandler(router, "post", "/feedback/:id/reject");
     const res = mockRes();
     await handle({ params: { id: "fb_2" }, body: {} }, res);
     expect(res._json.success).toBe(true);
-    expect(storedEntries().find((f: any) => f.id === "fb_2").status).toBe("rejected");
+    const updateCall = mockedPool.query.mock.calls[1];
+    expect(updateCall[0]).toContain("UPDATE feedback");
+    expect(updateCall[1]).toEqual(["rejected", "fb_2"]);
   });
 
   it("POST /feedback/batch approves/rejects in one write", async () => {
     const { addDocumentToCatalog } = await import("../rag.js");
+    mockedPool.query
+      .mockResolvedValueOnce({ rows: [fbRow("fb_1", "pending")] })
+      .mockResolvedValueOnce({ rows: [{ id: "fb_1" }] })
+      .mockResolvedValueOnce({ rows: [fbRow("fb_2", "pending", "")] })
+      .mockResolvedValueOnce({ rows: [{ id: "fb_2" }] })
+      .mockResolvedValueOnce({ rows: [fbRow("fb_3", "approved")] })
+      .mockResolvedValueOnce({ rows: [] });
     const handle = findHandler(router, "post", "/feedback/batch");
     const res = mockRes();
     await handle({ body: { ids: ["fb_1", "fb_2", "fb_3", "nope"], action: "approve" } }, res);
     expect(res._json).toMatchObject({ success: true, processed: 2 });
     expect(res._json.skipped.sort()).toEqual(["fb_3", "nope"]);
-    const stored = storedEntries();
-    expect(stored.find((f: any) => f.id === "fb_1").status).toBe("approved");
-    expect(stored.find((f: any) => f.id === "fb_2").status).toBe("approved");
-    expect(stored.find((f: any) => f.id === "fb_3").status).toBe("approved");
+    const updates = mockedPool.query.mock.calls.filter((c: any) => String(c[0]).includes("UPDATE feedback"));
+    expect(updates).toHaveLength(2);
+    expect(updates[0][1]).toEqual(["approved", "fb_1"]);
+    expect(updates[1][1]).toEqual(["approved", "fb_2"]);
     expect(addDocumentToCatalog).toHaveBeenCalledTimes(1);
   });
 

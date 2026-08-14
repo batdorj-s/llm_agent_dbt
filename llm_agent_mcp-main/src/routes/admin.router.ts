@@ -12,6 +12,7 @@ import { removeDocumentsByPrefix, addDocumentToCatalog } from "../rag.js";
 import { clearConversationMemory } from "../multi-agent.js";
 import { findConceptColumn } from "../agents/columnSynonyms.js";
 import { buildSemanticGroups } from "../utils.js";
+import { createFeedback, findFeedback, listFeedback, updateFeedbackStatus } from "../db/feedback-repository.js";
 import { runDbtForTable, runDbtTest, runDbtFinanceModels } from "../setup/init.js";
 import { generateSchemaYml } from "../setup/generate-schema.js";
 import { generateDataPassport } from "../agents/dataProfiler.js";
@@ -509,22 +510,6 @@ router.post("/upload-doc", requireAuth, requirePermission("admin:upload"), uploa
 });
 
 // ── Feedback ─────────────────────────────────────────────────
-const FAILED_QUERIES_PATH = path.resolve(process.cwd(), "data", "failed-queries.json");
-
-async function ensureFailedQueriesFile(): Promise<void> {
-  const dir = path.dirname(FAILED_QUERIES_PATH);
-  await fs.promises.mkdir(dir, { recursive: true }).catch(() => {});
-  try { await fs.promises.access(FAILED_QUERIES_PATH); }
-  catch { await fs.promises.writeFile(FAILED_QUERIES_PATH, "[]", "utf8"); }
-}
-
-async function readFailedQueries(): Promise<any[]> {
-  await ensureFailedQueriesFile();
-  try {
-    const raw = await fs.promises.readFile(FAILED_QUERIES_PATH, "utf8");
-    return JSON.parse(raw);
-  } catch { return []; }
-}
 
 router.post("/feedback", async (req, res) => {
   const { message, response, rating, threadId } = req.body;
@@ -535,24 +520,17 @@ router.post("/feedback", async (req, res) => {
     return res.status(400).json({ error: "rating must be 'positive' or 'negative'" });
   }
 
-  const entry = {
-    id: `feedback_${Date.now()}`,
-    userId: getUserId(req),
-    message,
-    response: response || "",
-    rating,
-    status: rating === "negative" ? "pending" : "approved",
-    threadId: threadId || null,
-    timestamp: new Date().toISOString(),
-  };
-
   try {
-    await ensureFailedQueriesFile();
-    const existing = await readFailedQueries();
-    existing.push(entry);
-    await fs.promises.writeFile(FAILED_QUERIES_PATH, JSON.stringify(existing, null, 2), "utf8");
+    const entry = await createFeedback({
+      id: `feedback_${Date.now()}`,
+      userId: getUserId(req),
+      message: String(message),
+      response: response || "",
+      rating,
+      threadId: threadId || null,
+    });
 
-    console.log(`[Feedback] ${rating} feedback from ${getUserId(req)}: "${message.slice(0, 80)}..."`);
+    console.log(`[Feedback] ${rating} feedback from ${getUserId(req)}: "${String(message).slice(0, 80)}..."`);
     const suggestions = rating === "negative"
         ? "Таны санал бүртгэгдлээ. Дараах зүйлсийг санал болгож байна:\n- **Файл оруулах**: Хэрэв өгөгдөл дутуу байвал CSV файлаа upload хийгээрэй\n- **Тодорхой асуулт**: Баганын нэр, огноогоо дурдаж асууна уу\n- **Агент солих**: 'SQL query бич' эсвэл 'борлуулалтын тайлан' гэх мэт чиглэл өгнө үү"
         : "Санал өгсөнд баярлалаа!";
@@ -564,8 +542,7 @@ router.post("/feedback", async (req, res) => {
 
 router.get("/feedback/pending", requireAuth, requirePermission("admin:users"), async (req, res) => {
   try {
-    const all = await readFailedQueries();
-    const pending = all.filter((f: any) => f.status === "pending");
+    const pending = await listFeedback("pending");
     res.json(pending);
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
@@ -573,19 +550,17 @@ router.get("/feedback/pending", requireAuth, requirePermission("admin:users"), a
 });
 
 router.post("/feedback/:id/approve", requireAuth, requirePermission("admin:users"), async (req, res) => {
-  const { id } = req.params;
+  const id = String(req.params.id);
 
   try {
-    const all = await readFailedQueries();
-    const entry = all.find((f: any) => f.id === id);
+    const entry = await findFeedback(id);
     if (!entry) return res.status(404).json({ error: "Feedback entry not found" });
 
     if (entry.status === "approved") {
       return res.json({ success: true, message: "Feedback already approved" });
     }
 
-    entry.status = "approved";
-    await fs.promises.writeFile(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
+    await updateFeedbackStatus(id, "approved");
 
     const correctAnswer = req.body.correctAnswer || "";
     if (entry.response) {
@@ -593,7 +568,7 @@ router.post("/feedback/:id/approve", requireAuth, requirePermission("admin:users
       await addDocumentToCatalog(entry.id, ragText, {
         category: "previous_analysis",
         department: "analytics",
-        author: entry.userId,
+        author: entry.userId ?? undefined,
         source_name: "User Feedback",
         shared: true,
       }, ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)]);
@@ -606,15 +581,13 @@ router.post("/feedback/:id/approve", requireAuth, requirePermission("admin:users
 });
 
 router.post("/feedback/:id/reject", requireAuth, requirePermission("admin:users"), async (req, res) => {
-  const { id } = req.params;
+  const id = String(req.params.id);
 
   try {
-    const all = await readFailedQueries();
-    const entry = all.find((f: any) => f.id === id);
+    const entry = await findFeedback(id);
     if (!entry) return res.status(404).json({ error: "Feedback entry not found" });
 
-    entry.status = "rejected";
-    await fs.promises.writeFile(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
+    await updateFeedbackStatus(id, "rejected");
 
     res.json({ success: true, message: "Feedback rejected" });
   } catch (err: unknown) {
@@ -635,25 +608,24 @@ router.post("/feedback/batch", requireAuth, requirePermission("admin:users"), as
   }
 
   try {
-    const all = await readFailedQueries();
     const skipped: string[] = [];
     let processed = 0;
 
     for (const id of ids) {
-      const entry = all.find((f: any) => f.id === id);
+      const entry = await findFeedback(String(id));
       if (!entry || entry.status !== "pending") {
         skipped.push(String(id));
         continue;
       }
 
-      entry.status = action === "approve" ? "approved" : "rejected";
+      await updateFeedbackStatus(entry.id, action === "approve" ? "approved" : "rejected");
 
       if (action === "approve" && entry.response) {
         const ragText = `Failed Query: User asked "${entry.message}". The system responded with: "${entry.response}". This response was rated as incorrect.${correctAnswer ? `\nCorrect answer: ${correctAnswer}` : ""}`;
         await addDocumentToCatalog(entry.id, ragText, {
           category: "previous_analysis",
           department: "analytics",
-          author: entry.userId,
+          author: entry.userId ?? undefined,
           source_name: "User Feedback",
           shared: true,
         }, ["failed_query", "feedback", ...entry.message.toLowerCase().split(/\W+/).filter(Boolean)]);
@@ -661,8 +633,6 @@ router.post("/feedback/batch", requireAuth, requirePermission("admin:users"), as
 
       processed++;
     }
-
-    await fs.promises.writeFile(FAILED_QUERIES_PATH, JSON.stringify(all, null, 2), "utf8");
 
     res.json({ success: true, processed, skipped });
   } catch (err: unknown) {

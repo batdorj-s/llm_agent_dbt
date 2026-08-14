@@ -1,26 +1,18 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import fs from "fs";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("fs", () => ({
-  default: {
-    existsSync: () => true,
-    mkdirSync: () => {},
-    writeFileSync: () => {},
-    promises: {
-      readFile: vi.fn(),
-      writeFile: vi.fn(),
-    },
-  },
-  existsSync: () => true,
-  mkdirSync: () => {},
-  writeFileSync: () => {},
-  promises: {
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-  },
+vi.mock("../db/pool.js", () => ({
+  getPool: vi.fn(),
 }));
 
+vi.mock("../db/data-lake.js", () => ({
+  getPool: vi.fn(),
+}));
+
+import { getPool } from "../db/pool.js";
 import feedbackRouter from "../routes/feedback.router.js";
+
+const mockedPool = { query: vi.fn() };
+(getPool as ReturnType<typeof vi.fn>).mockReturnValue(mockedPool);
 
 function makeReq(body: any) {
   return { body, userId: "user-1", user: { userId: "user-1", role: "analyst" } } as any;
@@ -35,10 +27,20 @@ function makeRes() {
 
 describe("Feedback Router — message caps", () => {
   beforeEach(() => {
-    vi.mocked(fs.promises.readFile).mockReset().mockResolvedValue("[]" as any);
-    vi.mocked(fs.promises.writeFile).mockReset().mockResolvedValue(undefined as any);
+    mockedPool.query.mockReset();
+    mockedPool.query.mockResolvedValue({
+      rows: [{
+        id: "feedback_1",
+        user_id: "user-1",
+        message: "hello",
+        response: "",
+        rating: "positive",
+        status: "approved",
+        thread_id: null,
+        created_at: new Date("2026-01-01T00:00:00Z"),
+      }],
+    });
   });
-  afterEach(() => vi.restoreAllMocks());
 
   function handler() {
     const stack = (feedbackRouter as any).stack;
@@ -51,12 +53,14 @@ describe("Feedback Router — message caps", () => {
     await handler()(makeReq({ message: "Great answer", rating: "positive" }), res, () => {});
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(mockedPool.query).toHaveBeenCalledTimes(1);
   });
 
   it("rejects missing message with 400", async () => {
     const res = makeRes();
     await handler()(makeReq({ rating: "positive" }), res, () => {});
     expect(res.statusCode).toBe(400);
+    expect(mockedPool.query).not.toHaveBeenCalled();
   });
 
   it("rejects message over 4000 characters with 400", async () => {
@@ -89,7 +93,7 @@ describe("Feedback Router — message caps", () => {
     const res = makeRes();
     await handler()(makeReq({ message: "  hello  ", rating: "positive" }), res, () => {});
     expect(res.statusCode).toBe(200);
-    const written = JSON.parse((fs.promises.writeFile as any).mock.calls[0][1]);
-    expect(written[0].message).toBe("hello");
+    const params = mockedPool.query.mock.calls[0][1];
+    expect(params[2]).toBe("hello");
   });
 });

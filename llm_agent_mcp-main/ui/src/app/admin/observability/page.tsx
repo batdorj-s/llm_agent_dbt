@@ -7,7 +7,7 @@
 
 import React, { useMemo, useState } from "react";
 import { useCustom } from "@refinedev/core";
-import { Activity, Check, CheckCircle2, Clock, MessageSquare, Search, X, XCircle } from "lucide-react";
+import { Activity, Check, CheckCircle2, Clock, MessageSquare, RefreshCw, Search, X, XCircle } from "lucide-react";
 import { useAuth } from "../../../hooks/useAuth";
 
 interface SqlLogRecord {
@@ -36,6 +36,38 @@ interface SummaryData {
   recentFeedback: FeedbackRecord[];
 }
 
+interface AuditRecord {
+  id: number;
+  user_id: string | null;
+  action: string;
+  method: string;
+  path: string;
+  status: number;
+  ip: string | null;
+  request_id: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+interface AuditResponse {
+  success: boolean;
+  data: AuditRecord[];
+  meta?: { total: number; limit: number; offset: number };
+}
+
+const STATUS_COLOR: Record<number, string> = {
+  200: "bg-emerald-500/10 text-emerald-600",
+  201: "bg-emerald-500/10 text-emerald-600",
+  204: "bg-emerald-500/10 text-emerald-600",
+  400: "bg-amber-500/10 text-amber-600",
+  401: "bg-red-500/10 text-red-500",
+  403: "bg-red-500/10 text-red-500",
+  404: "bg-amber-500/10 text-amber-600",
+  409: "bg-amber-500/10 text-amber-600",
+  429: "bg-orange-500/10 text-orange-600",
+  500: "bg-red-500/10 text-red-500",
+};
+
 export default function AdminObservabilityPage() {
   const { token } = useAuth();
   const { query, result } = useCustom<SummaryData>({
@@ -48,19 +80,37 @@ export default function AdminObservabilityPage() {
   });
   const refetchFeedback = feedbackQuery.refetch;
 
+  const { query: auditQuery, result: auditResult } = useCustom<AuditResponse>({
+    url: "/api/admin/audit?limit=50",
+    method: "get",
+  });
+
   const [actionId, setActionId] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [auditSearch, setAuditSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const data = result.data;
   const counts = data?.counts;
   const logs = data?.recentSqlLogs ?? [];
   const feedback = feedbackResult.data ?? [];
-  const isLoading = query.isLoading || feedbackQuery.isLoading;
+  const auditRecords = auditResult.data?.data ?? [];
+  const isLoading = query.isLoading || feedbackQuery.isLoading || auditQuery.isLoading;
   const isError = query.isError;
+
+  const filteredAudit = useMemo(() => {
+    const q = auditSearch.trim().toLowerCase();
+    if (!q) return auditRecords;
+    return auditRecords.filter(
+      (a) =>
+        String(a.action).toLowerCase().includes(q) ||
+        String(a.path).toLowerCase().includes(q) ||
+        String(a.user_id ?? "").toLowerCase().includes(q)
+    );
+  }, [auditRecords, auditSearch]);
 
   const filteredFeedback = useMemo(() => {
     const q = searchText.trim().toLowerCase();
@@ -367,6 +417,66 @@ export default function AdminObservabilityPage() {
                 })}
               </ul>
             </>
+          )}
+        </div>
+      </div>
+
+      {/* Audit log */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground">Үйлдлийн түүх</h2>
+          <button
+            onClick={() => auditQuery.refetch()}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-foreground/60 hover:text-foreground hover:bg-foreground/5 cursor-pointer transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Шинэчлэх
+          </button>
+        </div>
+
+        <div className="relative mb-3">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-foreground/30" />
+          <input
+            value={auditSearch}
+            onChange={(e) => setAuditSearch(e.target.value)}
+            placeholder="Хэрэглэгч, үйлдэл эсвэл зам хэсгээр шүүх..."
+            className="w-full pl-8 pr-3 py-2 rounded-lg bg-card border border-border text-xs text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          {auditRecords.length === 0 ? (
+            <div className="p-6 text-center text-sm text-foreground/50">Үйлдлийн түүх хоосон</div>
+          ) : filteredAudit.length === 0 ? (
+            <div className="p-6 text-center text-sm text-foreground/50">Шүүлтэд тохирох бичлэг байхгүй</div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {filteredAudit.map((a) => (
+                <li key={a.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-medium ${
+                          STATUS_COLOR[a.status] ?? "bg-foreground/10 text-foreground/60"
+                        }`}
+                      >
+                        {a.method} {a.status}
+                      </span>
+                      <span className="text-xs font-medium text-foreground/80 truncate">{a.action}</span>
+                    </div>
+                    <span className="shrink-0 text-[10px] text-foreground/40">
+                      {new Date(a.created_at).toLocaleString("mn-MN")}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-[10px] text-foreground/40 min-w-0">
+                    <code className="font-mono truncate">{a.path}</code>
+                    {a.user_id && <span className="font-mono shrink-0">{a.user_id}</span>}
+                    {a.ip && <span className="shrink-0">{a.ip}</span>}
+                    {a.request_id && <span className="font-mono truncate hidden md:inline">{a.request_id}</span>}
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>
