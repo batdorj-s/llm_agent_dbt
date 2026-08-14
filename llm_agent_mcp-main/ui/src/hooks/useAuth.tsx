@@ -137,11 +137,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) {
-    // Fallback for components not wrapped in AuthProvider
+    // Fallback for components rendered outside an AuthProvider (tests, SSR
+    // islands). Never fabricate an authenticated identity — fail closed.
     return {
       token: "",
-      user: { id: "user-admin-001", name: "Admin", email: "admin@local", role: "admin" },
-      isLoggedIn: true,
+      user: null,
+      isLoggedIn: false,
       threadId: INITIAL_THREAD_ID,
       setThreadId: () => {},
       isAuthLoading: false,
