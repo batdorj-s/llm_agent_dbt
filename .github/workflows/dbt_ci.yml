@@ -9,7 +9,6 @@ on:
 jobs:
   dbt-build:
     runs-on: ubuntu-latest
-    if: ${{ secrets.DBT_PROFILES_YML != '' }}
 
     steps:
     - uses: actions/checkout@v4
@@ -25,18 +24,27 @@ jobs:
         pip install dbt-sqlite
 
     - name: Write dbt profiles (from secret)
-      run: printf '%s' "$PROFILES" > llm_agent_mcp-main/dbt/profiles.yml
+      run: |
+        if [ -n "$PROFILES" ]; then
+          printf '%s' "$PROFILES" > llm_agent_mcp-main/dbt/profiles.yml
+          echo "profiles.yml written"
+        else
+          echo "DBT_PROFILES_YML not configured; dbt steps will be skipped"
+        fi
       env:
         PROFILES: ${{ secrets.DBT_PROFILES_YML }}
 
     - name: Run dbt debug
+      if: hashFiles('llm_agent_mcp-main/dbt/profiles.yml') != ''
       run: dbt debug --profiles-dir .
       working-directory: llm_agent_mcp-main/dbt
 
     - name: Run dbt build
+      if: hashFiles('llm_agent_mcp-main/dbt/profiles.yml') != ''
       run: dbt build --profiles-dir .
       working-directory: llm_agent_mcp-main/dbt
 
     - name: Run dbt source freshness
+      if: hashFiles('llm_agent_mcp-main/dbt/profiles.yml') != ''
       run: dbt source freshness --profiles-dir . || echo "Freshness check skipped or failed"
       working-directory: llm_agent_mcp-main/dbt
