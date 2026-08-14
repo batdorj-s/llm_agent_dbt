@@ -49,12 +49,6 @@ interface AuditRecord {
   created_at: string;
 }
 
-interface AuditResponse {
-  success: boolean;
-  data: AuditRecord[];
-  meta?: { total: number; limit: number; offset: number };
-}
-
 const STATUS_COLOR: Record<number, string> = {
   200: "bg-emerald-500/10 text-emerald-600",
   201: "bg-emerald-500/10 text-emerald-600",
@@ -80,7 +74,7 @@ export default function AdminObservabilityPage() {
   });
   const refetchFeedback = feedbackQuery.refetch;
 
-  const { query: auditQuery, result: auditResult } = useCustom<AuditResponse>({
+  const { query: auditQuery, result: auditResult } = useCustom<AuditRecord[]>({
     url: "/api/admin/audit?limit=50",
     method: "get",
   });
@@ -97,7 +91,7 @@ export default function AdminObservabilityPage() {
   const counts = data?.counts;
   const logs = data?.recentSqlLogs ?? [];
   const feedback = feedbackResult.data ?? [];
-  const auditRecords = auditResult.data?.data ?? [];
+  const auditRecords: AuditRecord[] = Array.isArray(auditResult.data) ? auditResult.data : [];
   const isLoading = query.isLoading || feedbackQuery.isLoading || auditQuery.isLoading;
   const isError = query.isError;
 
