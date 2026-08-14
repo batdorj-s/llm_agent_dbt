@@ -28,8 +28,8 @@ router.get("/summary", requirePermission("admin:system"), async (_req, res) => {
       pool.query(`SELECT COUNT(*) AS count FROM rag_documents`),
       pool.query(`SELECT
                     COUNT(*) AS total,
-                    COUNT(*) FILTER (WHERE outcome = 'success') AS succeeded,
-                    COUNT(*) FILTER (WHERE outcome = 'error') AS failed,
+                    COUNT(*) FILTER (WHERE outcome LIKE '%success') AS succeeded,
+                    COUNT(*) FILTER (WHERE outcome NOT LIKE '%success') AS failed,
                     COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') AS last_24h
                   FROM sql_gen_log`),
       pool.query(`SELECT COUNT(*) AS count FROM scheduled_reports WHERE is_active = true`),

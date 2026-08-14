@@ -238,12 +238,12 @@ export default function AdminObservabilityPage() {
                     <code className="text-xs text-foreground/80 font-mono truncate">{log.query}</code>
                     <span
                       className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                        log.outcome === "success"
+                        log.outcome.endsWith("success")
                           ? "bg-emerald-500/10 text-emerald-600"
                           : "bg-red-500/10 text-red-500"
                       }`}
                     >
-                      {log.outcome === "success" ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                      {log.outcome.endsWith("success") ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
                       {log.outcome}
                     </span>
                   </div>
