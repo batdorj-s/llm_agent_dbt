@@ -71,28 +71,28 @@ describe("Admin Users Router — POST /users handler", () => {
 
   it("rejects invalid email with 400", async () => {
     const res = mockRes();
-    await handle({ body: { email: "not-an-email", password: "secret123", name: "X" } }, res);
+    await handle({ body: { email: "not-an-email", password: "Secret123!", name: "X" } }, res);
     expect(res._status).toBe(400);
     expect(res._json.error).toMatch(/email/i);
   });
 
   it("rejects short password with 400", async () => {
     const res = mockRes();
-    await handle({ body: { email: "a@b.com", password: "123", name: "X" } }, res);
+    await handle({ body: { email: "a@b.com", password: "Ab1", name: "X" } }, res);
     expect(res._status).toBe(400);
-    expect(res._json.error).toMatch(/6 characters/i);
+    expect(res._json.error).toMatch(/8 characters/i);
   });
 
   it("rejects empty name with 400", async () => {
     const res = mockRes();
-    await handle({ body: { email: "a@b.com", password: "secret123", name: "  " } }, res);
+    await handle({ body: { email: "a@b.com", password: "Secret123!", name: "  " } }, res);
     expect(res._status).toBe(400);
     expect(res._json.error).toMatch(/name/i);
   });
 
   it("rejects unknown role with 400", async () => {
     const res = mockRes();
-    await handle({ body: { email: "a@b.com", password: "secret123", name: "X", role: "superadmin" } }, res);
+    await handle({ body: { email: "a@b.com", password: "Secret123!", name: "X", role: "superadmin" } }, res);
     expect(res._status).toBe(400);
     expect(res._json.error).toMatch(/role/i);
   });
@@ -100,18 +100,18 @@ describe("Admin Users Router — POST /users handler", () => {
   it("creates a user with 201 and normalized email", async () => {
     const { createUser } = await import("../db/catalog.js");
     const res = mockRes();
-    await handle({ body: { email: "  NEW@Example.COM ", password: "secret123", name: "Нэр", role: "analyst" } }, res);
+    await handle({ body: { email: "  NEW@Example.COM ", password: "Secret123!", name: "Нэр", role: "analyst" } }, res);
     expect(res._status).toBe(201);
     expect(res._json.data.email).toBe("new@example.com");
     expect(res._json.data.role).toBe("analyst");
-    expect(createUser).toHaveBeenCalledWith("new@example.com", "secret123", "Нэр", "analyst");
+    expect(createUser).toHaveBeenCalledWith("new@example.com", "Secret123!", "Нэр", "analyst");
   });
 
   it("returns 409 when createUser returns null (duplicate email)", async () => {
     const { createUser } = await import("../db/catalog.js");
     (createUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
     const res = mockRes();
-    await handle({ body: { email: "dup@example.com", password: "secret123", name: "X" } }, res);
+    await handle({ body: { email: "dup@example.com", password: "Secret123!", name: "X" } }, res);
     expect(res._status).toBe(409);
     expect(res._json.error).toMatch(/already registered/i);
   });

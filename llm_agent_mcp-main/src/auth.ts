@@ -49,6 +49,7 @@ if (!process.env.JWT_SECRET) {
   console.warn("[WARN] JWT_SECRET not set — using insecure dev fallback. Set JWT_SECRET in .env for production.");
 }
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production-min-32-chars!!";
+const JWT_EXPIRES_IN = parseExpiry(process.env.JWT_EXPIRES_IN || "1h");
 
 /** Default userId when no JWT is provided (dev fallback only) */
 export const DEFAULT_USER_ID = "user-admin-001";
@@ -94,12 +95,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     (req as any).user = { userId: result.payload.userId, role: result.payload.role };
     return next();
   }
-  if (isDev) {
-    (req as Request & { userId: string; role: UserRole }).userId = DEFAULT_USER_ID;
-    (req as Request & { userId: string; role: UserRole }).role = DEFAULT_ROLE;
-    (req as any).user = { userId: DEFAULT_USER_ID, role: DEFAULT_ROLE };
-    return next();
-  }
+  // Fail closed: an invalid/expired token is rejected even in dev mode —
+  // the dev fallback below applies only when NO token is sent at all.
   res.status(401).json({ error: result.error || "Invalid or expired token" });
 }
 
@@ -107,7 +104,7 @@ export function createToken(userId: string, role: UserRole): string {
   const header  = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const now     = Math.floor(Date.now() / 1000);
   const payload = base64url(
-    JSON.stringify({ userId, role, iat: now, exp: now + 3600 })
+    JSON.stringify({ userId, role, iat: now, exp: now + JWT_EXPIRES_IN })
   );
   const signature = sign(`${header}.${payload}`, JWT_SECRET);
   return `${header}.${payload}.${signature}`;

@@ -15,6 +15,7 @@ import { createUser } from "../db/catalog.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { log } from "./shared.js";
 import type { UserRole } from "../agents/agentState.js";
+import { validatePassword } from "../utils/password-policy.js";
 
 const router = Router();
 
@@ -64,8 +65,9 @@ router.post("/users", requirePermission("admin:users"), async (req, res) => {
       res.status(400).json({ error: "A valid email is required" });
       return;
     }
-    if (typeof password !== "string" || password.length < 6) {
-      res.status(400).json({ error: "Password must be at least 6 characters" });
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      res.status(400).json({ error: passwordError });
       return;
     }
     if (typeof name !== "string" || name.trim().length === 0) {

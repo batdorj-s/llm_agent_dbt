@@ -3,6 +3,7 @@ import { requireAuth, createToken, verifyToken } from "../auth.js";
 import { authenticateUser, createUser } from "../db/data-lake.js";
 import { authLimiter, registerLimiter } from "../rate-limiter.js";
 import { getPermissions } from "../middleware/rbac.js";
+import { validatePassword } from "../utils/password-policy.js";
 
 const router = Router();
 
@@ -33,8 +34,9 @@ router.post("/register", async (req, res) => {
   if (!email || !password || !name) {
     return res.status(400).json({ error: "Email, password, and name are required" });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: "Password must be at least 6 characters" });
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
   }
   const limit = await registerLimiter.check(`register:${req.ip}`);
   if (!limit.allowed) {
