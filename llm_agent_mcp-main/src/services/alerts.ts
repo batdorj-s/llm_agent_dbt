@@ -24,21 +24,12 @@ interface AlertRule {
   condition: (data: Record<string, unknown>[], columns: string[]) => Alert | null;
 }
 
-/** Keywords used to identify numeric columns dynamically */
-const NUMERIC_KEYWORDS = [
-  /amount/i, /total/i, /sum/i, /avg/i, /revenue/i, /income/i, /profit/i,
-  /expense/i, /cost/i, /sales/i, /price/i, /value/i, /quantity/i, /count/i,
-  /rate/i, /score/i, /balance/i, /num/i, /дүн/i, /орлого/i, /зардал/i, /ашиг/i,
-];
-
-/** Keywords to identify potentially negative/profit-like columns (checked for negative totals) */
-const PROFIT_KEYWORDS = [/profit/i, /ашиг/i, /цэвэр/i, /net/i];
-
-/** Keywords to identify revenue/income-like columns */
-const REVENUE_KEYWORDS = [/revenue/i, /income/i, /орлого/i, /борлуулалт/i, /sales/i];
-
-/** Keywords to identify expense-like columns */
-const EXPENSE_KEYWORDS = [/expense/i, /cost/i, /зардал/i, /зарлага/i, /spend/i];
+import {
+  NUMERIC_KEYWORDS,
+  PROFIT_KEYWORDS,
+  REVENUE_KEYWORDS,
+  EXPENSE_KEYWORDS,
+} from "../utils/column-keywords.js";
 
 export function getNumericColumns(firstRow: Record<string, unknown>): string[] {
   return Object.keys(firstRow).filter(k => NUMERIC_KEYWORDS.some(p => p.test(k)));

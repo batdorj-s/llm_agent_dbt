@@ -4,14 +4,9 @@ import { requirePermission } from "../middleware/rbac.js";
 import { getUserId } from "./shared.js";
 import { getActiveCatalogEntry, getPool } from "../db/data-lake.js";
 import { whatifLimiter } from "../rate-limiter.js";
+import { NUMERIC_KEYWORDS, CATEGORY_KEYWORDS } from "../utils/column-keywords.js";
 
 const router = Router();
-
-const NUMERIC_KEYWORDS = [/age/i, /amount/i, /balance/i, /price/i, /cost/i, /revenue/i, /sales/i,
-  /income/i, /profit/i, /spend/i, /value/i, /quantity/i, /count/i, /rate/i, /score/i,
-  /total/i, /sum/i, /avg/i, /num/i, /rating/i, /зардал/i, /орлого/i];
-
-const CATEGORY_KEYWORDS = [/category/i, /type/i, /status/i, /segment/i, /channel/i, /product/i, /branch/i, /салбар/i, /бүтээгдэхүүн/i];
 
 router.post("/whatif", requireAuth, requirePermission("kpi:whatif"), async (req, res) => {
   try {

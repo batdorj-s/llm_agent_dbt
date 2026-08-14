@@ -1,4 +1,5 @@
 import { getPool, quoteIdent, buildNoiseSubcategoryFilter } from "../db/data-lake.js";
+import { getActiveTableInfo } from "../db/active-table.js";
 import { findConceptColumn } from "./columnSynonyms.js";
 import { detectDateColumn } from "./dateColumnHelper.js";
 import { sanitizeColumnName } from "./sanitize.js";
@@ -17,45 +18,6 @@ export interface ComputedMetrics {
   operatingProfit: number;
   totalTransactions: number;
   expenseTransactions: number;
-}
-
-async function getActiveTableInfo(userId: string): Promise<{
-  tableName: string;
-  columns: string[];
-  columnTypes: Record<string, string>;
-} | null> {
-  try {
-    const fileCheck = await getPool().query(
-      `SELECT id FROM uploaded_files WHERE type = 'dataset' AND owner_id = $1 LIMIT 1`,
-      [userId]
-    );
-    if (fileCheck.rows.length === 0) return null;
-
-    const catalogResult = await getPool().query(
-      `SELECT table_name, columns_info FROM data_lake_catalog
-       WHERE owner_id = $1
-       ORDER BY created_at DESC LIMIT 1`,
-      [userId]
-    );
-    const row = catalogResult.rows[0] as any;
-    if (!row) return null;
-
-    const columns = JSON.parse(row.columns_info) as string[];
-
-    const typeResult = await getPool().query(
-      `SELECT column_name, data_type FROM information_schema.columns
-       WHERE table_name = $1 AND table_schema = 'public'`,
-      [row.table_name]
-    );
-    const columnTypes: Record<string, string> = {};
-    for (const r of typeResult.rows as Array<{ column_name: string; data_type: string }>) {
-      columnTypes[r.column_name.toLowerCase()] = r.data_type;
-    }
-
-    return { tableName: row.table_name, columns, columnTypes };
-  } catch {
-    return null;
-  }
 }
 
 function buildDateWhere(dateCol: string, dateCast: string | null, startDate?: string, endDate?: string, paramOffset: number = 0): { clause: string; params: any[] } {

@@ -1,5 +1,6 @@
 import type { IKpiRepository, KpiMetric, SalesRecord, DateFilter } from "./types.js";
 import { initDataLake, getPool } from "./data-lake.js";
+import { getActiveTableInfo as resolveActiveTable, isNumericType } from "./active-table.js";
 
 function buildDateWhere(tableInfo: { dateCol: string }, df?: DateFilter, paramOffset: number = 0): { clause: string; params: any[] } {
     if (!df?.startDate && !df?.endDate) return { clause: "", params: [] };
@@ -121,69 +122,54 @@ export class SQLiteKpiRepository implements IKpiRepository {
         dateCol: string;
         categoryCol?: string;
     } | null> {
-        if (userId) {
-            const fileCheck = await getPool().query(
-                `SELECT id FROM uploaded_files WHERE type = 'dataset' AND owner_id = $1 LIMIT 1`,
-                [userId]
-            );
-            if (fileCheck.rows.length === 0) return null;
-        }
-
-        const catalogResult = await getPool().query(
-            userId
-                ? `SELECT * FROM data_lake_catalog WHERE owner_id = $1 ORDER BY created_at DESC`
-                : `SELECT * FROM data_lake_catalog ORDER BY created_at DESC`,
-            userId ? [userId] : []
-        );
-        if (catalogResult.rows.length === 0) return null;
-
-        const typeResult = await getPool().query(
-            `SELECT column_name, data_type FROM information_schema.columns
-             WHERE table_schema = 'public'`
-        );
-        const typeMap = new Map<string, string>();
-        for (const row of typeResult.rows as Array<{ column_name: string; data_type: string }>) {
-            typeMap.set(row.column_name.toLowerCase(), row.data_type);
-        }
-
-        const isNumeric = (col: string) => {
-            const t = typeMap.get(col.toLowerCase());
-            return t && /numeric|integer|double|real|float|money|dec/i.test(t);
-        };
-
-        for (const catalog of catalogResult.rows as Array<any>) {
-            let columns: string[];
-            try {
-                columns = JSON.parse(catalog.columns_info) as string[];
-            } catch {
-                continue;
-            }
-
+        // Column-role detection over the shared active-table resolution
+        // (single source of truth lives in active-table.ts).
+        return resolveActiveTable(userId, (info) => {
+            const { columns, columnTypes } = info;
             const salesCol = columns.find(c => /amount|sales|revenue|price/i.test(c))
                 || columns.find(c => /total|income|spend|value|cost|profit/i.test(c))
-                || columns.find(c => isNumeric(c))
+                || columns.find(c => isNumericType(columnTypes, c))
                 || null;
-            if (!salesCol) continue;
+            if (!salesCol) return false;
 
             const userCol = columns.find(c => /customer_id|user_id|_id/i.test(c))
                 || columns.find(c => /customer|client|user|member|account/i.test(c))
                 || null;
-            if (!userCol) continue;
+            if (!userCol) return false;
 
             const dateCol = columns.find(c => /date|time/i.test(c))
                 || columns.find(c => /timestamp/i.test(c))
                 || columns.find(c => /year|month|day/i.test(c))
                 || null;
-            if (!dateCol) continue;
+            if (!dateCol) return false;
 
             const categoryCol = columns.find(c => /^category$/i.test(c))
                 || columns.find(c => /category|type|kind|class/i.test(c))
                 || undefined;
 
-            return { tableName: catalog.table_name, salesCol, userCol, dateCol, categoryCol };
-        }
-
-        return null;
+            return true;
+        }).then((info) => {
+            if (!info) return null;
+            const { columns, columnTypes } = info;
+            const salesCol = columns.find(c => /amount|sales|revenue|price/i.test(c))
+                || columns.find(c => /total|income|spend|value|cost|profit/i.test(c))
+                || columns.find(c => isNumericType(columnTypes, c))
+                || null;
+            if (!salesCol) return null;
+            const userCol = columns.find(c => /customer_id|user_id|_id/i.test(c))
+                || columns.find(c => /customer|client|user|member|account/i.test(c))
+                || null;
+            if (!userCol) return null;
+            const dateCol = columns.find(c => /date|time/i.test(c))
+                || columns.find(c => /timestamp/i.test(c))
+                || columns.find(c => /year|month|day/i.test(c))
+                || null;
+            if (!dateCol) return null;
+            const categoryCol = columns.find(c => /^category$/i.test(c))
+                || columns.find(c => /category|type|kind|class/i.test(c))
+                || undefined;
+            return { tableName: info.tableName, salesCol, userCol, dateCol, categoryCol };
+        });
     }
 
     async getSalesHistory(limit: number, dateFilter?: DateFilter, userId?: string): Promise<SalesRecord[]> {
